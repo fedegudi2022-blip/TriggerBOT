@@ -18,10 +18,10 @@ module.exports = {
       const role = member.guild.roles.cache.get(config.autorole);
       if (role) {
         await member.roles.add(role).catch((error) =>
-          console.error(`[autorol] No pude dar el rol en ${member.guild.name}:`, error.message)
+          console.error(`[TriggerBOT] No se pudo asignar el rol de bienvenida en ${member.guild.name}: ${error.message}`)
         );
       } else {
-        console.warn(`[autorol] El rol ${config.autorole} no existe en ${member.guild.name}. Reconfigurá con /config welcome.`);
+        console.warn(`[TriggerBOT] El rol configurado como autorol no existe en ${member.guild.name}. Reconfigurar con /config welcome.`);
       }
     }
 
@@ -36,10 +36,10 @@ module.exports = {
           .setThumbnail(member.user.displayAvatarURL({ size: 256 }))
           .setTimestamp();
         await channel.send({ embeds: [embed] }).catch((error) =>
-          console.error(`[welcome] No pude enviar el mensaje en ${member.guild.name}:`, error.message)
+          console.error(`[TriggerBOT] No se pudo enviar el mensaje de bienvenida en ${member.guild.name}: ${error.message}`)
         );
       } else {
-        console.warn(`[welcome] El canal ${config.welcome.channelId} no existe en ${member.guild.name}. Reconfigurá con /config welcome.`);
+        console.warn(`[TriggerBOT] El canal de bienvenida configurado no existe en ${member.guild.name}. Reconfigurar con /config welcome.`);
       }
     }
   },

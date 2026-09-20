@@ -23,7 +23,7 @@ function logAction(guild, { action, color = 0xed4245, target, moderator, reason,
   if (duration) embed.addFields({ name: 'Duración', value: duration, inline: true });
   if (extra) embed.addFields({ name: 'Detalles', value: extra, inline: false });
 
-  channel.send({ embeds: [embed] }).catch((error) => console.error('[modlog]', error.message));
+  channel.send({ embeds: [embed] }).catch((error) => console.error(`[TriggerBOT] No se pudo registrar la acción en el mod-log: ${error.message}`));
 }
 
 module.exports = { logAction };

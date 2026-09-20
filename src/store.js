@@ -16,7 +16,7 @@ function load() {
       cache = JSON.parse(fs.readFileSync(FILE, 'utf8'));
     }
   } catch (error) {
-    console.error('[store] No se pudo leer data/config.json, arrancando vacío:', error.message);
+    console.error('[TriggerBOT] No se pudo leer data/config.json, se inicia con configuración vacía:', error.message);
     cache = {};
   }
 }

@@ -25,7 +25,7 @@ module.exports = {
     await interaction.deferReply({ ephemeral: true });
 
     const fetched = await interaction.channel.bulkDelete(amount, true).catch((error) => {
-      console.error('[clear]', error.message);
+      console.error(`[TriggerBOT] Error en bulkDelete: ${error.message}`);
       return null;
     });
 

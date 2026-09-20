@@ -61,21 +61,27 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 // ---------- Errores globales (evita caídas por promesas rechazadas) ----------
-process.on('unhandledRejection', (error) => console.error('unhandledRejection:', error));
+process.on('unhandledRejection', (error) => console.error('[TriggerBOT] Promesa rechazada no manejada:', error));
 
-// ---------- Visibilidad de conexión ----------
-client.on('error', (error) => console.error('[discord] error:', error.message));
-client.on('shardDisconnect', (event) => console.warn('[discord] desconectado, voy a reintentar...', event?.message ?? ''));
-client.on('shardReconnecting', () => console.log('[discord] reconectando...'));
+// ---------- Registro de eventos de conexión ----------
+client.on('error', (error) => console.error(`[TriggerBOT] Error en la conexión con Discord: ${error.message}`));
+client.on('shardDisconnect', (event) => console.warn(`[TriggerBOT] Conexión perdida con Discord. Reintentando automáticamente... ${event?.message ?? ''}`));
+client.on('shardReconnecting', () => console.log('[TriggerBOT] Reconectando con Discord...'));
 
-// ---------- Login con reintento y mensajes claros ----------
+// ---------- Inicio de sesión con reintentos automáticos ----------
+let intentos = 0;
+
 function iniciarSesion() {
-  let conectado = false;
+  intentos += 1;
+  let respondio = false;
 
-  // Si Discord no responde en 45s (típico bloqueo de IP del nodo), cortamos y reintentamos.
+  // Si Discord no responde en 45 s (típico de un bloqueo de IP del nodo), se reintenta.
   const vigilante = setTimeout(() => {
-    if (conectado) return;
-    console.warn('⏳ Discord no responde (posible bloqueo de IP del nodo). Reintento en 60 segundos...');
+    if (respondio) return;
+    console.warn(
+      `[TriggerBOT] Sin respuesta de Discord tras 45 s (intento ${intentos}). ` +
+      'Causa probable: bloqueo temporal de la IP del nodo. Nuevo intento en 60 s.'
+    );
     client.destroy().catch(() => {});
     setTimeout(iniciarSesion, 60_000);
   }, 45_000);
@@ -83,22 +89,27 @@ function iniciarSesion() {
   client
     .login(process.env.DISCORD_TOKEN)
     .then(() => {
-      conectado = true;
+      respondio = true;
       clearTimeout(vigilante);
     })
     .catch((error) => {
       clearTimeout(vigilante);
-      conectado = true; // ya hubo respuesta (error), no corresponde el vigilante
+      respondio = true;
       const mensaje = String(error?.message || error);
       if (/token/i.test(mensaje)) {
-        console.error('❌ Token inválido o vacío. Revisá la variable DISCORD_TOKEN en Startup → Variables.');
-        process.exit(1); // crash visible: Wispbyte lo reinicia cuando corrijas la variable
+        console.error(
+          '[TriggerBOT] ERROR CRÍTICO: token inválido o no definido. ' +
+          'Verifique la variable DISCORD_TOKEN en el panel (Startup → Variables) y reinicie el servidor.'
+        );
+        process.exit(1);
       }
-      console.warn(`⚠️ No pude conectar con Discord (${mensaje}). Reintento en 60 segundos...`);
+      console.warn(
+        `[TriggerBOT] Fallo de conexión con Discord (intento ${intentos}): ${mensaje}. Nuevo intento en 60 s.`
+      );
       client.destroy().catch(() => {});
       setTimeout(iniciarSesion, 60_000);
     });
 }
 
-console.log('🚀 Iniciando TriggerBOT...');
+console.log('[TriggerBOT] Inicializando TriggerBOT v1.0.0...');
 iniciarSesion();
