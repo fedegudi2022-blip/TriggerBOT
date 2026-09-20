@@ -1,0 +1,18 @@
+{
+  "name": "triggerbot",
+  "version": "1.0.0",
+  "description": "Bot privado para la comunidad Trigger — alojado en Wispbyte",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "register": "node src/deploy-commands.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "discord.js": "^14.16.3",
+    "dotenv": "^16.4.5"
+  }
+}
