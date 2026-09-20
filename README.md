@@ -50,7 +50,7 @@ src/
    ```
    https://discord.com/oauth2/authorize?client_id=CLIENT_ID&scope=bot+applications.commands
    ```
-4. Registrar los comandos slash:
+4. Registrar los comandos slash (OPCIONAL — el bot los registra solo al arrancar):
    ```
    npm run register
    ```
@@ -61,14 +61,16 @@ src/
 
 ## Despliegue en Wispbyte
 
-1. Subir el repo a GitHub (ya conectado) y en Wispbyte crear un servidor **Node.js** con "Deploy desde GitHub".
-2. En la pestaña **Startup**:
-   - Comando de arranque: `npm start` (o `node src/index.js`)
-   - Variables de entorno: `DISCORD_TOKEN`, `CLIENT_ID`, `GUILD_ID` (sin `export`, solo nombre=valor)
-3. Comandos a correr tras actualizar código:
-   ```
-   npm install && npm run register && npm start
-   ```
+1. Subir el repo a GitHub (ya conectado) y en Wispbyte crear un servidor **Node.js** (el plan gratuito corre 24/7; 1 bot por server).
+2. Subir el código con la **integración de GitHub**: en Files/Deploy poné la URL del repo (`https://github.com/fedegudi2022-blip/TriggerBOT`), branch `main`, y activá **auto-update on startup** para que cada reinicio haga pull.
+3. En la pestaña **Startup**:
+   - Comando de arranque: `node src/index.js`
+   - Variables de entorno: `DISCORD_TOKEN` (es la única imprescindible; `CLIENT_ID` y `GUILD_ID` solo hacen falta si usás `npm run register` manual)
+   - Las dependencias se instalan solas (hay `package.json`)
+4. Start y mirar la consola: deberías ver `✅ TriggerBOT conectado` y `✅ N comandos registrados`.
+5. Para actualizar: `git push` desde tu máquina → **Restart** en el panel (con auto-update hace pull solo).
+
+> No hace falta subir `.env` a Wispbyte: las variables del panel llegan al bot igual (dotenv no las pisa).
 
 **Importante:** nunca subir el `.env` a GitHub (ya está en `.gitignore`). Poner el token como variable en el panel de Wispbyte.
 
