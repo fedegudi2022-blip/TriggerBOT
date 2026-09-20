@@ -10,10 +10,31 @@ src/
 ├── deploy-commands.js  # Registra los comandos slash en Discord
 ├── commands/           # Un archivo por comando slash
 │   └── ping.js
-└── events/             # Un archivo por evento (ready, messageCreate, ...)
-    ├── ready.js
-    └── messageCreate.js
+├── events/             # Un archivo por evento (ready, messageCreate, ...)
+│   ├── ready.js
+│   ├── messageCreate.js
+│   └── guildMemberAdd.js
+├── utils/
+│   └── modlog.js       # Registro de acciones de moderación
+└── store.js            # Config por servidor guardada en data/config.json (JSON simple)
 ```
+
+> `data/` se crea solo y está en `.gitignore`: cada entorno (local/Wispbyte) tiene su propia configuración.
+
+## Comandos
+
+| Comando | Qué hace | Quién lo usa |
+|---|---|---|
+| `/ping` | Latencia del bot | Todos |
+| `/config ver` | Muestra la configuración actual | Staff |
+| `/config welcome` | Canal, mensaje y autorol de bienvenida. Variables: `{usuario}` `{servidor}` `{miembros}` | Staff |
+| `/config modlog` | Canal donde se registran kick/ban/timeout/clear | Staff |
+| `/config staff` | Roles admin/mod/helper del bot | Staff |
+| `/config desactivar` | Apaga bienvenida, autorol o mod-log | Staff |
+| `/kick usuario [razon]` | Expulsa a un usuario | Mods (permiso Discord) |
+| `/ban usuario [razon] [borrar_dias]` | Banea y opcionalmente borra mensajes | Mods |
+| `/timeout usuario duracion [razon]` | Silencia de 5 min a 28 días | Mods |
+| `/clear cantidad [usuario] [razon]` | Borra hasta 100 mensajes recientes | Mods |
 
 ## Setup local
 
