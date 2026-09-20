@@ -63,4 +63,23 @@ client.on('interactionCreate', async (interaction) => {
 // ---------- Errores globales (evita caídas por promesas rechazadas) ----------
 process.on('unhandledRejection', (error) => console.error('unhandledRejection:', error));
 
-client.login(process.env.DISCORD_TOKEN);
+// ---------- Visibilidad de conexión ----------
+client.on('error', (error) => console.error('[discord] error:', error.message));
+client.on('shardDisconnect', (event) => console.warn('[discord] desconectado, voy a reintentar...', event?.message ?? ''));
+client.on('shardReconnecting', () => console.log('[discord] reconectando...'));
+
+// ---------- Login con reintento y mensajes claros ----------
+function iniciarSesion() {
+  client.login(process.env.DISCORD_TOKEN).catch((error) => {
+    const mensaje = String(error?.message || error);
+    if (/token/i.test(mensaje)) {
+      console.error('❌ Token inválido o vacío. Revisá la variable DISCORD_TOKEN en Startup → Variables.');
+      process.exit(1); // crash visible: Wispbyte lo reinicia cuando corrijas la variable
+    }
+    console.warn(`⚠️ No pude conectar con Discord (${mensaje}). Reintento en 60 segundos...`);
+    setTimeout(iniciarSesion, 60_000);
+  });
+}
+
+console.log('🚀 Iniciando TriggerBOT...');
+iniciarSesion();
