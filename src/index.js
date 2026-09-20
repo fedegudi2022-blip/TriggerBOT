@@ -70,15 +70,34 @@ client.on('shardReconnecting', () => console.log('[discord] reconectando...'));
 
 // ---------- Login con reintento y mensajes claros ----------
 function iniciarSesion() {
-  client.login(process.env.DISCORD_TOKEN).catch((error) => {
-    const mensaje = String(error?.message || error);
-    if (/token/i.test(mensaje)) {
-      console.error('❌ Token inválido o vacío. Revisá la variable DISCORD_TOKEN en Startup → Variables.');
-      process.exit(1); // crash visible: Wispbyte lo reinicia cuando corrijas la variable
-    }
-    console.warn(`⚠️ No pude conectar con Discord (${mensaje}). Reintento en 60 segundos...`);
+  let conectado = false;
+
+  // Si Discord no responde en 45s (típico bloqueo de IP del nodo), cortamos y reintentamos.
+  const vigilante = setTimeout(() => {
+    if (conectado) return;
+    console.warn('⏳ Discord no responde (posible bloqueo de IP del nodo). Reintento en 60 segundos...');
+    client.destroy().catch(() => {});
     setTimeout(iniciarSesion, 60_000);
-  });
+  }, 45_000);
+
+  client
+    .login(process.env.DISCORD_TOKEN)
+    .then(() => {
+      conectado = true;
+      clearTimeout(vigilante);
+    })
+    .catch((error) => {
+      clearTimeout(vigilante);
+      conectado = true; // ya hubo respuesta (error), no corresponde el vigilante
+      const mensaje = String(error?.message || error);
+      if (/token/i.test(mensaje)) {
+        console.error('❌ Token inválido o vacío. Revisá la variable DISCORD_TOKEN en Startup → Variables.');
+        process.exit(1); // crash visible: Wispbyte lo reinicia cuando corrijas la variable
+      }
+      console.warn(`⚠️ No pude conectar con Discord (${mensaje}). Reintento en 60 segundos...`);
+      client.destroy().catch(() => {});
+      setTimeout(iniciarSesion, 60_000);
+    });
 }
 
 console.log('🚀 Iniciando TriggerBOT...');
