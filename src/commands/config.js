@@ -15,6 +15,7 @@ const FEATURE_LABELS = {
   logs: 'Logs',
   avisos: 'Avisos al staff',
   mute: 'Rol de silenciado',
+  ia: 'Chat con IA',
 };
 
 function isMod(interaction) {
@@ -108,6 +109,16 @@ module.exports = {
     )
     .addSubcommand((sc) =>
       sc
+        .setName('ia')
+        .setDescription('Prende o apaga el chat con IA cuando alguien menciona al bot')
+        .addBooleanOption((o) =>
+          o
+            .setName('activada')
+            .setDescription('Dejar vacío para ver el estado actual')
+        )
+    )
+    .addSubcommand((sc) =>
+      sc
         .setName('staff')
         .setDescription('Define qué roles son staff del bot (admin > mod > helper)')
         .addRoleOption((o) => o.setName('admin').setDescription('Rol administrador del bot'))
@@ -129,7 +140,8 @@ module.exports = {
               { name: 'Registro de moderación (mod-log)', value: 'modlog' },
               { name: 'Registro de eventos (logs)', value: 'logs' },
               { name: 'Avisos al staff', value: 'avisos' },
-              { name: 'Rol de silenciado (/mute)', value: 'mute' }
+              { name: 'Rol de silenciado (/mute)', value: 'mute' },
+              { name: 'Chat con IA (menciones)', value: 'ia' }
             )
         )
     ),
@@ -155,6 +167,7 @@ module.exports = {
       const logsChannel = config.logs ? `<#${config.logs}>` : null;
       const avisos = config.avisosChannel ? `<#${config.avisosChannel}>` : null;
       const muteRole = config.muteRole ? `<@&${config.muteRole}>` : null;
+      const iaEstado = config.iaActivada === false ? '❌ Apagada' : '✅ Prendida';
 
       const embed = new EmbedBuilder()
         .setTitle('⚙️ Configuración de TriggerBOT')
@@ -166,6 +179,7 @@ module.exports = {
           { name: 'Logs', value: estado(logsChannel, logsChannel), inline: true },
           { name: 'Avisos al staff', value: estado(avisos, avisos), inline: true },
           { name: 'Rol de silenciado', value: estado(muteRole, muteRole), inline: true },
+          { name: 'Chat con IA', value: iaEstado, inline: true },
           { name: 'Mensaje de bienvenida', value: config.welcome?.message || '*(por defecto)*', inline: false },
           { name: 'Staff del bot', value: staffLines, inline: false }
         );
@@ -233,6 +247,26 @@ module.exports = {
       });
     }
 
+    if (sub === 'ia') {
+      const activada = interaction.options.getBoolean('activada');
+
+      if (activada === null) {
+        const actual = config.iaActivada === false ? '❌ apagada' : '✅ prendida';
+        return interaction.reply({
+          embeds: [successEmbed(`El chat con IA está ${actual}. Pasame la opción \`activada\` para cambiarlo.`)],
+          ephemeral: true,
+        });
+      }
+
+      store.setGuildConfig(interaction.guildId, (c) => {
+        c.iaActivada = activada;
+      });
+      return interaction.reply({
+        embeds: [successEmbed(`Chat con IA ${activada ? '✅ prendido' : '❌ apagado'} en este servidor.`)],
+        ephemeral: true,
+      });
+    }
+
     if (sub === 'staff') {
       const admin = interaction.options.getRole('admin');
       const mod = interaction.options.getRole('mod');
@@ -262,6 +296,7 @@ module.exports = {
         if (feature === 'logs') delete c.logs;
         if (feature === 'avisos') delete c.avisosChannel;
         if (feature === 'mute') delete c.muteRole;
+        if (feature === 'ia') delete c.iaActivada;
       });
       return interaction.reply({ embeds: [successEmbed(`Función **${FEATURE_LABELS[feature] ?? feature}** desactivada.`)], ephemeral: true });
     }

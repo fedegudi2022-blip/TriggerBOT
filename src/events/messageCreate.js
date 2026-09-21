@@ -54,6 +54,10 @@ function estaEnCooldown(userId) {
 async function manejarMencion(message) {
   const client = message.client;
   if (!message.mentions.users.has(client.user.id)) return;
+
+  // Si el staff apagó la IA en este servidor, el bot ignora las menciones.
+  if (getGuildConfig(message.guild.id).iaActivada === false) return;
+
   if (estaEnCooldown(message.author.id)) return;
 
   // Texto que quedó después de la mención: "@TriggerBOT hola" → "hola"

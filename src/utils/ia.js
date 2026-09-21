@@ -4,7 +4,7 @@
 // de charla (ver ../utils/charla.js), así nunca se queda mudo.
 
 const MODELO_DEFAULT = 'gemini-3.6-flash';
-const TIMEOUT_MS = 8_000;
+const TIMEOUT_MS = 12_000;
 
 // El nombre del modelo cambia cuando Google retira versiones viejas, así que si no
 // hay GEMINI_MODEL definido se pregunta a la API qué modelos flash hay disponibles
@@ -25,8 +25,10 @@ async function resolverModelo() {
       const nombres = (datos.models || [])
         .filter((m) => (m.supportedGenerationMethods || []).includes('generateContent'))
         .map((m) => m.name.replace(/^models\//, ''))
-        .filter((n) => n.includes('flash') && !/image|tts|live|audio|embedding/.test(n));
+        // Descarta variantes lentas o no-texto (thinking, imagen, audio, etc.)
+        .filter((n) => n.includes('flash') && !/thinking|image|tts|live|audio|embedding/.test(n));
       modeloCache = nombres.includes(MODELO_DEFAULT) ? MODELO_DEFAULT : nombres[0];
+      console.log(`[TriggerBOT] IA: usando modelo ${modeloCache}`);
     }
   } catch {
     // si falla el listado, usamos el default estático
@@ -84,6 +86,8 @@ async function llamarGemini(contenidos) {
       generationConfig: {
         temperature: 0.9,
         maxOutputTokens: 120,
+        // Sin "pensamiento previo": respuestas mucho más rápidas.
+        thinkingConfig: { thinkingBudget: 0 },
       },
       safetySettings: [
         { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
@@ -127,4 +131,11 @@ async function responderConIA(userId, mensaje) {
   return texto;
 }
 
-module.exports = { responderConIA };
+// Estado de la IA para /status: si hay clave y qué modelo está en uso.
+async function estadoIA() {
+  if (!process.env.GEMINI_API_KEY) return { configurada: false, modelo: null };
+  const modelo = await resolverModelo();
+  return { configurada: true, modelo };
+}
+
+module.exports = { responderConIA, estadoIA };

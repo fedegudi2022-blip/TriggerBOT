@@ -27,6 +27,7 @@ src/
 | Comando | Qué hace | Quién lo usa |
 |---|---|---|
 | `/ping` | Latencia del bot | Todos |
+| `/status` | Estado del bot: modelo de IA, latencia, tiempo encendido | Todos |
 | `/help` | Guía completa de comandos | Todos |
 | Mencionar al bot (`@TriggerBOT`) | Charla con IA (si está configurada) o respuestas locales | Todos |
 | `@TriggerBOT ping` | Ping rápido por mención | Todos |
@@ -60,6 +61,7 @@ src/
 | `/config avisos` | Canal de notificaciones al staff (reservado para escaladas futuras) |
 | `/config staff` | Roles admin/mod/helper del bot |
 | `/config mute` | Rol de silenciado (si no definís uno, `/mute` crea el suyo) |
+| `/config ia` | Prende o apaga el chat con IA en este servidor |
 | `/config desactivar` | Apaga bienvenida, autorol, mod-log, logs, avisos o el rol de mute |
 
 ## Chat con IA (opcional)
