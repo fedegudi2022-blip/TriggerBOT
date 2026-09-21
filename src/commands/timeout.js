@@ -1,5 +1,7 @@
 const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 const { logAction } = require('../utils/modlog');
+const { successEmbed, errorEmbed } = require('../utils/replies');
+const { motivoNoModerable, avisarPorDM } = require('../utils/moderation');
 
 const DURATIONS = {
   '5m': 5 * 60 * 1000,
@@ -45,19 +47,24 @@ module.exports = {
     const ms = DURATIONS[durationKey];
 
     const member = await interaction.guild.members.fetch(user.id).catch(() => null);
-    if (!member) {
-      return interaction.reply({ content: '❌ Ese usuario no está en el servidor.', ephemeral: true });
-    }
-    if (member.id === interaction.user.id) {
-      return interaction.reply({ content: '❌ No te podés silenciar a vos mismo.', ephemeral: true });
+
+    const error = motivoNoModerable(interaction, member);
+    if (error) {
+      return interaction.reply({ embeds: [errorEmbed(error)], ephemeral: true });
     }
     if (!member.moderatable) {
-      return interaction.reply({ content: '❌ No puedo silenciarlo: su rol está por encima del mío (o es el dueño).', ephemeral: true });
+      return interaction.reply({
+        embeds: [errorEmbed('No puedo silenciarlo: su rol está por encima del mío (o es el dueño del servidor).')],
+        ephemeral: true,
+      });
     }
 
     await member.timeout(ms, reason ? `${reason} — por ${interaction.user.tag}` : `por ${interaction.user.tag}`);
+    await avisarPorDM(user, `🔇 Fuiste silenciado en **${interaction.guild.name}** por **${durationKey}**.\n**Motivo:** ${reason || '*sin especificar*'}`);
 
-    await interaction.reply(`🔇 **${user.tag}** quedó silenciado por **${durationKey}**. Razón: ${reason || '*sin especificar*'}`);
+    await interaction.reply({
+      embeds: [successEmbed(`${user} quedó silenciado por **${durationKey}**.\n**Motivo:** ${reason || '*sin especificar*'}`, '🔇 Silencio')],
+    });
     logAction(interaction.guild, {
       action: 'Silencio (timeout)',
       target: user,

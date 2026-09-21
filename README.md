@@ -1,6 +1,6 @@
 # TriggerBOT
 
-Bot de Discord privado para la comunidad **Trigger**, hecho en Node.js con discord.js v14, **sin base de datos** (todo en memoria).
+Bot de Discord privado para la comunidad **Trigger**, hecho en Node.js con discord.js v14. La configuración y el historial de warns se guardan en archivos JSON simples (sin base de datos).
 
 ## Estructura
 
@@ -8,33 +8,56 @@ Bot de Discord privado para la comunidad **Trigger**, hecho en Node.js con disco
 src/
 ├── index.js            # Punto de entrada: carga comandos y eventos automáticamente
 ├── deploy-commands.js  # Registra los comandos slash en Discord
+├── store.js            # Config por servidor en data/config.json
+├── warns.js            # Historial de warns en data/warns.json
 ├── commands/           # Un archivo por comando slash
-│   └── ping.js
-├── events/             # Un archivo por evento (ready, messageCreate, ...)
-│   ├── ready.js
-│   ├── messageCreate.js
-│   └── guildMemberAdd.js
-├── utils/
-│   └── modlog.js       # Registro de acciones de moderación
-└── store.js            # Config por servidor guardada en data/config.json (JSON simple)
+├── events/             # Un archivo por evento (ready, logs, ...)
+└── utils/
+    ├── modlog.js       # Registro de acciones de moderación (mod-log)
+    ├── log.js          # Registro de eventos generales (logs)
+    ├── moderation.js   # Chequeos de jerarquía y avisos por DM
+    └── replies.js      # Embeds con el estilo visual unificado del bot
 ```
 
 > `data/` se crea solo y está en `.gitignore`: cada entorno (local/Wispbyte) tiene su propia configuración.
 
 ## Comandos
 
+### General
 | Comando | Qué hace | Quién lo usa |
 |---|---|---|
 | `/ping` | Latencia del bot | Todos |
-| `/config ver` | Muestra la configuración actual | Staff |
-| `/config welcome` | Canal, mensaje y autorol de bienvenida. Variables: `{usuario}` `{servidor}` `{miembros}` | Staff |
-| `/config modlog` | Canal donde se registran kick/ban/timeout/clear | Staff |
-| `/config staff` | Roles admin/mod/helper del bot | Staff |
-| `/config desactivar` | Apaga bienvenida, autorol o mod-log | Staff |
-| `/kick usuario [razon]` | Expulsa a un usuario | Mods (permiso Discord) |
+
+### Moderación
+| Comando | Qué hace | Permisos |
+|---|---|---|
+| `/warn usuario [razon]` | Advierte a un usuario. **Al 3er warn: timeout de 1 h automático** | Mods |
+| `/warnings usuario` | Muestra el historial de advertencias | Mods |
+| `/quitarnota usuario numero [razon]` | Elimina una advertencia del historial | Mods |
+| `/kick usuario [razon]` | Expulsa a un usuario | Mods |
 | `/ban usuario [razon] [borrar_dias]` | Banea y opcionalmente borra mensajes | Mods |
+| `/unban usuario_id [razon]` | Revoca un baneo por ID | Mods |
+| `/softban usuario [borrar_dias] [razon]` | Expulsa borrando sus mensajes (ban + unban) | Mods |
 | `/timeout usuario duracion [razon]` | Silencia de 5 min a 28 días | Mods |
+| `/mute usuario [razon]` | Silencia con rol (crea el rol *Silenciado* solo) | Mods |
+| `/unmute usuario [razon]` | Quita el silencio | Mods |
 | `/clear cantidad [usuario] [razon]` | Borra hasta 100 mensajes recientes | Mods |
+| `/lockdown bloquear/desbloquear [canal]` | Cierra o reabre un canal | Mods |
+| `/slowmode segundos [canal]` | Modo lento de 0 s a 6 h | Mods |
+
+> Todos los comandos de moderación validan jerarquía (no podés moderar a alguien con rol igual o superior), avisan al usuario por DM cuando es posible y quedan registrados en el mod-log.
+
+### Configuración (solo staff)
+| Subcomando | Qué hace |
+|---|---|
+| `/config ver` | Muestra toda la configuración actual |
+| `/config welcome` | Canal, mensaje y autorol de bienvenida. Variables: `{usuario}` `{servidor}` `{miembros}` |
+| `/config modlog` | Canal donde se registran kick/ban/timeout/clear/warn |
+| `/config logs` | Canal donde se registran mensajes borrados/editados, salidas, roles y apodos |
+| `/config avisos` | Canal de notificaciones al staff (reservado para escaladas futuras) |
+| `/config staff` | Roles admin/mod/helper del bot |
+| `/config mute` | Rol de silenciado (si no definís uno, `/mute` crea el suyo) |
+| `/config desactivar` | Apaga bienvenida, autorol, mod-log, logs, avisos o el rol de mute |
 
 ## Setup local
 
@@ -67,7 +90,7 @@ src/
    - Comando de arranque: `node src/index.js`
    - Variables de entorno: `DISCORD_TOKEN` (es la única imprescindible; `CLIENT_ID` y `GUILD_ID` solo hacen falta si usás `npm run register` manual)
    - Las dependencias se instalan solas (hay `package.json`)
-4. Start y mirar la consola: deberías ver `✅ TriggerBOT conectado` y `✅ N comandos registrados`.
+4. Start y mirar la consola: deberías ver la sesión iniciada y los comandos sincronizados en cada servidor.
 5. Para actualizar: `git push` desde tu máquina → **Restart** en el panel (con auto-update hace pull solo).
 
 > No hace falta subir `.env` a Wispbyte: las variables del panel llegan al bot igual (dotenv no las pisa).
@@ -76,4 +99,4 @@ src/
 
 ## Privacidad
 
-El bot está pensado para **un solo servidor**: la comunidad Trigger. No se registran datos en ningún lado; todo vive en memoria mientras el proceso está corriendo.
+El bot está pensado para **un solo servidor**: la comunidad Trigger. Solo guarda configuración y warns en archivos JSON locales; no manda datos a ningún servicio externo.

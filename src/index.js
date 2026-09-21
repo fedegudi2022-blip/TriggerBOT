@@ -16,6 +16,9 @@ const client = new Client({
   partials: [Partials.Channel, Partials.Message],
 });
 
+// Buffer de mensajes recientes (para mostrar contenido en los logs de borrados/ediciones).
+client.buffersMensajes = new Map();
+
 // ---------- Carga de comandos slash (src/commands/*) ----------
 client.commands = new Collection();
 

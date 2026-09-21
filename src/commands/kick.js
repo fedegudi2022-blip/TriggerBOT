@@ -1,5 +1,7 @@
 const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 const { logAction } = require('../utils/modlog');
+const { successEmbed, errorEmbed } = require('../utils/replies');
+const { motivoNoModerable, avisarPorDM } = require('../utils/moderation');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -14,23 +16,18 @@ module.exports = {
     const reason = interaction.options.getString('razon');
     const member = await interaction.guild.members.fetch(user.id).catch(() => null);
 
-    if (!member) {
-      return interaction.reply({ content: '❌ Ese usuario no está en el servidor.', ephemeral: true });
-    }
-    if (member.id === interaction.user.id) {
-      return interaction.reply({ content: '❌ No te podés expulsar a vos mismo.', ephemeral: true });
-    }
-    if (!member.kickable) {
-      return interaction.reply({ content: '❌ No puedo expulsarlo: su rol está por encima del mío (o es el dueño).', ephemeral: true });
+    const error = motivoNoModerable(interaction, member);
+    if (error) {
+      return interaction.reply({ embeds: [errorEmbed(error)], ephemeral: true });
     }
 
-    await user
-      .send(`⚠️ Fuiste expulsado de **${interaction.guild.name}**. Razón: ${reason || '*sin especificar*'}`)
-      .catch(() => {}); // puede tener DMs cerrados
+    await avisarPorDM(user, `👢 Fuiste expulsado de **${interaction.guild.name}**.\n**Motivo:** ${reason || '*sin especificar*'}`);
 
     await member.kick(reason ? `${reason} — por ${interaction.user.tag}` : `por ${interaction.user.tag}`);
 
-    await interaction.reply(`👢 **${user.tag}** fue expulsado. Razón: ${reason || '*sin especificar*'}`);
+    await interaction.reply({
+      embeds: [successEmbed(`${user} fue expulsado.\n**Motivo:** ${reason || '*sin especificar*'}`, '👢 Expulsión')],
+    });
     logAction(interaction.guild, {
       action: 'Expulsión (kick)',
       target: user,

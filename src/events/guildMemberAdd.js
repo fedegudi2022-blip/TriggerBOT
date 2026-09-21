@@ -1,4 +1,5 @@
-const { Events, EmbedBuilder } = require('discord.js');
+const { Events } = require('discord.js');
+const { brandEmbed } = require('../utils/replies');
 
 function renderWelcome(message, member) {
   return (message || '¡Bienvenido {usuario} a **{servidor}**! Sos el miembro #{miembros} 🎉')
@@ -29,12 +30,12 @@ module.exports = {
     if (config.welcome?.channelId) {
       const channel = member.guild.channels.cache.get(config.welcome.channelId);
       if (channel) {
-        const embed = new EmbedBuilder()
-          .setColor(0x5865f2)
-          .setAuthor({ name: `¡${member.user.tag} se unió!`, iconURL: member.user.displayAvatarURL() })
-          .setDescription(renderWelcome(config.welcome.message, member))
-          .setThumbnail(member.user.displayAvatarURL({ size: 256 }))
-          .setTimestamp();
+        const embed = brandEmbed({
+          color: 0x57f287,
+          title: `👋 ¡${member.user.tag} se unió!`,
+          description: renderWelcome(config.welcome.message, member),
+        });
+        embed.setThumbnail(member.user.displayAvatarURL({ size: 256 }));
         await channel.send({ embeds: [embed] }).catch((error) =>
           console.error(`[TriggerBOT] No se pudo enviar el mensaje de bienvenida en ${member.guild.name}: ${error.message}`)
         );

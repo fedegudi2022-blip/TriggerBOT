@@ -1,5 +1,6 @@
 const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 const { logAction } = require('../utils/modlog');
+const { successEmbed, errorEmbed } = require('../utils/replies');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -30,17 +31,18 @@ module.exports = {
     });
 
     if (!fetched) {
-      return interaction.editReply('❌ No pude borrar mensajes. Discord no permite borrar mensajes de más de 14 días.');
+      return interaction.editReply({
+        embeds: [errorEmbed('No pude borrar mensajes. Discord no permite borrar mensajes de más de 14 días.')],
+      });
     }
 
     let deleted = fetched.size;
     if (user) {
-      const filtered = fetched.filter((m) => m.author.id === user.id).size;
-      deleted = filtered;
+      deleted = fetched.filter((m) => m.author.id === user.id).size;
     }
 
-    const who = user ? ` de **${user.tag}**` : '';
-    await interaction.editReply(`🧹 Borré **${deleted}** mensaje(s)${who}. (Este aviso se borra solo)`);
+    const who = user ? ` de ${user}` : '';
+    await interaction.editReply({ embeds: [successEmbed(`Borré **${deleted}** mensaje(s)${who}.`, '🧹 Limpieza')] });
 
     // Auto-borra la confirmación a los 5 segundos
     setTimeout(() => interaction.deleteReply().catch(() => {}), 5000);
@@ -48,7 +50,7 @@ module.exports = {
     logAction(interaction.guild, {
       action: 'Borrado masivo (clear)',
       color: 0xfee75c,
-      target: user ?? { id: interaction.channelId, tag: `#${interaction.channel.name}` },
+      target: user ?? { raw: `Canal ${interaction.channel} (\`#${interaction.channel.name}\`)` },
       moderator: interaction.user,
       reason,
       extra: `Canal: <#${interaction.channelId}> — ${deleted} mensaje(s)`,

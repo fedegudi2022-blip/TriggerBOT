@@ -4,9 +4,18 @@ const {
   PermissionFlagsBits,
   ChannelType,
 } = require('discord.js');
+const { successEmbed, errorEmbed, warnEmbed } = require('../utils/replies');
 
 const LEVELS = ['admin', 'mod', 'helper'];
 const LEVEL_LABELS = { admin: 'Administrador', mod: 'Moderador', helper: 'Helper' };
+const FEATURE_LABELS = {
+  welcome: 'Bienvenida',
+  autorole: 'Autorol',
+  modlog: 'Mod-log',
+  logs: 'Logs',
+  avisos: 'Avisos al staff',
+  mute: 'Rol de silenciado',
+};
 
 function isMod(interaction) {
   const config = require('../store').getGuildConfig(interaction.guildId);
@@ -64,6 +73,41 @@ module.exports = {
     )
     .addSubcommand((sc) =>
       sc
+        .setName('logs')
+        .setDescription('Canal donde se registran mensajes borrados/editados, salidas y cambios de roles')
+        .addChannelOption((o) =>
+          o
+            .setName('canal')
+            .setDescription('Canal de registro general')
+            .setRequired(true)
+            .addChannelTypes(ChannelType.GuildText)
+        )
+    )
+    .addSubcommand((sc) =>
+      sc
+        .setName('avisos')
+        .setDescription('Canal donde el bot envía las notificaciones al staff')
+        .addChannelOption((o) =>
+          o
+            .setName('canal')
+            .setDescription('Canal de notificaciones al staff')
+            .setRequired(true)
+            .addChannelTypes(ChannelType.GuildText)
+        )
+    )
+    .addSubcommand((sc) =>
+      sc
+        .setName('mute')
+        .setDescription('Define el rol que se usa para silenciar (por defecto se crea uno llamado Silenciado)')
+        .addRoleOption((o) =>
+          o
+            .setName('rol')
+            .setDescription('Rol de silenciado (debe tener los permisos bloqueados en los canales)')
+            .setRequired(true)
+        )
+    )
+    .addSubcommand((sc) =>
+      sc
         .setName('staff')
         .setDescription('Define qué roles son staff del bot (admin > mod > helper)')
         .addRoleOption((o) => o.setName('admin').setDescription('Rol administrador del bot'))
@@ -82,14 +126,17 @@ module.exports = {
             .addChoices(
               { name: 'Bienvenida', value: 'welcome' },
               { name: 'Autorol', value: 'autorole' },
-              { name: 'Registro de moderación (mod-log)', value: 'modlog' }
+              { name: 'Registro de moderación (mod-log)', value: 'modlog' },
+              { name: 'Registro de eventos (logs)', value: 'logs' },
+              { name: 'Avisos al staff', value: 'avisos' },
+              { name: 'Rol de silenciado (/mute)', value: 'mute' }
             )
         )
     ),
 
   async execute(interaction) {
     if (!isMod(interaction)) {
-      return interaction.reply({ content: '❌ No tenés permiso para usar /config.', ephemeral: true });
+      return interaction.reply({ embeds: [errorEmbed('No tenés permiso para usar /config.')], ephemeral: true });
     }
 
     const sub = interaction.options.getSubcommand();
@@ -105,6 +152,10 @@ module.exports = {
         (level) => `• ${LEVEL_LABELS[level]}: ${config[`${level}Role`] ? `<@&${config[`${level}Role`]}>` : '—'}`
       ).join('\n');
 
+      const logsChannel = config.logs ? `<#${config.logs}>` : null;
+      const avisos = config.avisosChannel ? `<#${config.avisosChannel}>` : null;
+      const muteRole = config.muteRole ? `<@&${config.muteRole}>` : null;
+
       const embed = new EmbedBuilder()
         .setTitle('⚙️ Configuración de TriggerBOT')
         .setColor(0x5865f2)
@@ -112,6 +163,9 @@ module.exports = {
           { name: 'Bienvenida', value: estado(welcomeChannel, welcomeChannel), inline: true },
           { name: 'Autorol', value: estado(autorole, autorole), inline: true },
           { name: 'Mod-log', value: estado(modlog, modlog), inline: true },
+          { name: 'Logs', value: estado(logsChannel, logsChannel), inline: true },
+          { name: 'Avisos al staff', value: estado(avisos, avisos), inline: true },
+          { name: 'Rol de silenciado', value: estado(muteRole, muteRole), inline: true },
           { name: 'Mensaje de bienvenida', value: config.welcome?.message || '*(por defecto)*', inline: false },
           { name: 'Staff del bot', value: staffLines, inline: false }
         );
@@ -125,7 +179,7 @@ module.exports = {
 
       if (channelId === null && message === null && role === null) {
         return interaction.reply({
-          content: '⚠️ No pasaste ninguna opción. Pasá al menos una para cambiar algo.',
+          embeds: [warnEmbed('No pasaste ninguna opción. Pasá al menos una para cambiar algo.')],
           ephemeral: true,
         });
       }
@@ -141,7 +195,7 @@ module.exports = {
       if (channelId !== null) parts.push(`canal: <#${channelId}>`);
       if (message !== null) parts.push('mensaje actualizado');
       if (role) parts.push(`autorol: <@&${role.id}>`);
-      return interaction.reply({ content: `✅ Bienvenida actualizada (${parts.join(', ')}).`, ephemeral: true });
+      return interaction.reply({ embeds: [successEmbed(`Bienvenida actualizada (${parts.join(', ')}).`)], ephemeral: true });
     }
 
     if (sub === 'modlog') {
@@ -149,7 +203,34 @@ module.exports = {
       store.setGuildConfig(interaction.guildId, (c) => {
         c.modlog = channel.id;
       });
-      return interaction.reply({ content: `✅ Mod-log configurado en <#${channel.id}>.`, ephemeral: true });
+      return interaction.reply({ embeds: [successEmbed(`Mod-log configurado en ${channel}.`)], ephemeral: true });
+    }
+
+    if (sub === 'logs') {
+      const channel = interaction.options.getChannel('canal');
+      store.setGuildConfig(interaction.guildId, (c) => {
+        c.logs = channel.id;
+      });
+      return interaction.reply({ embeds: [successEmbed(`Registro de eventos configurado en ${channel}.`)], ephemeral: true });
+    }
+
+    if (sub === 'avisos') {
+      const channel = interaction.options.getChannel('canal');
+      store.setGuildConfig(interaction.guildId, (c) => {
+        c.avisosChannel = channel.id;
+      });
+      return interaction.reply({ embeds: [successEmbed(`Avisos al staff configurados en ${channel}.`)], ephemeral: true });
+    }
+
+    if (sub === 'mute') {
+      const role = interaction.options.getRole('rol');
+      store.setGuildConfig(interaction.guildId, (c) => {
+        c.muteRole = role.id;
+      });
+      return interaction.reply({
+        embeds: [successEmbed(`Rol de silenciado configurado: ${role}. Verificá que tenga el habla bloqueado en los canales.`)],
+        ephemeral: true,
+      });
     }
 
     if (sub === 'staff') {
@@ -159,7 +240,7 @@ module.exports = {
 
       if (!admin && !mod && !helper) {
         return interaction.reply({
-          content: '⚠️ Pasá al menos un rol (admin, mod o helper).',
+          embeds: [warnEmbed('Pasá al menos un rol (admin, mod o helper).')],
           ephemeral: true,
         });
       }
@@ -169,7 +250,7 @@ module.exports = {
         if (mod) c.modRole = mod.id;
         if (helper) c.helperRole = helper.id;
       });
-      return interaction.reply({ content: '✅ Roles de staff actualizados.', ephemeral: true });
+      return interaction.reply({ embeds: [successEmbed('Roles de staff actualizados.')], ephemeral: true });
     }
 
     if (sub === 'desactivar') {
@@ -178,8 +259,11 @@ module.exports = {
         if (feature === 'welcome') delete c.welcome;
         if (feature === 'autorole') delete c.autorole;
         if (feature === 'modlog') delete c.modlog;
+        if (feature === 'logs') delete c.logs;
+        if (feature === 'avisos') delete c.avisosChannel;
+        if (feature === 'mute') delete c.muteRole;
       });
-      return interaction.reply({ content: `✅ Función **${feature}** desactivada.`, ephemeral: true });
+      return interaction.reply({ embeds: [successEmbed(`Función **${FEATURE_LABELS[feature] ?? feature}** desactivada.`)], ephemeral: true });
     }
   },
 };

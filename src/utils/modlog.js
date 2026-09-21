@@ -14,7 +14,7 @@ function logAction(guild, { action, color = 0xed4245, target, moderator, reason,
     .setTitle(`🛡️ ${action}`)
     .setColor(color)
     .addFields(
-      { name: 'Usuario', value: `<@${target.id}> (\`${target.tag ?? target.id}\`)`, inline: true },
+      { name: 'Usuario', value: target.raw ?? `<@${target.id}> (\`${target.tag ?? target.id}\`)`, inline: true },
       { name: 'Moderador', value: `<@${moderator.id}>`, inline: true },
       { name: 'Razón', value: reason || '*Sin especificar*', inline: false }
     )

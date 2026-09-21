@@ -11,7 +11,7 @@ module.exports = {
     console.log(`[TriggerBOT] Comandos cargados: ${client.commands.size}`);
 
     client.user.setPresence({
-      activities: [{ name: 'la comunidad Trigger', type: ActivityType.Watching }],
+      activities: [{ name: 'Moderando Trigger.Arena', type: ActivityType.Watching }],
       status: 'online',
     });
 
