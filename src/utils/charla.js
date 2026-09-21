@@ -80,9 +80,6 @@ const RESPUESTAS = {
   ],
 };
 
-// Emojis que el bot usa cuando decide reaccionar en vez de contestar.
-const EMOJIS_REACCION = ['👍', '😄', '🔥', '👀', '💪', '⭐', '🤖', '❤️', '😎', '🫡'];
-
 // Respuestas puntuales a preguntas de moderación. Devuelve el texto o null.
 function responderPreguntaModeracion(texto) {
   if (/\b(banear|banea|baneo|banneo|expulsar|expulsa|expulso|kickear|kickeo|ban|kick)\b/.test(texto)) {
@@ -145,4 +142,4 @@ function responderCharla(texto) {
   return elegir(RESPUESTAS.fallo);
 }
 
-module.exports = { responderCharla, normalizar, EMOJIS_REACCION };
+module.exports = { responderCharla, normalizar };

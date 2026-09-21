@@ -1,6 +1,6 @@
 const { Events } = require('discord.js');
 const { brandEmbed } = require('../utils/replies');
-const { responderCharla, normalizar, EMOJIS_REACCION } = require('../utils/charla');
+const { responderCharla, normalizar } = require('../utils/charla');
 const { getGuildConfig } = require('../store');
 
 // Limita el tamaño del buffer de mensajes recientes por canal para no crecer sin control.
@@ -48,11 +48,8 @@ function estaEnCooldown(userId) {
   return false;
 }
 
-// Probabilidad de que el bot responda con una reacción de emoji en vez de charla.
-const PROBABILIDAD_REACCION = 0.25;
-
-// Responde cuando alguien menciona al bot: a veces reacciona con un emoji y
-// otras charla. La guía completa vive exclusivamente en /help.
+// Responde cuando alguien menciona al bot: siempre contesta con un mensaje.
+// La guía completa vive exclusivamente en /help.
 async function manejarMencion(message) {
   const client = message.client;
   if (!message.mentions.users.has(client.user.id)) return;
@@ -74,12 +71,6 @@ async function manejarMencion(message) {
       description: `**Latencia de la API:** ${Math.round(client.ws.ping)}ms\nPara más detalle usá /ping.`,
     });
     return message.reply({ embeds: [embed] }).catch(() => {});
-  }
-
-  // A veces solo reacciona con un emoji; el resto del tiempo charla.
-  if (Math.random() < PROBABILIDAD_REACCION) {
-    const emoji = EMOJIS_REACCION[Math.floor(Math.random() * EMOJIS_REACCION.length)];
-    return message.react(emoji).catch(() => {});
   }
 
   await message.reply({ content: responderCharla(texto) }).catch(() => {});
