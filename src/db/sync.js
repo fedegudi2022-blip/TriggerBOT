@@ -82,20 +82,11 @@ async function restaurar(almacenes) {
 
   const filas = [];
   try {
-    const { supabase } = require('./supabase');
-    let query = supabase.from('bot_data').select('clave, guild_id, almacen, datos, version');
-    if (hayLocal && guildIds.size > 0) query = query.in('guild_id', [...guildIds]);
-    const { data, error } = await query;
-    if (error) {
-      estado.ultimoError = error.message;
-      console.error('[TriggerBOT] Supabase: no se pudo leer la nube al arrancar:', error.message);
-      resumen.errores += 1;
-      return resumen;
-    }
-    filas.push(...(data ?? []));
+    const { listar } = require('./supabase');
+    filas.push(...(await listar(hayLocal && guildIds.size > 0 ? [...guildIds] : null)));
   } catch (error) {
     estado.ultimoError = error.message;
-    console.error('[TriggerBOT] Supabase: error inesperado al arrancar:', error.message);
+    console.error('[TriggerBOT] Supabase: no se pudo leer la nube al arrancar:', error.message);
     resumen.errores += 1;
     return resumen;
   }
