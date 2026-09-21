@@ -24,12 +24,32 @@ function clave(host, puerto) {
   return `${host}:${puerto}`;
 }
 
-// Si el server responde con un nombre distinto al configurado, la IP apunta a otro
-// server (puerto cambiado, server de otro dueño en la misma máquina, etc.).
+// Si el server responde con un nombre totalmente distinto al configurado, la IP apunta
+// a otro server (puerto cambiado, server de otro dueño en la misma máquina, etc.).
+// La comparación es tolerante: considera el mismo server si comparten al menos la mitad
+// de las palabras ("AutoMix" vs "MIX" o "KZ+Bhop 100aa" vs "KZ+Bhop" no generan aviso;
+// "ARGENTINA CS SOLO DUST2" configurado como "~|PUBLICO|~" sí).
+function palabrasDe(nombre) {
+  return String(nombre)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // sin acentos: PÚBLICO == publico
+    .split(/[^a-z]+/)
+    .filter((p) => p.length >= 3);
+}
+
+function nombresCompatibles(configurado, reportado) {
+  const a = palabrasDe(configurado);
+  const b = palabrasDe(reportado);
+  if (!a.length || !b.length) return true; // sin datos para comparar: no advierte
+  const coincidencias = a.filter((p) => b.includes(p)).length;
+  return coincidencias / a.length >= 0.5;
+}
+
 function notaDifiere(server, datos) {
   if (!datos?.nombre) return '';
-  const normalizar = (t) => String(t).toLowerCase().replace(/[^a-z0-9]/g, '');
-  return normalizar(datos.nombre) === normalizar(server.nombre) ? '' : ` ⚠ *el server informa llamarse "${datos.nombre}"*`;
+  if (nombresCompatibles(server.nombre, datos.nombre)) return '';
+  return ` ⚠ *el server informa llamarse "${datos.nombre}" — verificá que la IP sea la correcta*`;
 }
 
 // Parsea "cs.nostalgia.ar:27015" o { host, puerto } → [host, puerto].
@@ -209,4 +229,4 @@ async function actualizarPanel(guild, config) {
   await mensaje.edit({ embeds: construirPanel(guild, config, instantaneas) }).catch(() => {});
 }
 
-module.exports = { tick, cache, consultar, parsearDestino, construirPanel, tarjetaServidor, notaDifiere, INTERVALO_MS };
+module.exports = { tick, cache, consultar, parsearDestino, construirPanel, tarjetaServidor, notaDifiere, nombresCompatibles, INTERVALO_MS };
