@@ -6,7 +6,7 @@
 //   mensajePanel: id del mensaje del panel (lo publica /servidores con publicar:true)
 //   monitoreo: on/off de las alertas de caída/vuelta (el panel se actualiza siempre)
 //   lista: [{ host, puerto, nombre, modo }]
-const { brandEmbed } = require('./replies');
+const { brandEmbed, barra } = require('./replies');
 const a2s = require('./a2s');
 const { getGuildConfig } = require('../store');
 
@@ -121,20 +121,23 @@ async function alertar(guild, embed) {
 
 // ---------- Panel auto-actualizado ----------
 // Redacta el embed del panel con las últimas instantáneas de la config del guild.
+// Sin latencia: el ping que mide el bot es desde SU hosting, no representa al jugador
+// (suele dar 10x más de lo que la gente ve en el juego y solo genera desconfianza).
 function construirPanel(guild, config, instantaneas) {
   const lineas = config.lista.map((server, i) => {
     const [host, puerto] = parsearDestino(server);
     const s = instantaneas.get(clave(host, puerto));
-    if (!s) return `**${i + 1}.** ${server.nombre} — ⏳ consultando…`;
+    if (!s) return `⏳ **${server.nombre}**\n> consultando…`;
 
-    if (!s.ok) return `**${i + 1}.** ${server.nombre} — 🔴 **caído**\n> \`${host}:${puerto}\``;
+    if (!s.ok) return `🔴 **${server.nombre}** — caído\n> 🔗 \`${host}:${puerto}\``;
 
-    const ocupacion = s.datos.maximo ? Math.round((s.datos.jugadores / s.datos.maximo) * 100) : 0;
-    const estado = ocupacion >= 90 ? '🔴' : ocupacion >= 60 ? '🟡' : '🟢';
+    const d = s.datos;
+    const ocup = d.maximo ? d.jugadores / d.maximo : 0;
+    const estado = ocup >= 0.9 ? '🔴' : ocup >= 0.6 ? '🟡' : '🟢';
     return (
-      `**${i + 1}.** ${server.nombre}${notaDifiere(server, s.datos)}\n` +
-      `> ${estado} **${s.datos.jugadores}/${s.datos.maximo}** · 🗺️ \`${s.datos.mapa}\` · ⏱️ ${s.latenciaMs} ms\n` +
-      `> \`${host}:${puerto}\` — copiá y conect`
+      `${estado} **${server.nombre}**${notaDifiere(server, d)}\n` +
+      `> 👥 ${barra(d.jugadores, d.maximo, 8)} **${d.jugadores}/${d.maximo}** · 🗺️ \`${d.mapa}\`\n` +
+      `> 🔗 \`${host}:${puerto}\``
     );
   });
 
@@ -146,8 +149,8 @@ function construirPanel(guild, config, instantaneas) {
   const embed = brandEmbed({
     color: online === 0 ? 0xed4245 : online === config.lista.length ? 0x57f287 : 0xfee75c,
     title: '🎮 Servidores TriGGer.Arena — en vivo',
-    description: `**${online}/${config.lista.length}** servers online · **${totalJugadores}** jugadores jugando ahora.\n\n${lineas.join('\n\n')}`,
-    footer: `TriggerBOT • se actualiza solo cada ${Math.round(INTERVALO_MS / 1000)} s • ${new Date().toLocaleTimeString('es-AR')}`,
+    description: `**${online}/${config.lista.length}** en línea · 👥 **${totalJugadores}** jugando ahora\n\n${lineas.join('\n\n')}`,
+    footer: `TriggerBOT • se actualiza solo cada ${Math.round(INTERVALO_MS / 1000)} s`,
   });
 
   return embed;

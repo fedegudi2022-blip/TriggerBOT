@@ -52,19 +52,18 @@ module.exports = {
       })
     );
 
-    const lineas = resultados.map(({ server, host, puerto, resultado }, i) => {
+    const lineas = resultados.map(({ server, host, puerto, resultado }) => {
       if (!resultado.ok) {
-        return `**${i + 1}.** ${server.nombre}\n> 🔴 **Caído** — no responde\n> \`${host}:${puerto}\``;
+        return `🔴 **${server.nombre}** — caído\n> 🔗 \`${host}:${puerto}\``;
       }
       const d = resultado.datos;
       const ocup = d.maximo ? d.jugadores / d.maximo : 0;
       const estado = ocup >= 0.9 ? '🔴' : ocup >= 0.6 ? '🟡' : '🟢';
       const aviso = monitoreo.notaDifiere(server, d);
       return (
-        `**${i + 1}.** ${server.nombre}${aviso}\n` +
-        `> ${estado} **${d.jugadores}/${d.maximo}** jugadores — 🗺️ \`${d.mapa}\` — ⏱️ ${resultado.latenciaMs} ms\n` +
-        `> \`${barra(d.jugadores, d.maximo, 10)}\`\n` +
-        `> 🔗 \`${host}:${puerto}\` — copiá y conect`
+        `${estado} **${server.nombre}**${aviso}\n` +
+        `> 👥 ${barra(d.jugadores, d.maximo, 8)} **${d.jugadores}/${d.maximo}** · 🗺️ \`${d.mapa}\`\n` +
+        `> 🔗 \`${host}:${puerto}\``
       );
     });
 
@@ -73,9 +72,9 @@ module.exports = {
 
     const embed = brandEmbed({
       color: online === 0 ? 0xed4245 : online === servers.length ? 0x57f287 : 0xfee75c,
-      title: '🎮 Servidores TriGGer.Arena',
+      title: '🎮 Servidores TriGGer.Arena — en vivo',
       description:
-        `**${online}/${servers.length}** servers online · **${jugadores}** jugadores jugando ahora.\n\n${lineas.join('\n\n')}`,
+        `**${online}/${servers.length}** en línea · 👥 **${jugadores}** jugando ahora\n\n${lineas.join('\n\n')}`,
       footer: `TriggerBOT • consultado ahora • ${new Date().toLocaleTimeString('es-AR')}`,
     });
 
