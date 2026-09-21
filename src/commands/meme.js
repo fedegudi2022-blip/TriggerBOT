@@ -1,7 +1,9 @@
 const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
 const { errorEmbed } = require('../utils/replies');
 
-const SUBREDDITS = ['memes', 'memesesp', 'dankmemes', 'ArgMemes', 'me_irl'];
+// Subreddits hispánicos primero (75% de las veces sale de acá) y luego internacionales.
+const SUBS_ES = ['memesesp', 'ArgMemes'];
+const SUBS_INTL = ['memes', 'dankmemes', 'me_irl'];
 const cacheSubs = new Map(); // subreddit → { lista, cuando }
 
 // Corta-corriente: si Reddit rechaza (403/429 típico contra hosts de nube), se lo
@@ -61,7 +63,7 @@ async function traerMemes(subreddit) {
     return cacheado.lista;
   }
 
-  const fuentes = Date.now() < redditBloqueadoHasta ? [traerDesdeEspejo] : [traerDesdeReddit, traerDesdeEspejo];
+  const fuentes = Date.now() < redditBloqueadoHasta ? [traerDesdeEspejo] : [traerDesdeEspejo, traerDesdeReddit];
   let lista = [];
   for (const fuente of fuentes) {
     try {
@@ -80,10 +82,17 @@ async function traerMemes(subreddit) {
   return lista;
 }
 
-// Elige subreddits al azar y devuelve el primero con memes disponibles.
+function mezclar(lista) {
+  return [...lista].sort(() => Math.random() - 0.5);
+}
+
+// Elige subreddit con peso hacia el español y devuelve el primero con memes.
+// El espejo (meme-api) va PRIMERO: Reddit bloquea a los hosts de nube con 403 y
+// cada intento perdido suma segundos. Reddit queda como respaldo.
 async function memeAleatorio() {
-  const orden = [...SUBREDDITS].sort(() => Math.random() - 0.5);
-  for (const sub of orden) {
+  const primero = Math.random() < 0.75 ? SUBS_ES : SUBS_INTL;
+  const segundo = primero === SUBS_ES ? SUBS_INTL : SUBS_ES;
+  for (const sub of [...mezclar(primero), ...mezclar(segundo)]) {
     try {
       const lista = await traerMemes(sub);
       if (lista.length) return { sub, meme: lista[Math.floor(Math.random() * lista.length)] };

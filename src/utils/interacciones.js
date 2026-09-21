@@ -36,16 +36,24 @@ const ACCIONES = {
   guino: { endpoint: 'wink', verbo: 'guiñó el ojo a', texto: 'guiñó el ojo a', emoji: '😉' },
 };
 
-// Pide un GIF del endpoint. Devuelve la URL o null si falla (hay respaldo de texto).
+// Pide un GIF con doble fuente: nekos.best primero y otakugifs.xyz de respaldo
+// (si una está caída o bloquea al host, la otra responde). Devuelve URL o null.
 async function traerGIF(endpoint) {
-  try {
-    const resp = await fetch(`https://nekos.best/api/v2/${endpoint}?amount=1`, { signal: AbortSignal.timeout(5_000) });
-    if (!resp.ok) return null;
-    const datos = await resp.json();
-    return datos?.results?.[0]?.url ?? null;
-  } catch {
-    return null;
+  const fuentes = [
+    { url: `https://nekos.best/api/v2/${endpoint}?amount=1`, extraer: (d) => d?.results?.[0]?.url ?? null },
+    { url: `https://api.otakugifs.xyz/gif?reaction=${endpoint}&sfw=true`, extraer: (d) => d?.url ?? null },
+  ];
+  for (const fuente of fuentes) {
+    try {
+      const resp = await fetch(fuente.url, { signal: AbortSignal.timeout(5_000), headers: { Accept: 'application/json' } });
+      if (!resp.ok) continue;
+      const gif = fuente.extraer(await resp.json());
+      if (gif) return gif;
+    } catch {
+      continue;
+    }
   }
+  return null;
 }
 
 // Suma 1 al contador de (quien → receptor, acción) y devuelve el total acumulado.
