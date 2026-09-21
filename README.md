@@ -28,6 +28,8 @@ src/
 |---|---|---|
 | `/ping` | Latencia del bot con indicador de calidad y botón de refresco | Todos |
 | `/status` | Estado del bot: modelos de IA, latencia, tiempo encendido, uso — con botón de refresco | Todos |
+| `/servidores` | Estado en vivo de los servers CS 1.6 (jugadores, mapa, IP). Staff: `publicar:true` fija un panel que se actualiza solo | Todos |
+| `/ip [servidor]` | IP para conectarte, lista para copiar. Con filtro por nombre muestra mapa y jugadores de ahora | Todos |
 | `/help` | Guía completa por categorías | Todos |
 | `/userinfo [usuario]` | Ficha de usuario: fechas, roles, permisos, warns | Todos |
 | `/serverinfo` | Ficha del server: dueño, canales, roles, boosts | Todos |
@@ -63,6 +65,16 @@ Se activa desde `/config → Anti-spam y anti-raid` (apagada por defecto):
 - **Anti-raid**: si entran más de X cuentas en Y segundos (por defecto 8 en 60 s), alerta al staff con la lista de ingresos (marcando cuentas de menos de 7 días 🆕). Opcionalmente puede **actuar sola** (expulsar o banear) sobre cuentas nuevas sin roles.
 
 Todo queda registrado en el mod-log como acción del bot.
+
+### Servidores CS 1.6 (monitoreo y panel en vivo)
+
+Se configura desde `/config → Servidores CS 1.6`: cargás cada server con nombre e `IP:puerto` (por ejemplo `cs.nostalgia.ar:27015`). Con eso:
+
+- **`/servidores`** consulta cada server por el protocolo de Valve (A2S, UDP directo, sin depender de la web) y muestra estado, jugadores, mapa, latencia y ocupación. El staff puede publicar un **panel auto-actualizado** (`/servidores → publicar`) que el bot edita solo cada 90 s.
+- **`/ip`** responde la IP en bloque de código para copiar; con filtro por nombre muestra el mapa y los jugadores de ahora.
+- **Alertas**: si un server deja de responder o vuelve, avisa al canal de staff (canal de avisos, logs o mod-log). Se pueden apagar desde el panel.
+
+El monitoreo hace 2 intentos con timeout de 2,5 s antes de dar un server por caído (UDP pierde paquetes), y los comandos consultan en paralelo con la caché del monitoreo para responder al instante.
 
 ### Niveles y logros
 | Comando | Qué hace |

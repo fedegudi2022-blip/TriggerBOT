@@ -29,6 +29,7 @@ const SECCIONES = [
   { value: 'niveles', label: 'Niveles y XP', description: 'Canal donde se anuncian subidas de nivel y logros', emoji: '8️⃣' },
   { value: 'frases', label: 'Frase del día', description: 'Canal y hora de la frase automática diaria', emoji: '9️⃣' },
   { value: 'proteccion', label: 'Anti-spam y anti-raid', description: 'Flood y oleadas de ingresos con acción automática', emoji: '🛡️' },
+  { value: 'servidores', label: 'Servidores CS 1.6', description: 'Servers con IP, panel en vivo y alertas de caída', emoji: '🎮' },
   { value: 'desactivar', label: 'Desactivar funciones', description: 'Apagar funciones que ya no querés usar', emoji: '🔟' },
 ];
 
@@ -88,6 +89,7 @@ function panelCompleto(guild) {
       { name: 'Rol de silenciado', value: estado(config.muteRole ? `<@&${config.muteRole}>` : null), inline: true },
       { name: 'Chat con IA', value: config.iaActivada === false ? 'Apagada' : 'Prendida', inline: true },
       { name: 'Anti-spam/raid', value: config.proteccion?.activado ? 'Prendida' : 'Apagada', inline: true },
+      { name: 'Servidores CS', value: config.servidores?.lista?.length ? `${config.servidores.lista.length} cargado(s)` : 'Sin cargar', inline: true },
       { name: 'Canal de niveles', value: estado(config.canalNiveles ? `<#${config.canalNiveles}>` : null), inline: true },
       { name: 'Frase del día', value: estado(config.fraseDelDia?.canalId ? `<#${config.fraseDelDia.canalId}>` : null), inline: true },
       { name: 'Staff del bot', value: staffLines, inline: false }
@@ -295,6 +297,56 @@ function vistaSeccion(guild, seccion, guardado = false) {
         filaVolver().components[0]
       )
     );
+  } else if (seccion === 'servidores') {
+    const servidores = config.servidores?.lista ?? [];
+    const listaTexto =
+      servidores.map((s, i) => `**${i + 1}.** ${s.nombre} — \`${s.host}:${s.puerto}\`${s.modo ? ` (${s.modo})` : ''}`).join('\n') ||
+      '*Todavía no hay servers cargados.*';
+
+    embed = new EmbedBuilder()
+      .setTitle('Servidores CS 1.6')
+      .setColor(0x5865f2)
+      .setDescription(
+        `**Panel en vivo:** ${canalActual(config.servidores?.canalPanel)}\n` +
+          `**Alertas de caída:** ${config.servidores?.monitoreo === false ? 'Apagadas' : 'Prendidas'}\n\n` +
+          `**Servers (${servidores.length}):**\n${listaTexto}${nota}\n\n` +
+          'Con servers cargados, /servidores e /ip muestran el estado en vivo y el bot avisa al staff si uno cae o vuelve.'
+      );
+
+    // Modal para cargar un server nuevo: nombre + IP:puerto + modo.
+    components.push(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('cfg:modalpedir:servidores').setLabel('Agregar servidor').setEmoji('➕').setStyle(ButtonStyle.Success)
+      )
+    );
+
+    // Selector para quitar uno (solo si hay).
+    if (servidores.length) {
+      components.push(
+        new ActionRowBuilder().addComponents(
+          new StringSelectMenuBuilder()
+            .setCustomId('cfg:servers:quitar')
+            .setPlaceholder('Elegí el server a quitar')
+            .addOptions(
+              servidores.map((s, i) => ({
+                label: `${i + 1}. ${s.nombre}`.slice(0, 100),
+                description: `${s.host}:${s.puerto}`.slice(0, 100),
+                value: String(i),
+              }))
+            )
+        )
+      );
+    }
+
+    components.push(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('cfg:toggle:servMonitoreo').setLabel(
+          config.servidores?.monitoreo === false ? 'Prender alertas' : 'Apagar alertas'
+        ).setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('cfg:servers:limpiarPanel').setLabel('Olvidar panel publicado').setStyle(ButtonStyle.Secondary),
+        filaVolver().components[0]
+      )
+    );
   } else if (seccion === 'desactivar') {
     embed = new EmbedBuilder()
       .setTitle('Desactivar funciones')
@@ -394,6 +446,7 @@ function aplicarDesactivado(guildId, feature) {
     else if (feature === 'frases') delete c.fraseDelDia;
     else if (feature === 'ia') c.iaActivada = false;
     else if (feature === 'proteccion') delete c.proteccion;
+    else if (feature === 'servidores') delete c.servidores;
   });
 }
 
@@ -556,6 +609,99 @@ async function manejarComponente(interaction) {
       embeds: [brandEmbed({ color: 0x57f287, title: 'Umbrales de protección guardados' })],
       flags: MessageFlags.Ephemeral,
     });
+  }
+
+  // ---------- Servidores CS 1.6 ----------
+  // Botón que pide el modal de alta de server
+  if (accion === 'modalpedir' && partes[2] === 'servidores' && interaction.isButton()) {
+    const modal = new ModalBuilder()
+      .setCustomId('cfg:modal:servidores')
+      .setTitle('Agregar servidor CS 1.6')
+      .addComponents(
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder()
+            .setCustomId('nombre')
+            .setLabel('Nombre (ej: PÚBLICO CLÁSICO)')
+            .setStyle(TextInputStyle.Short)
+            .setMaxLength(60)
+            .setRequired(true)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder()
+            .setCustomId('ip')
+            .setLabel('IP o dominio con puerto (host:puerto)')
+            .setStyle(TextInputStyle.Short)
+            .setMaxLength(100)
+            .setPlaceholder('cs.nostalgia.ar:27015')
+            .setRequired(true)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder()
+            .setCustomId('modo')
+            .setLabel('Modo (opcional: Público, KZ, AutoMix…)')
+            .setStyle(TextInputStyle.Short)
+            .setMaxLength(40)
+            .setRequired(false)
+        )
+      );
+    return interaction.showModal(modal);
+  }
+
+  // Modal de alta enviado: validar IP y guardar
+  if (accion === 'modal' && partes[2] === 'servidores' && interaction.isModalSubmit()) {
+    const nombre = interaction.fields.getTextInputValue('nombre').trim();
+    const ipCruda = interaction.fields.getTextInputValue('ip').trim();
+    const modo = (interaction.fields.getTextInputValue('modo') || '').trim();
+    const [hostCrudo, puertoCrudo] = ipCruda.split(':');
+    const host = hostCrudo.trim();
+    const puerto = Number(puertoCrudo) || 27015;
+
+    if (!host || !/^[\w.-]+$/.test(host)) {
+      return interaction.reply({
+        embeds: [errorEmbed('La IP no parece válida. Usá `host:puerto`, por ejemplo `cs.nostalgia.ar:27015`.')],
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+
+    setGuildConfig(guild.id, (c) => {
+      c.servidores = c.servidores || {};
+      c.servidores.lista = c.servidores.lista || [];
+      c.servidores.lista.push({ nombre, host, puerto, modo });
+    });
+    if (interaction.isFromMessage()) return interaction.update(vistaSeccion(guild, 'servidores', true));
+    return interaction.reply({
+      embeds: [brandEmbed({ color: 0x57f287, title: `Servidor "${nombre}" agregado`, description: `Ya podés usar /servidores e /ip.` })],
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  // Quitar un server del listado
+  if (accion === 'servers' && partes[2] === 'quitar' && interaction.isStringSelectMenu()) {
+    const indice = Number(interaction.values[0]);
+    setGuildConfig(guild.id, (c) => {
+      if (c.servidores?.lista?.[indice]) c.servidores.lista.splice(indice, 1);
+    });
+    return interaction.update(vistaSeccion(guild, 'servidores', true));
+  }
+
+  // Toggle de alertas de caída/vuelta
+  if (accion === 'toggle' && partes[2] === 'servMonitoreo' && interaction.isButton()) {
+    setGuildConfig(guild.id, (c) => {
+      c.servidores = c.servidores || {};
+      c.servidores.monitoreo = c.servidores.monitoreo === false ? true : false;
+    });
+    return interaction.update(vistaSeccion(guild, 'servidores', true));
+  }
+
+  // Olvidar el panel publicado (por si lo borraron a mano)
+  if (accion === 'servers' && partes[2] === 'limpiarPanel' && interaction.isButton()) {
+    setGuildConfig(guild.id, (c) => {
+      if (c.servidores) {
+        delete c.servidores.canalPanel;
+        delete c.servidores.mensajePanel;
+      }
+    });
+    return interaction.update(vistaSeccion(guild, 'servidores', true));
   }
 
   // Desactivar: pedir confirmación

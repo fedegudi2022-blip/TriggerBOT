@@ -50,6 +50,16 @@ for (const file of fs.readdirSync(eventsPath).filter((f) => f.endsWith('.js'))) 
   }
 }
 
+// ---------- Monitoreo de servidores CS 1.6: alertas de caída y panel en vivo ----------
+const { tick: tickServidores, INTERVALO_MS: INTERVALO_SERVIDORES } = require('./utils/monitoreo');
+setInterval(() => {
+  tickServidores(client).catch((error) => console.error('[TriggerBOT] Error en monitoreo de servidores:', error.message));
+}, INTERVALO_SERVIDORES).unref();
+// Primer tick tras 15 s de arrancar (deja que Discord termine de conectar).
+setTimeout(() => {
+  tickServidores(client).catch((error) => console.error('[TriggerBOT] Error en monitoreo de servidores:', error.message));
+}, 15_000).unref();
+
 // ---------- Frase del día: publicación diaria a la hora configurada ----------
 setInterval(async () => {
   try {
