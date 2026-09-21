@@ -70,17 +70,8 @@ src/
 | `/diversion beso @usuario` | Besos virtuales 😘 |
 
 ### Configuración (solo staff)
-| Subcomando | Qué hace |
-|---|---|
-| `/config ver` | Muestra toda la configuración actual |
-| `/config welcome` | Canal, mensaje y autorol de bienvenida. Variables: `{usuario}` `{servidor}` `{miembros}` |
-| `/config modlog` | Canal donde se registran kick/ban/timeout/clear/warn |
-| `/config logs` | Canal donde se registran mensajes borrados/editados, salidas, roles y apodos |
-| `/config avisos` | Canal de notificaciones al staff (reservado para escaladas futuras) |
-| `/config staff` | Roles admin/mod/helper del bot |
-| `/config mute` | Rol de silenciado (si no definís uno, `/mute` crea el suyo) |
-| `/config ia` | Prende o apaga el chat con IA en este servidor |
-| `/config desactivar` | Apaga bienvenida, autorol, mod-log, logs, avisos o el rol de mute |
+
+`/config` abre un **panel interactivo**: un menú desplegable con las secciones (Bienvenida, Mod-log, Logs, Avisos, Staff, Rol de silenciado, Chat con IA, Desactivar) y, dentro de cada una, selectores nativos para elegir canales y roles con un clic — sin tipear IDs ni opciones. El mensaje de bienvenida se edita en una ventana emergente y cada desactivado pide confirmación. Todo se guarda al instante y el panel es visible solo para quien lo abre.
 
 ## Chat con IA (opcional)
 

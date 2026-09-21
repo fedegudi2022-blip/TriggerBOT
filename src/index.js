@@ -43,14 +43,23 @@ for (const file of fs.readdirSync(eventsPath).filter((f) => f.endsWith('.js'))) 
   }
 }
 
-// ---------- Botones de confirmación de acciones por chat con IA ----------
+// ---------- Componentes interactivos (botones, selectores y modales) ----------
 const { manejarBoton } = require('./utils/accionesIA');
+const { manejarComponente } = require('./utils/configPanel');
 client.on('interactionCreate', async (interaction) => {
-  if (interaction.isButton() && interaction.customId.startsWith('ia_accion:')) {
-    try {
+  try {
+    if (interaction.isButton() && interaction.customId.startsWith('ia_accion:')) {
       await manejarBoton(interaction);
-    } catch (error) {
-      console.error('[TriggerBOT] Error en botón de acción IA:', error);
+    } else if (interaction.customId?.startsWith('cfg:')) {
+      await manejarComponente(interaction);
+    }
+  } catch (error) {
+    console.error('[TriggerBOT] Error en componente interactivo:', error);
+    const payload = { content: 'Ocurrió un error con el panel.', flags: MessageFlags.Ephemeral };
+    if (interaction.replied || interaction.deferred) {
+      await interaction.followUp(payload).catch(() => {});
+    } else {
+      await interaction.reply(payload).catch(() => {});
     }
   }
 });
