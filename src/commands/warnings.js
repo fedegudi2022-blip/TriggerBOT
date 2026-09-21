@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const { getWarns } = require('../warns');
 const { brandEmbed, warnEmbed } = require('../utils/replies');
 
@@ -14,7 +14,7 @@ module.exports = {
     const warns = getWarns(interaction.guild.id, user.id);
 
     if (warns.length === 0) {
-      return interaction.reply({ embeds: [warnEmbed(`${user} no tiene advertencias registradas. ✨`, '📋 Historial limpio')], ephemeral: true });
+      return interaction.reply({ embeds: [warnEmbed(`${user} no tiene advertencias registradas. ✨`, '📋 Historial limpio')], flags: MessageFlags.Ephemeral });
     }
 
     const lista = warns
@@ -30,6 +30,6 @@ module.exports = {
       description: lista.slice(0, 4000) || '—',
     });
 
-    return interaction.reply({ embeds: [embed], ephemeral: true });
+    return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
   },
 };

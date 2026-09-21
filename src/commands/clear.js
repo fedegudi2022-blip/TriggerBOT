@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const { logAction } = require('../utils/modlog');
 const { successEmbed, errorEmbed } = require('../utils/replies');
 
@@ -23,7 +23,7 @@ module.exports = {
     const user = interaction.options.getUser('usuario');
     const reason = interaction.options.getString('razon');
 
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const fetched = await interaction.channel.bulkDelete(amount, true).catch((error) => {
       console.error(`[TriggerBOT] Error en bulkDelete: ${error.message}`);

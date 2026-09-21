@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const { logAction } = require('../utils/modlog');
 const { successEmbed, errorEmbed } = require('../utils/replies');
 const { avisarPorDM } = require('../utils/moderation');
@@ -18,11 +18,11 @@ module.exports = {
     if (!/^\d{17,20}$/.test(userId)) {
       return interaction.reply({
         embeds: [errorEmbed('Eso no parece una ID válida. Copiala con clic derecho sobre el usuario → **Copiar ID de usuario** (modo desarrollador activado).')],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const bans = await interaction.guild.bans.fetch().catch(() => null);
     if (!bans) {

@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const { logAction } = require('../utils/modlog');
 const { successEmbed, errorEmbed } = require('../utils/replies');
 const { motivoNoModerable, avisarPorDM } = require('../utils/moderation');
@@ -50,12 +50,12 @@ module.exports = {
 
     const error = motivoNoModerable(interaction, member);
     if (error) {
-      return interaction.reply({ embeds: [errorEmbed(error)], ephemeral: true });
+      return interaction.reply({ embeds: [errorEmbed(error)], flags: MessageFlags.Ephemeral });
     }
     if (!member.moderatable) {
       return interaction.reply({
         embeds: [errorEmbed('No puedo silenciarlo: su rol está por encima del mío (o es el dueño del servidor).')],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 

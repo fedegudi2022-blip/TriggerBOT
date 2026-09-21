@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const { logAction } = require('../utils/modlog');
 const { successEmbed, errorEmbed } = require('../utils/replies');
 const { motivoNoModerable, avisarPorDM } = require('../utils/moderation');
@@ -26,7 +26,7 @@ module.exports = {
 
     const error = motivoNoModerable(interaction, member);
     if (error) {
-      return interaction.reply({ embeds: [errorEmbed(error)], ephemeral: true });
+      return interaction.reply({ embeds: [errorEmbed(error)], flags: MessageFlags.Ephemeral });
     }
 
     await avisarPorDM(user, `🧹 Fuiste expulsado de **${interaction.guild.name}** con limpieza de mensajes.\n**Motivo:** ${reason || '*sin especificar*'}`);

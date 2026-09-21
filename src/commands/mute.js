@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, PermissionFlagsBits, ChannelType } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags } = require('discord.js');
 const { getGuildConfig, setGuildConfig } = require('../store');
 const { logAction } = require('../utils/modlog');
 const { successEmbed, errorEmbed } = require('../utils/replies');
@@ -49,7 +49,7 @@ module.exports = {
 
     const error = motivoNoModerable(interaction, member);
     if (error) {
-      return interaction.reply({ embeds: [errorEmbed(error)], ephemeral: true });
+      return interaction.reply({ embeds: [errorEmbed(error)], flags: MessageFlags.Ephemeral });
     }
 
     await interaction.deferReply();

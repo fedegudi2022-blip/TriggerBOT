@@ -3,6 +3,7 @@ const {
   EmbedBuilder,
   PermissionFlagsBits,
   ChannelType,
+  MessageFlags,
 } = require('discord.js');
 const { successEmbed, errorEmbed, warnEmbed } = require('../utils/replies');
 
@@ -148,7 +149,7 @@ module.exports = {
 
   async execute(interaction) {
     if (!isMod(interaction)) {
-      return interaction.reply({ embeds: [errorEmbed('No tenés permiso para usar /config.')], ephemeral: true });
+      return interaction.reply({ embeds: [errorEmbed('No tenés permiso para usar /config.')], flags: MessageFlags.Ephemeral });
     }
 
     const sub = interaction.options.getSubcommand();
@@ -183,7 +184,7 @@ module.exports = {
           { name: 'Mensaje de bienvenida', value: config.welcome?.message || '*(por defecto)*', inline: false },
           { name: 'Staff del bot', value: staffLines, inline: false }
         );
-      return interaction.reply({ embeds: [embed], ephemeral: true });
+      return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
     }
 
     if (sub === 'welcome') {
@@ -194,7 +195,7 @@ module.exports = {
       if (channelId === null && message === null && role === null) {
         return interaction.reply({
           embeds: [warnEmbed('No pasaste ninguna opción. Pasá al menos una para cambiar algo.')],
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
       }
 
@@ -209,7 +210,7 @@ module.exports = {
       if (channelId !== null) parts.push(`canal: <#${channelId}>`);
       if (message !== null) parts.push('mensaje actualizado');
       if (role) parts.push(`autorol: <@&${role.id}>`);
-      return interaction.reply({ embeds: [successEmbed(`Bienvenida actualizada (${parts.join(', ')}).`)], ephemeral: true });
+      return interaction.reply({ embeds: [successEmbed(`Bienvenida actualizada (${parts.join(', ')}).`)], flags: MessageFlags.Ephemeral });
     }
 
     if (sub === 'modlog') {
@@ -217,7 +218,7 @@ module.exports = {
       store.setGuildConfig(interaction.guildId, (c) => {
         c.modlog = channel.id;
       });
-      return interaction.reply({ embeds: [successEmbed(`Mod-log configurado en ${channel}.`)], ephemeral: true });
+      return interaction.reply({ embeds: [successEmbed(`Mod-log configurado en ${channel}.`)], flags: MessageFlags.Ephemeral });
     }
 
     if (sub === 'logs') {
@@ -225,7 +226,7 @@ module.exports = {
       store.setGuildConfig(interaction.guildId, (c) => {
         c.logs = channel.id;
       });
-      return interaction.reply({ embeds: [successEmbed(`Registro de eventos configurado en ${channel}.`)], ephemeral: true });
+      return interaction.reply({ embeds: [successEmbed(`Registro de eventos configurado en ${channel}.`)], flags: MessageFlags.Ephemeral });
     }
 
     if (sub === 'avisos') {
@@ -233,7 +234,7 @@ module.exports = {
       store.setGuildConfig(interaction.guildId, (c) => {
         c.avisosChannel = channel.id;
       });
-      return interaction.reply({ embeds: [successEmbed(`Avisos al staff configurados en ${channel}.`)], ephemeral: true });
+      return interaction.reply({ embeds: [successEmbed(`Avisos al staff configurados en ${channel}.`)], flags: MessageFlags.Ephemeral });
     }
 
     if (sub === 'mute') {
@@ -243,7 +244,7 @@ module.exports = {
       });
       return interaction.reply({
         embeds: [successEmbed(`Rol de silenciado configurado: ${role}. Verificá que tenga el habla bloqueado en los canales.`)],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 
@@ -254,7 +255,7 @@ module.exports = {
         const actual = config.iaActivada === false ? '❌ apagada' : '✅ prendida';
         return interaction.reply({
           embeds: [successEmbed(`El chat con IA está ${actual}. Pasame la opción \`activada\` para cambiarlo.`)],
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
       }
 
@@ -263,7 +264,7 @@ module.exports = {
       });
       return interaction.reply({
         embeds: [successEmbed(`Chat con IA ${activada ? '✅ prendido' : '❌ apagado'} en este servidor.`)],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 
@@ -275,7 +276,7 @@ module.exports = {
       if (!admin && !mod && !helper) {
         return interaction.reply({
           embeds: [warnEmbed('Pasá al menos un rol (admin, mod o helper).')],
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
       }
 
@@ -284,7 +285,7 @@ module.exports = {
         if (mod) c.modRole = mod.id;
         if (helper) c.helperRole = helper.id;
       });
-      return interaction.reply({ embeds: [successEmbed('Roles de staff actualizados.')], ephemeral: true });
+      return interaction.reply({ embeds: [successEmbed('Roles de staff actualizados.')], flags: MessageFlags.Ephemeral });
     }
 
     if (sub === 'desactivar') {
@@ -298,7 +299,7 @@ module.exports = {
         if (feature === 'mute') delete c.muteRole;
         if (feature === 'ia') delete c.iaActivada;
       });
-      return interaction.reply({ embeds: [successEmbed(`Función **${FEATURE_LABELS[feature] ?? feature}** desactivada.`)], ephemeral: true });
+      return interaction.reply({ embeds: [successEmbed(`Función **${FEATURE_LABELS[feature] ?? feature}** desactivada.`)], flags: MessageFlags.Ephemeral });
     }
   },
 };

@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const { getWarns, addWarn } = require('../warns');
 const { logAction } = require('../utils/modlog');
 const { logEvent } = require('../utils/log');
@@ -22,7 +22,7 @@ module.exports = {
 
     const error = motivoNoModerable(interaction, member);
     if (error) {
-      return interaction.reply({ embeds: [errorEmbed(error)], ephemeral: true });
+      return interaction.reply({ embeds: [errorEmbed(error)], flags: MessageFlags.Ephemeral });
     }
 
     const total = addWarn(interaction.guild.id, user.id, {

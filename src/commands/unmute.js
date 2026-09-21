@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const { getGuildConfig } = require('../store');
 const { logAction } = require('../utils/modlog');
 const { successEmbed, errorEmbed } = require('../utils/replies');
@@ -19,12 +19,12 @@ module.exports = {
 
     const error = motivoNoModerable(interaction, member);
     if (error) {
-      return interaction.reply({ embeds: [errorEmbed(error)], ephemeral: true });
+      return interaction.reply({ embeds: [errorEmbed(error)], flags: MessageFlags.Ephemeral });
     }
 
     const muteRole = getGuildConfig(interaction.guild.id).muteRole;
     if (!muteRole || !member.roles.cache.has(muteRole)) {
-      return interaction.reply({ embeds: [errorEmbed(`${user} no está silenciado con el rol de silenciado.`)], ephemeral: true });
+      return interaction.reply({ embeds: [errorEmbed(`${user} no está silenciado con el rol de silenciado.`)], flags: MessageFlags.Ephemeral });
     }
 
     await member.roles.remove(muteRole, reason ? `${reason} — por ${interaction.user.tag}` : `por ${interaction.user.tag}`);

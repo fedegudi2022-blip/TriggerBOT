@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const { getWarns, removeWarn } = require('../warns');
 const { logAction } = require('../utils/modlog');
 const { successEmbed, errorEmbed } = require('../utils/replies');
@@ -25,12 +25,12 @@ module.exports = {
 
     const totalAntes = getWarns(interaction.guild.id, user.id).length;
     if (totalAntes === 0) {
-      return interaction.reply({ embeds: [errorEmbed(`${user} no tiene advertencias registradas.`)], ephemeral: true });
+      return interaction.reply({ embeds: [errorEmbed(`${user} no tiene advertencias registradas.`)], flags: MessageFlags.Ephemeral });
     }
     if (numero > totalAntes) {
       return interaction.reply({
         embeds: [errorEmbed(`Solo tiene **${totalAntes}** advertencia(s). Mirá los números con /warnings.`)],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 

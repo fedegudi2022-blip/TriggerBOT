@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, PermissionFlagsBits, ChannelType } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags } = require('discord.js');
 const { logAction } = require('../utils/modlog');
 const { successEmbed, errorEmbed } = require('../utils/replies');
 
@@ -34,7 +34,7 @@ module.exports = {
     if (!channel.manageable) {
       return interaction.reply({
         embeds: [errorEmbed(`No tengo permiso para gestionar <#${channel.id}>. Revisá mis permisos en ese canal.`)],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 

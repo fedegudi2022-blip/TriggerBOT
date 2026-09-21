@@ -4,7 +4,7 @@
 require('dotenv').config();
 const fs = require('node:fs');
 const path = require('node:path');
-const { Client, Collection, GatewayIntentBits, Partials } = require('discord.js');
+const { Client, Collection, GatewayIntentBits, Partials, MessageFlags } = require('discord.js');
 
 const client = new Client({
   intents: [
@@ -54,7 +54,7 @@ client.on('interactionCreate', async (interaction) => {
     await command.execute(interaction, client);
   } catch (error) {
     console.error(`Error en /${interaction.commandName}:`, error);
-    const payload = { content: '❌ Ocurrió un error al ejecutar el comando.', ephemeral: true };
+    const payload = { content: '❌ Ocurrió un error al ejecutar el comando.', flags: MessageFlags.Ephemeral };
     if (interaction.replied || interaction.deferred) {
       await interaction.followUp(payload).catch(() => {});
     } else {

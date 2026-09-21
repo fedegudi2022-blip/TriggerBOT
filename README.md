@@ -66,11 +66,20 @@ src/
 
 ## Chat con IA (opcional)
 
-El bot puede conversar cuando lo mencionás, con memoria de contexto por usuario (los últimos 6 turnos, se olvida a los 10 minutos). Si Google retira el modelo que usa, el bot detecta solo el reemplazo disponible — no hace falta tocar código.
+El bot puede conversar cuando lo mencionás, con memoria de contexto por usuario (los últimos 6 turnos, se olvida a los 10 minutos).
 
-1. Conseguí una clave gratis en [aistudio.google.com/apikey](https://aistudio.google.com/apikey) (cuenta Google, 2 minutos, sin tarjeta).
-2. Agregá la variable `GEMINI_API_KEY` en el panel de Wispbyte (Startup → Variables) o en tu `.env` local.
-3. (Opcional) `GEMINI_MODEL` para fijar el modelo — por defecto el bot detecta solo el mejor modelo flash disponible (hoy: `gemini-3.6-flash`).
+**Cadena de respaldo automática:**
+1. **Gemini** (principal) — si Google retira un modelo lo reemplaza solo; si está saturado (503/429) prueba hasta 2 modelos alternos.
+2. **Groq** (respaldo) — si todos los modelos de Gemini fallan, usa Llama vía Groq.
+3. **Respuestas locales** — si no hay claves o todo falla, usa su repertorio propio. Nunca se queda mudo.
+
+Para activarlo:
+1. Clave gratis de Gemini en [aistudio.google.com/apikey](https://aistudio.google.com/apikey) (cuenta Google, 2 min, sin tarjeta).
+2. (Recomendado) Clave gratis de Groq en [console.groq.com/keys](https://console.groq.com/keys) como respaldo.
+3. Agregá `GEMINI_API_KEY` y `GROQ_API_KEY` en el panel de Wispbyte (Startup → Variables) o en tu `.env` local.
+4. (Opcional) `GEMINI_MODEL` / `GROQ_MODEL` para fijar modelos — por defecto el bot detecta solo los mejores disponibles.
+
+Con `/status` ves qué modelo está usando cada IA.
 
 **Sin clave configurada el bot funciona igual**: usa su repertorio local de respuestas. Si la IA falla o se queda sin cuota, también cae al respaldo automáticamente — nunca se queda mudo.
 
