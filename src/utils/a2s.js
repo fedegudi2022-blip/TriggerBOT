@@ -107,14 +107,18 @@ function leerRespuesta(datagramas) {
     const header = lector.entero();
     if (header === MAGIC) return { multiple: false, cuerpo: msg.subarray(4) };
     if (header === -2) {
-      // Formato múltiple: id (4), total (1), índice (1), tamaño (2, solo Source 2) y cuerpo.
+      // Formato Source: id (4), total (1), índice (1), tamaño (2) y cuerpo. El payload
+      // útil empieza en el byte 10 (no en el 9: falta saltar el id completo).
       lector.entero(); // id
       const total = lector.byte();
       const indice = lector.byte();
-      const cuerpo = msg.subarray(9);
+      lector.corto(); // tamaño del paquete (no lo necesitamos)
+      const cuerpo = msg.subarray(10);
       return { multiple: true, total, indice, cuerpo };
     }
-    throw new Error(`header de respuesta desconocido: ${header}`);
+    // Nota: CS 1.6 responde A2S_INFO y A2S_PLAYER en un solo datagrama, así que el
+    // formato GoldSrc multi-packet no se da en la práctica para estas consultas.
+    throw new Error(`header de respuesta desconocido: ${header} (${msg.subarray(0, 12).toString('hex')})`);
   });
 
   if (paquetes.length === 1) return paquetes[0].cuerpo;
@@ -125,19 +129,23 @@ function leerRespuesta(datagramas) {
   return ensamblar(paquetes);
 }
 
+// Paquete A2S_INFO: header + 'T' + "Source Engine Query\0" (string COMPLETO, 25 bytes base)
+// y opcionalmente el challenge de 4 bytes al final.
+function paqueteInfo(desafio) {
+  const base = Buffer.concat([
+    Buffer.from([0xff, 0xff, 0xff, 0xff, 0x54]),
+    Buffer.from(A2S_INFO + '\0', 'latin1'),
+  ]);
+  return desafio ? Buffer.concat([base, desafio]) : base;
+}
+
 // A2S_INFO: consulta el estado general del server.
 async function infoServer(host, puerto, opciones = {}) {
   const timeout = opciones.timeoutMs ?? 3000;
   const datagramas = [];
 
-  // Primer intento con desafío incluido (la mayoría de los servers lo acepta así).
-  const saludo = Buffer.alloc(9);
-  saludo.writeInt32LE(MAGIC, 0);
-  saludo.writeUInt8(0x54, 4); // 'T'
-  saludo.write(A2S_INFO, 5, 'latin1');
-  saludo.writeInt8(0, 8); // null-terminator del string
-
-  let res = await udpConsulta(host, puerto, saludo, timeout);
+  // Primer intento: los servers modernos suelen responder directo al desafío incluido.
+  let res = await udpConsulta(host, puerto, paqueteInfo(), timeout);
   datagramas.push(res.msg);
 
   let cuerpo = leerRespuesta(datagramas);
@@ -147,14 +155,7 @@ async function infoServer(host, puerto, opciones = {}) {
   // Si respondió con desafío (0x41 'A'), reenviamos con el desafío.
   if (tipo === 0x41) {
     const desafio = cuerpo.subarray(1).subarray(0, 4);
-    const paquete = Buffer.alloc(9);
-    paquete.writeInt32LE(MAGIC, 0);
-    paquete.writeUInt8(0x54, 4);
-    paquete.write(A2S_INFO, 5, 'latin1');
-    paquete.writeInt8(0, 8);
-    // Algunos servers quieren el desafío como entero, otros como bytes crudos: probamos crudo.
-    const conDesafio = Buffer.concat([paquete, desafio]);
-    res = await udpConsulta(host, puerto, conDesafio, timeout);
+    res = await udpConsulta(host, puerto, paqueteInfo(desafio), timeout);
     datagramas.length = 0;
     datagramas.push(res.msg);
     cuerpo = leerRespuesta(datagramas);
