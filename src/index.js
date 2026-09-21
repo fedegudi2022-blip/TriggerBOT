@@ -104,12 +104,22 @@ setInterval(async () => {
 const { manejarBoton } = require('./utils/accionesIA');
 const { manejarComponente } = require('./utils/configPanel');
 const memeCmd = require('./commands/meme');
+const pingCmd = require('./commands/ping');
+const statusCmd = require('./commands/status');
+const topCmd = require('./commands/top');
 client.on('interactionCreate', async (interaction) => {
   try {
     if (interaction.isButton() && interaction.customId.startsWith('ia_accion:')) {
       await manejarBoton(interaction);
     } else if (interaction.isButton() && interaction.customId === 'meme:otro') {
       await memeCmd.boton(interaction);
+    } else if (interaction.isButton() && interaction.customId === 'ping:refresh') {
+      await pingCmd.boton(interaction, client);
+    } else if (interaction.isButton() && interaction.customId === 'status:refresh') {
+      await statusCmd.boton(interaction, client);
+    } else if (interaction.isButton() && interaction.customId.startsWith('top:page:')) {
+      // El comando /top expone su render para que el botón pida otra página.
+      await topCmd.ejecutar(interaction, Number(interaction.customId.split(':')[2]) || 1);
     } else if (interaction.customId?.startsWith('cfg:')) {
       await manejarComponente(interaction);
     }

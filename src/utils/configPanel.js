@@ -15,6 +15,7 @@ const {
 } = require('discord.js');
 const { getGuildConfig, setGuildConfig } = require('../store');
 const { brandEmbed, errorEmbed } = require('./replies');
+const { POR_DEFECTO: PROTECCION_DEFECTO } = require('./proteccion');
 
 // ---------- Definición de secciones ----------
 const SECCIONES = [
@@ -27,6 +28,7 @@ const SECCIONES = [
   { value: 'ia', label: 'Chat con IA', description: 'Prender o apagar las respuestas al mencionar al bot', emoji: '7️⃣' },
   { value: 'niveles', label: 'Niveles y XP', description: 'Canal donde se anuncian subidas de nivel y logros', emoji: '8️⃣' },
   { value: 'frases', label: 'Frase del día', description: 'Canal y hora de la frase automática diaria', emoji: '9️⃣' },
+  { value: 'proteccion', label: 'Anti-spam y anti-raid', description: 'Flood y oleadas de ingresos con acción automática', emoji: '🛡️' },
   { value: 'desactivar', label: 'Desactivar funciones', description: 'Apagar funciones que ya no querés usar', emoji: '🔟' },
 ];
 
@@ -85,6 +87,7 @@ function panelCompleto(guild) {
       { name: 'Avisos al staff', value: estado(config.avisosChannel ? `<#${config.avisosChannel}>` : null), inline: true },
       { name: 'Rol de silenciado', value: estado(config.muteRole ? `<@&${config.muteRole}>` : null), inline: true },
       { name: 'Chat con IA', value: config.iaActivada === false ? 'Apagada' : 'Prendida', inline: true },
+      { name: 'Anti-spam/raid', value: config.proteccion?.activado ? 'Prendida' : 'Apagada', inline: true },
       { name: 'Canal de niveles', value: estado(config.canalNiveles ? `<#${config.canalNiveles}>` : null), inline: true },
       { name: 'Frase del día', value: estado(config.fraseDelDia?.canalId ? `<#${config.fraseDelDia.canalId}>` : null), inline: true },
       { name: 'Staff del bot', value: staffLines, inline: false }
@@ -101,6 +104,8 @@ function vistaSeccion(guild, seccion, guardado = false) {
   const nota = guardado ? '\n\n**Guardado.**' : '';
   const components = [];
   let embed;
+  // Valores de la sección de protección (completados con los por defecto).
+  const p = { ...PROTECCION_DEFECTO, ...(config.proteccion || {}) };
 
   if (seccion === 'bienvenida') {
     embed = new EmbedBuilder()
@@ -230,6 +235,66 @@ function vistaSeccion(guild, seccion, guardado = false) {
       )
     );
     components.push(new ActionRowBuilder().addComponents(filaDesactivar(seccion).components[0], filaVolver().components[0]));
+  } else if (seccion === 'proteccion') {
+    const { ETIQUETA_ACCION_SPAM, ETIQUETA_ACCION_RAID } = require('./proteccion');
+    const OPCIONES_SPAM = [
+      { valor: 'aviso', etiqueta: 'Borrar mensajes', emoji: '🧹' },
+      { valor: 'timeout', etiqueta: 'Timeout 10 min', emoji: '⏱️' },
+      { valor: 'mute', etiqueta: 'Silenciar con rol', emoji: '🔇' },
+      { valor: 'kick', etiqueta: 'Expulsar', emoji: '👋' },
+      { valor: 'ban', etiqueta: 'Banear', emoji: '🔨' },
+    ];
+    const OPCIONES_RAID = [
+      { valor: 'nada', etiqueta: 'Solo alertar', emoji: '🔔' },
+      { valor: 'kick', etiqueta: 'Expulsar', emoji: '👋' },
+      { valor: 'ban', etiqueta: 'Banear', emoji: '🔨' },
+    ];
+
+    embed = new EmbedBuilder()
+      .setTitle('Anti-spam y anti-raid')
+      .setColor(0x5865f2)
+      .setDescription(
+        `**Estado:** ${p.activado ? '🟢 Prendida' : '🔴 Apagada'}${nota}\n\n` +
+          `**Spam:** ${p.spamMensajes} mensajes en ${p.spamSegundos} s → **${ETIQUETA_ACCION_SPAM[p.accionSpam] ?? p.accionSpam}**\n` +
+          `**Raid:** ${p.raidJoins} ingresos en ${p.raidSegundos} s → **${ETIQUETA_ACCION_RAID[p.accionRaid] ?? p.accionRaid}**\n` +
+          `**Auto-acción en raids:** ${p.accionesRapidas ? 'Prendida (actúa sola sobre cuentas nuevas sin roles)' : 'Apagada (solo alerta)'}\n\n` +
+          'El staff con permiso de gestionar mensajes está exento del anti-spam. Las alertas van al canal de avisos (o logs/mod-log si no hay).'
+      );
+
+    components.push(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId('cfg:toggle:proteccion')
+          .setLabel(p.activado ? 'Apagar' : 'Prender')
+          .setStyle(p.activado ? ButtonStyle.Danger : ButtonStyle.Success),
+        new ButtonBuilder()
+          .setCustomId('cfg:toggle:raidAuto')
+          .setLabel(p.accionesRapidas ? 'Quitar auto-acción de raids' : 'Actuar sola en raids')
+          .setStyle(ButtonStyle.Secondary)
+      )
+    );
+    components.push(
+      new ActionRowBuilder().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId('cfg:set:proteccion:accionSpam')
+          .setPlaceholder('Acción ante spam')
+          .addOptions(OPCIONES_SPAM.map((o) => ({ label: o.etiqueta, value: o.valor, emoji: o.emoji, default: p.accionSpam === o.valor })))
+      )
+    );
+    components.push(
+      new ActionRowBuilder().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId('cfg:set:proteccion:accionRaid')
+          .setPlaceholder('Acción ante oleada de ingresos')
+          .addOptions(OPCIONES_RAID.map((o) => ({ label: o.etiqueta, value: o.valor, emoji: o.emoji, default: p.accionRaid === o.valor })))
+      )
+    );
+    components.push(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('cfg:modalpedir:proteccion').setLabel('Ajustar umbrales').setStyle(ButtonStyle.Primary),
+        filaVolver().components[0]
+      )
+    );
   } else if (seccion === 'desactivar') {
     embed = new EmbedBuilder()
       .setTitle('Desactivar funciones')
@@ -309,6 +374,9 @@ function aplicarSet(guildId, seccion, campo, valor) {
       c[`${campo}Role`] = valor;
     } else if (seccion === 'mute' && campo === 'rol') {
       c.muteRole = valor;
+    } else if (seccion === 'proteccion') {
+      c.proteccion = { ...PROTECCION_DEFECTO, ...(c.proteccion || {}) };
+      c.proteccion[campo] = valor;
     }
   });
 }
@@ -325,6 +393,7 @@ function aplicarDesactivado(guildId, feature) {
     else if (feature === 'niveles') delete c.canalNiveles;
     else if (feature === 'frases') delete c.fraseDelDia;
     else if (feature === 'ia') c.iaActivada = false;
+    else if (feature === 'proteccion') delete c.proteccion;
   });
 }
 
@@ -380,7 +449,7 @@ async function manejarComponente(interaction) {
   }
 
   // Modal enviado: guardar mensaje y redibujar
-  if (accion === 'modal' && interaction.isModalSubmit()) {
+  if (accion === 'modal' && partes[2] === 'bienvenida' && interaction.isModalSubmit()) {
     const texto = interaction.fields.getTextInputValue('mensaje');
     setGuildConfig(guild.id, (c) => {
       c.welcome = c.welcome || {};
@@ -400,6 +469,93 @@ async function manejarComponente(interaction) {
       c.iaActivada = nuevo;
     });
     return interaction.update(vistaSeccion(guild, 'ia', true));
+  }
+
+  // Toggle de la protección (anti-spam y anti-raid)
+  if (accion === 'toggle' && partes[2] === 'proteccion' && interaction.isButton()) {
+    const config = getGuildConfig(guild.id);
+    const nuevo = config.proteccion?.activado !== true;
+    setGuildConfig(guild.id, (c) => {
+      c.proteccion = { ...PROTECCION_DEFECTO, ...(c.proteccion || {}) };
+      c.proteccion.activado = nuevo;
+    });
+    return interaction.update(vistaSeccion(guild, 'proteccion', true));
+  }
+
+  // Toggle de la auto-acción en raids (por defecto solo alerta, por seguridad)
+  if (accion === 'toggle' && partes[2] === 'raidAuto' && interaction.isButton()) {
+    const config = getGuildConfig(guild.id);
+    const nuevo = config.proteccion?.accionesRapidas !== true;
+    setGuildConfig(guild.id, (c) => {
+      c.proteccion = { ...PROTECCION_DEFECTO, ...(c.proteccion || {}) };
+      c.proteccion.accionesRapidas = nuevo;
+    });
+    return interaction.update(vistaSeccion(guild, 'proteccion', true));
+  }
+
+  // Botón que pide el modal de umbrales de spam/raid
+  if (accion === 'modalpedir' && partes[2] === 'proteccion' && interaction.isButton()) {
+    const config = getGuildConfig(guild.id);
+    const p = { ...PROTECCION_DEFECTO, ...(config.proteccion || {}) };
+    const modal = new ModalBuilder()
+      .setCustomId('cfg:modal:proteccion')
+      .setTitle('Umbrales de spam y raid')
+      .addComponents(
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder()
+            .setCustomId('spamMensajes')
+            .setLabel('Spam: mensajes dentro de la ventana')
+            .setStyle(TextInputStyle.Short)
+            .setValue(String(p.spamMensajes))
+            .setMaxLength(3)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder()
+            .setCustomId('spamSegundos')
+            .setLabel('Spam: ventana en segundos (2-120)')
+            .setStyle(TextInputStyle.Short)
+            .setValue(String(p.spamSegundos))
+            .setMaxLength(3)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder()
+            .setCustomId('raidJoins')
+            .setLabel('Raid: ingresos para considerar oleada')
+            .setStyle(TextInputStyle.Short)
+            .setValue(String(p.raidJoins))
+            .setMaxLength(3)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder()
+            .setCustomId('raidSegundos')
+            .setLabel('Raid: ventana en segundos (10-600)')
+            .setStyle(TextInputStyle.Short)
+            .setValue(String(p.raidSegundos))
+            .setMaxLength(4)
+        )
+      );
+    return interaction.showModal(modal);
+  }
+
+  // Modal de umbrales enviado: validar, guardar y redibujar
+  if (accion === 'modal' && partes[2] === 'proteccion' && interaction.isModalSubmit()) {
+    const num = (id, min, max, defecto) => {
+      const n = Number(interaction.fields.getTextInputValue(id));
+      return Number.isFinite(n) ? Math.min(Math.max(Math.round(n), min), max) : defecto;
+    };
+    const spamMensajes = num('spamMensajes', 3, 20, PROTECCION_DEFECTO.spamMensajes);
+    const spamSegundos = num('spamSegundos', 2, 120, PROTECCION_DEFECTO.spamSegundos);
+    const raidJoins = num('raidJoins', 3, 50, PROTECCION_DEFECTO.raidJoins);
+    const raidSegundos = num('raidSegundos', 10, 600, PROTECCION_DEFECTO.raidSegundos);
+    setGuildConfig(guild.id, (c) => {
+      c.proteccion = { ...PROTECCION_DEFECTO, ...(c.proteccion || {}) };
+      Object.assign(c.proteccion, { spamMensajes, spamSegundos, raidJoins, raidSegundos });
+    });
+    if (interaction.isFromMessage()) return interaction.update(vistaSeccion(guild, 'proteccion', true));
+    return interaction.reply({
+      embeds: [brandEmbed({ color: 0x57f287, title: 'Umbrales de protección guardados' })],
+      flags: MessageFlags.Ephemeral,
+    });
   }
 
   // Desactivar: pedir confirmación
@@ -423,4 +579,4 @@ async function manejarComponente(interaction) {
   return interaction.update({ components: [] });
 }
 
-module.exports = { panelCompleto, filaMenuPrincipal, manejarComponente };
+module.exports = { panelCompleto, filaMenuPrincipal, vistaSeccion, manejarComponente };

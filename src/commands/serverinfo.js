@@ -30,7 +30,12 @@ module.exports = {
 
   async execute(interaction) {
     const g = interaction.guild;
-    await g.members.fetch().catch(() => {}); // para el conteo de humanos vs bots
+
+    // Para el conteo de humanos vs bots: usa la caché si ya está completa (server
+    // chico o recién scaneada) y solo descarga si falta gente. Un server chico
+    // responde al instante; uno grande descarga una vez y después sirve de caché.
+    const falta = Number.isFinite(g.memberCount) ? g.memberCount - g.members.cache.size : 1;
+    if (falta > 0) await g.members.fetch().catch(() => {});
 
     const canales = g.channels.cache;
     const texto = canales.filter((c) => c.type === 0).size;

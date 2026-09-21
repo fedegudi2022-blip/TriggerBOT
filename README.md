@@ -26,8 +26,8 @@ src/
 ### General
 | Comando | Qué hace | Quién lo usa |
 |---|---|---|
-| `/ping` | Latencia del bot | Todos |
-| `/status` | Estado del bot: modelos de IA, latencia, tiempo encendido, uso | Todos |
+| `/ping` | Latencia del bot con indicador de calidad y botón de refresco | Todos |
+| `/status` | Estado del bot: modelos de IA, latencia, tiempo encendido, uso — con botón de refresco | Todos |
 | `/help` | Guía completa por categorías | Todos |
 | `/userinfo [usuario]` | Ficha de usuario: fechas, roles, permisos, warns | Todos |
 | `/serverinfo` | Ficha del server: dueño, canales, roles, boosts | Todos |
@@ -55,12 +55,22 @@ src/
 
 > Todos los comandos de moderación validan jerarquía (no podés moderar a alguien con rol igual o superior), avisan al usuario por DM cuando es posible y quedan registrados en el mod-log.
 
+### Protección automática (anti-spam y anti-raid)
+
+Se activa desde `/config → Anti-spam y anti-raid` (apagada por defecto):
+
+- **Anti-spam**: si alguien supera el umbral (por defecto 5 mensajes en 5 s), borra la ráfaga, aplica la acción elegida (borrar / timeout 10 min / silenciar / expulsar / banear) y avisa al canal de staff. El staff con permiso de gestionar mensajes está exento, y cada usuario tiene 30 s de gracia entre castigos.
+- **Anti-raid**: si entran más de X cuentas en Y segundos (por defecto 8 en 60 s), alerta al staff con la lista de ingresos (marcando cuentas de menos de 7 días 🆕). Opcionalmente puede **actuar sola** (expulsar o banear) sobre cuentas nuevas sin roles.
+
+Todo queda registrado en el mod-log como acción del bot.
+
 ### Niveles y logros
 | Comando | Qué hace |
 |---|---|
 | `/estadisticas [usuario]` | Perfil completo: rango, nivel, XP con barra, bonus activos, racha, puesto y logros con premios |
+| `/logros [usuario]` | Progreso logro por logro: barra, cuánto falta para cada uno y XP pendiente de cobro |
 | `/rolnivel definir/quitar/lista` | Staff: roles que se otorgan automáticamente al alcanzar un nivel |
-| `/top [pagina]` | Ranking de actividad del server con podio |
+| `/top [pagina]` | Ranking con podio y navegación por botones ◀️ ▶️ |
 
 XP por escribir (15-25 por mensaje, máximo 1 por minuto para evitar farmeo) con **bonus acumulables**: +1% por día de racha (tope +35%), **x2 los fines de semana** y +10% de madrugada (00-06 h Argentina). **16 logros desbloqueables con recompensa de XP** (se pagan solos al cumplirlos), rangos por nivel (Novato → Activo → Experto → Veterano → Leyenda) y **roles por nivel**: el staff define con `/rolnivel` qué rol se otorga automáticamente al alcanzar cada nivel. El staff configura el canal de anuncios en el panel `/config → Niveles y XP`.
 
@@ -84,7 +94,7 @@ XP por escribir (15-25 por mensaje, máximo 1 por minuto para evitar farmeo) con
 
 ### Configuración (solo staff)
 
-`/config` abre un **panel interactivo**: un menú desplegable con las secciones (Bienvenida, Mod-log, Logs, Avisos, Staff, Rol de silenciado, Chat con IA, Desactivar) y, dentro de cada una, selectores nativos para elegir canales y roles con un clic — sin tipear IDs ni opciones. El mensaje de bienvenida se edita en una ventana emergente y cada desactivado pide confirmación. Todo se guarda al instante y el panel es visible solo para quien lo abre.
+`/config` abre un **panel interactivo**: un menú desplegable con las secciones (Bienvenida, Mod-log, Logs, Avisos, Staff, Rol de silenciado, Chat con IA, Niveles, Frase del día, Anti-spam y anti-raid, Desactivar) y, dentro de cada una, selectores nativos para elegir canales y roles con un clic — sin tipear IDs ni opciones. El mensaje de bienvenida se edita en una ventana emergente y cada desactivado pide confirmación. Todo se guarda al instante y el panel es visible solo para quien lo abre.
 
 ## Chat con IA (opcional)
 

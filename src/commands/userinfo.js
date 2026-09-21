@@ -39,9 +39,13 @@ module.exports = {
 
   async execute(interaction) {
     const user = interaction.options.getUser('usuario') ?? interaction.user;
-    const member = await interaction.guild.members.fetch(user.id).catch(() => null);
 
-    // Fetch completo para tener el banner y el color de acento del perfil.
+    // El miembro ya viaja resuelto con la interacción (roles, permisos, apodo y fecha
+    // de ingreso incluidos): cero fetch de red para la parte de miembro.
+    const member =
+      interaction.options.getMember('usuario') ?? (user.id === interaction.user.id ? interaction.member : null);
+
+    // Único fetch a la API: pide el perfil completo para banner y color de acento.
     const completo = await interaction.client.users.fetch(user.id, { force: true }).catch(() => null);
 
     const creado = Math.floor(user.createdTimestamp / 1000);

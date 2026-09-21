@@ -1,5 +1,6 @@
 const { Events } = require('discord.js');
 const { brandEmbed } = require('../utils/replies');
+const { registrarIngreso } = require('../utils/proteccion');
 
 function renderWelcome(message, member) {
   return (message || '¡Bienvenido {usuario} a **{servidor}**! Sos el miembro #{miembros} 🎉')
@@ -13,6 +14,9 @@ module.exports = {
   async execute(member) {
     const { getGuildConfig } = require('../store');
     const config = getGuildConfig(member.guild.id);
+
+    // Anti-raid: registra el ingreso y, si hay oleada, alerta/actúa según config.
+    registrarIngreso(member).catch((error) => console.error('[TriggerBOT] Error en anti-raid:', error.message));
 
     // Autorol
     if (config.autorole) {

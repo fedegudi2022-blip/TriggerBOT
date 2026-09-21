@@ -95,23 +95,26 @@ function multiplicador(racha, fecha = new Date()) {
 }
 
 // ---------- Logros (con recompensa de XP) ----------
+// Cada logro puede llevar `meta: { campo, objetivo }` con la estadística que mide,
+// para que /logros pueda mostrar barra de progreso y cuánto falta. Los logros de
+// "una sola vez" (madrugador, búho) no llevan meta: no tienen progreso acumulable.
 const LOGROS = [
-  { id: 'primer_mensaje', nombre: 'Primer mensaje', desc: 'Enviaste tu primer mensaje', emoji: '🌱', premio: 50, cond: (s) => s.mensajes >= 1 },
-  { id: 'racha_3', nombre: 'Racha inicial', desc: '3 días seguidos de actividad', emoji: '⚡', premio: 100, cond: (s) => s.racha >= 3 },
+  { id: 'primer_mensaje', nombre: 'Primer mensaje', desc: 'Enviaste tu primer mensaje', emoji: '🌱', premio: 50, meta: { campo: 'mensajes', objetivo: 1 }, cond: (s) => s.mensajes >= 1 },
+  { id: 'racha_3', nombre: 'Racha inicial', desc: '3 días seguidos de actividad', emoji: '⚡', premio: 100, meta: { campo: 'racha', objetivo: 3 }, cond: (s) => s.racha >= 3 },
   { id: 'madrugador', nombre: 'Madrugador', desc: 'Escribiste entre las 6 y las 9 de la mañana', emoji: '🌅', premio: 100, cond: (s, lvl, ctx) => ctx.hora >= 6 && ctx.hora < 9 },
   { id: 'buho', nombre: 'Búho nocturno', desc: 'Escribiste entre las 00 y las 5 de la mañana', emoji: '🦉', premio: 150, cond: (s, lvl, ctx) => ctx.hora < 6 },
-  { id: 'charlatan', nombre: 'Charlatán', desc: '100 mensajes', emoji: '💬', premio: 200, cond: (s) => s.mensajes >= 100 },
-  { id: 'finde', nombre: 'Alma de finde', desc: '50 mensajes en fines de semana', emoji: '🎉', premio: 250, cond: (s) => (s.findes || 0) >= 50 },
-  { id: 'nivel_5', nombre: 'En racha', desc: 'Llegaste al nivel 5', emoji: '⭐', premio: 300, cond: (s, lvl) => lvl >= 5 },
-  { id: 'semana', nombre: 'Semana activa', desc: '7 días seguidos de actividad', emoji: '🔥', premio: 400, cond: (s) => s.racha >= 7 },
-  { id: 'nivel_10', nombre: 'Experto', desc: 'Llegaste al nivel 10', emoji: '🌟', premio: 600, cond: (s, lvl) => lvl >= 10 },
-  { id: 'conversador', nombre: 'Conversador', desc: '500 mensajes', emoji: '🗣️', premio: 800, cond: (s) => s.mensajes >= 500 },
-  { id: 'veterano', nombre: 'Veterano', desc: '1.000 mensajes', emoji: '🏆', premio: 1200, cond: (s) => s.mensajes >= 1000 },
-  { id: 'xp_1000', nombre: 'Colecionista', desc: 'Acumulaste 1.000 XP', emoji: '💎', premio: 250, cond: (s) => s.xp >= 1000 },
-  { id: 'mes', nombre: 'Mes activo', desc: '30 días seguidos de actividad', emoji: '🚀', premio: 1500, cond: (s) => s.racha >= 30 },
-  { id: 'nivel_20', nombre: 'Leyenda del chat', desc: 'Llegaste al nivel 20', emoji: '👑', premio: 2000, cond: (s, lvl) => lvl >= 20 },
-  { id: 'xp_10000', nombre: 'Diez mil', desc: 'Acumulaste 10.000 XP', emoji: '💠', premio: 1000, cond: (s) => s.xp >= 10000 },
-  { id: 'mito', nombre: 'Mito', desc: '5.000 mensajes', emoji: '🐐', premio: 3000, cond: (s) => s.mensajes >= 5000 },
+  { id: 'charlatan', nombre: 'Charlatán', desc: '100 mensajes', emoji: '💬', premio: 200, meta: { campo: 'mensajes', objetivo: 100 }, cond: (s) => s.mensajes >= 100 },
+  { id: 'finde', nombre: 'Alma de finde', desc: '50 mensajes en fines de semana', emoji: '🎉', premio: 250, meta: { campo: 'findes', objetivo: 50 }, cond: (s) => (s.findes || 0) >= 50 },
+  { id: 'nivel_5', nombre: 'En racha', desc: 'Llegaste al nivel 5', emoji: '⭐', premio: 300, meta: { campo: 'nivel', objetivo: 5 }, cond: (s, lvl) => lvl >= 5 },
+  { id: 'semana', nombre: 'Semana activa', desc: '7 días seguidos de actividad', emoji: '🔥', premio: 400, meta: { campo: 'racha', objetivo: 7 }, cond: (s) => s.racha >= 7 },
+  { id: 'nivel_10', nombre: 'Experto', desc: 'Llegaste al nivel 10', emoji: '🌟', premio: 600, meta: { campo: 'nivel', objetivo: 10 }, cond: (s, lvl) => lvl >= 10 },
+  { id: 'conversador', nombre: 'Conversador', desc: '500 mensajes', emoji: '🗣️', premio: 800, meta: { campo: 'mensajes', objetivo: 500 }, cond: (s) => s.mensajes >= 500 },
+  { id: 'veterano', nombre: 'Veterano', desc: '1.000 mensajes', emoji: '🏆', premio: 1200, meta: { campo: 'mensajes', objetivo: 1000 }, cond: (s) => s.mensajes >= 1000 },
+  { id: 'xp_1000', nombre: 'Colecionista', desc: 'Acumulaste 1.000 XP', emoji: '💎', premio: 250, meta: { campo: 'xp', objetivo: 1000 }, cond: (s) => s.xp >= 1000 },
+  { id: 'mes', nombre: 'Mes activo', desc: '30 días seguidos de actividad', emoji: '🚀', premio: 1500, meta: { campo: 'racha', objetivo: 30 }, cond: (s) => s.racha >= 30 },
+  { id: 'nivel_20', nombre: 'Leyenda del chat', desc: 'Llegaste al nivel 20', emoji: '👑', premio: 2000, meta: { campo: 'nivel', objetivo: 20 }, cond: (s, lvl) => lvl >= 20 },
+  { id: 'xp_10000', nombre: 'Diez mil', desc: 'Acumulaste 10.000 XP', emoji: '💠', premio: 1000, meta: { campo: 'xp', objetivo: 10000 }, cond: (s) => s.xp >= 10000 },
+  { id: 'mito', nombre: 'Mito', desc: '5.000 mensajes', emoji: '🐐', premio: 3000, meta: { campo: 'mensajes', objetivo: 5000 }, cond: (s) => s.mensajes >= 5000 },
 ];
 
 // ---------- Acceso por guild/usuario ----------
@@ -224,6 +227,11 @@ function posicion(guildId, userId) {
   return lista.findIndex((e) => e.userId === userId) + 1;
 }
 
+// Cantidad total de usuarios con actividad registrada en el server.
+function totalUsuarios(guildId) {
+  return Object.keys(cache[guildId] || {}).length;
+}
+
 // Config de anuncios por servidor.
 function canalAnuncios(guildId) {
   return getGuildConfigSafe(guildId).canalNiveles ?? null;
@@ -258,6 +266,7 @@ module.exports = {
   datosDe,
   ranking,
   posicion,
+  totalUsuarios,
   xpParaNivel,
   nivelDe,
   rangoDe,

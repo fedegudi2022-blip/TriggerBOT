@@ -13,6 +13,7 @@ const {
 const { asignarRolesNivel } = require('../utils/rolesNivel');
 const { brandEmbed } = require('../utils/replies');
 const { getGuildConfig } = require('../store');
+const { procesarMensajeParaSpam } = require('../utils/proteccion');
 
 // Limita el tamaño del buffer de mensajes recientes por canal para no crecer sin control.
 const MAX_BUFFER = 100;
@@ -189,6 +190,14 @@ module.exports = {
   name: Events.MessageCreate,
   async execute(message) {
     if (!message.guild || message.author?.bot) return;
+
+    // Anti-spam: si tomó una acción, no se suma XP ni se responde por el burst.
+    try {
+      const accion = await procesarMensajeParaSpam(message);
+      if (accion) return;
+    } catch (error) {
+      console.error('[TriggerBOT] Error en anti-spam:', error.message);
+    }
 
     guardarEnBuffer(message);
 

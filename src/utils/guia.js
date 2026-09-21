@@ -10,22 +10,24 @@ function construirGuia(client) {
     fields: [
       {
         name: 'Información',
-        value: '`/userinfo` · `/serverinfo` · `/avatar` · `/status` · `/ping`',
+        value: '`/userinfo` · `/serverinfo` · `/avatar` · `/status` · `/ping`\n*`/ping` y `/status` tienen botón de refrescar, sin reescribir el comando.*',
       },
       {
         name: 'Moderación',
         value:
           '`/warn` · `/warnings` · `/quitarnota` · `/kick` · `/ban` · `/unban`\n' +
-          '`/softban` · `/timeout` · `/mute` · `/unmute` · `/clear` · `/lockdown` · `/slowmode`',
+          '`/softban` · `/timeout` · `/mute` · `/unmute` · `/clear` · `/lockdown` · `/slowmode`\n' +
+          '*Además: anti-spam y anti-raid automáticos (se prenden en `/config`).*',
       },
       {
         name: 'Configuración (staff)',
-        value: '`/config` con: `ver` · `welcome` · `modlog` · `logs` · `avisos` · `staff` · `mute` · `ia` · `desactivar`',
+        value: '`/config` con: `ver` · `welcome` · `modlog` · `logs` · `avisos` · `staff` · `mute` · `ia` · `proteccion` · `desactivar`',
       },
       {
         name: 'Niveles y logros',
         value:
-          '`/estadisticas` · `/top` · `/rolnivel` (staff) — ganás XP escribiendo; racha suma bonus, los findes es x2 y los logros pagan XP.',
+          '`/estadisticas` · `/logros` · `/top` · `/rolnivel` (staff) — ganás XP escribiendo; racha suma bonus, los findes es x2 y los logros pagan XP.\n' +
+          '*`/top` tiene podio y páginas con botones; `/logros` te muestra cuánto falta para cada uno.*',
       },
       {
         name: 'Utilidades',
