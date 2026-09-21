@@ -18,6 +18,7 @@ const TIMEOUT_MS = 10_000;
 const estado = {
   configurada,
   conectado: false,
+  permisoEscritura: null, // null = sin probar; false = la clave no puede escribir (¿se usó la anon?)
   ultimoError: null,
   subidasOk: 0,
   subidasFallidas: 0,
@@ -27,6 +28,24 @@ const estado = {
 function anotarFallo(error) {
   estado.ultimoError = error?.message || String(error);
   estado.conectado = false;
+}
+
+// Detecta errores de permisos (RLS). La firma clásica: se configuró la clave
+// anon/publicable en SUPABASE_KEY en vez de la service_role.
+const ES_ERROR_PERMISO = /row-level security|permission denied|invalid api key|jwt|401|403/i;
+let avisoPermisoEmitido = false;
+
+function advertirPermiso() {
+  estado.permisoEscritura = false;
+  if (avisoPermisoEmitido) return;
+  avisoPermisoEmitido = true;  console.error(
+    '[TriggerBOT] Supabase: la clave configurada NO tiene permiso de escritura (Row Level Security).\n' +
+    '  Casi seguro se copió la clave ANON/publicable en SUPABASE_KEY. Solución (1 min):\n' +
+    '  1. Supabase → Project Settings → API Keys.\n' +
+    '  2. Copiá la clave SECRETA de servicio: "service_role" (JWT eyJ...) o "sb_secret_..." en paneles nuevos (NO la anon / sb_publishable_...).\n' +
+    '  3. Wispbyte → Startup → Variables → reemplazá SUPABASE_KEY → Restart.\n' +
+    '  Mientras tanto el bot sigue funcionando con datos locales (data/).'
+  );
 }
 
 // ---------- Capa HTTP ----------
@@ -85,6 +104,7 @@ async function subir(clave, guildId, almacen, datos) {
     return true;
   } catch (error) {
     estado.subidasFallidas += 1;
+    if (ES_ERROR_PERMISO.test(error.message)) advertirPermiso();
     anotarFallo(error);
     console.error('[TriggerBOT] Supabase: fallo al subir', clave, error.message);
     return false;
@@ -128,24 +148,39 @@ async function eliminar(clave) {
     await pedir(`${URL_BASE}/rest/v1/bot_data?clave=eq.${encodeURIComponent(clave)}`, { method: 'DELETE' });
     return true;
   } catch (error) {
+    if (ES_ERROR_PERMISO.test(error.message)) advertirPermiso();
     anotarFallo(error);
     console.error('[TriggerBOT] Supabase: fallo al eliminar', clave, error.message);
     return false;
   }
 }
 
-// Ping real a la base (usado por /status para saber si responde).
+// Ping real a la base (usado al arrancar y por /status).
+// Además de leer, hace una prueba de escritura (sube y borra un ping):
+// si la lectura va pero la escritura da error de RLS, la clave es la anon.
 async function ping() {
   if (!configurada) return false;
   try {
     await pedir(`${URL_BASE}/rest/v1/bot_stats?select=clave&limit=1`);
     estado.conectado = true;
     estado.ultimoError = null;
-    return true;
   } catch (error) {
     anotarFallo(error);
     return false;
   }
+  try {
+    await pedir(`${URL_BASE}/rest/v1/bot_stats?on_conflict=clave`, {
+      method: 'POST',
+      headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify([{ clave: '_ping', valor: { t: Date.now() } }]),
+    });
+    await pedir(`${URL_BASE}/rest/v1/bot_stats?clave=eq._ping`, { method: 'DELETE' });
+    estado.permisoEscritura = true;
+  } catch (error) {
+    if (ES_ERROR_PERMISO.test(error.message)) advertirPermiso();
+    else estado.ultimoError = error.message;
+  }
+  return true;
 }
 
 module.exports = { estado, configurada, subir, descargar, listar, eliminar, ping };

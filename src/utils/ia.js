@@ -65,9 +65,11 @@ function ordenarGroq(ids) {
     const idx = GROQ_PREFERIDOS.indexOf(id);
     if (idx !== -1) return 100 - idx;
     if (/^(llama|meta-llama)/.test(id)) return 60;
-    if (/^qwen(?!3)/.test(id)) return 50; // qwen3 queda excluido más abajo (razonador)
-    if (/^gemma/.test(id)) return 40;
-    if (/^mistral/.test(id)) return 30;
+    if (/^qwen(?!3)/.test(id)) return 50;
+    if (/^gemma/.test(id)) return 45;
+    if (/^groq\/compound-mini/.test(id)) return 40; // sistema agéntico, variante liviana
+    if (/^mistral/.test(id)) return 35;
+    if (/^groq\/compound/.test(id)) return 30;
     return 10;
   };
   return [...ids].sort((a, b) => puntaje(b) - puntaje(a));

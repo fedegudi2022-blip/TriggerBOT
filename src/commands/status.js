@@ -47,9 +47,11 @@ module.exports = {
           name: 'Base de datos (Supabase)',
           value: !db.configurada
             ? 'No configurada (solo data/ local)'
-            : dbOk
-              ? `Conectada · ${db.estado.subidasOk} respaldos${db.estado.ultimaSync ? ` · último ${db.estado.ultimaSync.toLocaleTimeString('es-AR')}` : ''}`
-              : `Error de conexión${db.estado.ultimoError ? `: ${db.estado.ultimoError}` : ''}`,
+            : dbOk && db.estado.permisoEscritura === false
+              ? 'Conectada pero SIN permiso de escritura: la clave parece ser la anon. Usá la service_role en SUPABASE_KEY.'
+              : dbOk
+                ? `Conectada · ${db.estado.subidasOk} respaldos${db.estado.ultimaSync ? ` · último ${db.estado.ultimaSync.toLocaleTimeString('es-AR')}` : ''}`
+                : `Error de conexión${db.estado.ultimoError ? `: ${db.estado.ultimoError}` : ''}`,
           inline: false,
         }
       )

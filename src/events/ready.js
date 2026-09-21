@@ -27,7 +27,7 @@ module.exports = {
         } else {
           console.log(
             `[TriggerBOT] Supabase conectado: ${resumen.restaurados} restaurado(s) desde la nube, ` +
-            `${resumen.nube} subido(s) como respaldo.`
+            `${resumen.nube} respaldo(s) agendado(s).`
           );
         }
       } catch (error) {
