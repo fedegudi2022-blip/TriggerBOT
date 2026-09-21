@@ -18,11 +18,13 @@ async function listarModelosGemini() {
     );
     if (resp.ok) {
       const datos = await resp.json();
-      modelosGemini = (datos.models || [])
-        .filter((m) => (m.supportedGenerationMethods || []).includes('generateContent'))
-        .map((m) => m.name.replace(/^models\//, ''))
-        // Descarta variantes lentas o no-texto (thinking, imagen, audio, etc.)
-        .filter((n) => n.includes('flash') && !/thinking|image|tts|live|audio|embedding/.test(n));
+      modelosGemini = ordenarPorCalidad(
+        (datos.models || [])
+          .filter((m) => (m.supportedGenerationMethods || []).includes('generateContent'))
+          .map((m) => m.name.replace(/^models\//, ''))
+          // Descarta variantes lentas o no-texto (thinking, imagen, audio, etc.)
+          .filter((n) => n.includes('flash') && !/thinking|image|tts|live|audio|embedding/.test(n))
+      );
       if (modelosGemini.length) {
         console.log(`[TriggerBOT] IA: Gemini usando ${modelosGemini[0]} (${modelosGemini.length} disponibles como respaldo)`);
       }
@@ -35,6 +37,16 @@ async function listarModelosGemini() {
 
 function quitarModeloGemini(modelo) {
   if (modelosGemini) modelosGemini = modelosGemini.filter((m) => m !== modelo);
+}
+
+// Ordena los modelos: versión más nueva primero, y las variantes "latest"
+// (siempre vigentes) apenas debajo. Así no se eligen modelos viejos retirados.
+function ordenarPorCalidad(nombres) {
+  const puntaje = (n) => {
+    const version = parseFloat(n.match(/(\d+(?:\.\d+)?)/)?.[1] || '0');
+    return version + (n.includes('latest') ? 0.5 : 0);
+  };
+  return [...nombres].sort((a, b) => puntaje(b) - puntaje(a));
 }
 
 // ---------- Groq (respaldo): modelos Llama ultrarrápidos ----------
@@ -53,8 +65,11 @@ async function resolverModeloGroq() {
       const datos = await resp.json();
       const ids = (datos.data || [])
         .map((m) => m.id)
-        .filter((id) => !/whisper|guard|tts|distil/.test(id));
-      modeloGroq = ids.find((id) => id.includes('llama')) || ids[0] || GROQ_DEFAULT;
+        // Descarta audio/guardrails y modelos de razonamiento (gastan los tokens
+        // en "pensar" y devuelven contenido vacío con límites bajos).
+        .filter((id) => !/whisper|guard|tts|distil|gpt-oss|deepseek-r1|qwen3/.test(id));
+      modeloGroq =
+        ids.find((id) => /llama-3\.3|llama.*70b/.test(id)) || ids.find((id) => id.includes('llama')) || ids[0] || GROQ_DEFAULT;
       console.log(`[TriggerBOT] IA: Groq usando ${modeloGroq} (respaldo)`);
     }
   } catch {
@@ -159,10 +174,13 @@ async function llamarGemini(contenidos) {
       return await generarConGemini(candidatos[i], contenidos);
     } catch (error) {
       ultimoError = error;
+      // Modelo retirado: lo sacamos de la lista y probamos el siguiente candidato.
       if (/HTTP 404/.test(error.message)) quitarModeloGemini(candidatos[i]);
-      const reintentable = /HTTP (429|500|503)/.test(error.message);
-      if (!reintentable || i === candidatos.length - 1) throw error;
-      await new Promise((r) => setTimeout(r, 800 * (i + 1))); // backoff corto
+      if (i === candidatos.length - 1) throw error;
+      // Saturación o error interno: breve espera antes del próximo intento.
+      if (/HTTP (429|500|503)/.test(error.message)) {
+        await new Promise((r) => setTimeout(r, 800 * (i + 1)));
+      }
     }
   }
   throw ultimoError;
@@ -182,7 +200,7 @@ async function llamarGroq(mensajeUsuario, previos) {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
     },
-    body: JSON.stringify({ model: modelo, messages: mensajes, temperature: 0.9, max_tokens: 120 }),
+    body: JSON.stringify({ model: modelo, messages: mensajes, temperature: 0.9, max_tokens: 300 }),
     signal: AbortSignal.timeout(TIMEOUT_MS),
   });
 
