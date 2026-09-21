@@ -58,12 +58,16 @@ const GROQ_DEFAULT = 'llama-3.3-70b-versatile';
 const GROQ_PREFERIDOS = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'];
 let modelosGroq = null;
 
-// Ordena: preferidos explícitos primero, después cualquier Llama de texto.
+// Ordena: preferidos explícitos primero, después familias conocidas de chat
+// por calidad de español, y el resto al final.
 function ordenarGroq(ids) {
   const puntaje = (id) => {
     const idx = GROQ_PREFERIDOS.indexOf(id);
     if (idx !== -1) return 100 - idx;
-    if (/^llama/.test(id)) return 50;
+    if (/^(llama|meta-llama)/.test(id)) return 60;
+    if (/^qwen(?!3)/.test(id)) return 50; // qwen3 queda excluido más abajo (razonador)
+    if (/^gemma/.test(id)) return 40;
+    if (/^mistral/.test(id)) return 30;
     return 10;
   };
   return [...ids].sort((a, b) => puntaje(b) - puntaje(a));
@@ -80,10 +84,14 @@ async function listarModelosGroq() {
       const datos = await resp.json();
       const ids = (datos.data || [])
         .map((m) => m.id)
-        // Descarta audio/TTS, guardrails y modelos de razonamiento: solo chat de texto.
-        .filter((id) => !/whisper|guard|tts|distil|gpt-oss|deepseek-r1|qwen3|orpheus|playai|kokoro|voice|arabic/.test(id));
+        // Descarta audio/TTS, guardrails, razonadores y modelos monolingües en
+        // otros idiomas (allam = árabe): solo chat de texto útil en español.
+        .filter((id) => !/whisper|guard|tts|distil|gpt-oss|deepseek-r1|qwen3|orpheus|playai|kokoro|voice|arabic|allam/.test(id));
       modelosGroq = ordenarGroq(ids);
       if (modelosGroq.length) {
+        if (!GROQ_PREFERIDOS.includes(modelosGroq[0])) {
+          console.warn(`[TriggerBOT] Aviso: Groq ya no ofrece ${GROQ_PREFERIDOS[0]}; se usa ${modelosGroq[0]} (el mejor disponible).`);
+        }
         console.log(`[TriggerBOT] IA: Groq usando ${modelosGroq[0]} (${modelosGroq.length} disponibles como alternativa)`);
       }
     }

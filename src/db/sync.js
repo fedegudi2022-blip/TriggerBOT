@@ -119,6 +119,17 @@ async function restaurar(almacenes) {
     }
   }
 
+  // Respaldo inicial: almacenes con datos locales que la nube todavía no tiene.
+  // En la primera conexión sube todo el historial existente (warns, niveles, config...).
+  const clavesNube = new Set(filas.map((f) => f.clave));
+  for (const [nombre, definicion] of Object.entries(almacenes)) {
+    for (const guildId of clavesLocales.get(nombre)?.keys() ?? []) {
+      if (clavesNube.has(`${nombre}:${guildId}`)) continue;
+      resumen.nube += 1;
+      marcarSucio(guildId, nombre, () => definicion.leer(guildId));
+    }
+  }
+
   return resumen;
 }
 
