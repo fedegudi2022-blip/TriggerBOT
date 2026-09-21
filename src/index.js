@@ -32,6 +32,13 @@ for (const file of fs.readdirSync(commandsPath).filter((f) => f.endsWith('.js'))
   }
 }
 
+// Comandos generados por fábrica: /beso, /abrazo, etc. (uno por interacción social).
+const { comandos } = require('./utils/fabricaInteracciones');
+for (const comando of comandos) client.commands.set(comando.data.name, comando);
+
+// /moneda vive junto a /dado pero se registra como comando propio.
+client.commands.set('moneda', require('./commands/diversion').moneda);
+
 // ---------- Eventos (src/events/*) ----------
 const eventsPath = path.join(__dirname, 'events');
 for (const file of fs.readdirSync(eventsPath).filter((f) => f.endsWith('.js'))) {

@@ -1,14 +1,17 @@
-const { SlashCommandBuilder, MessageFlags } = require('discord.js');
+const { SlashCommandBuilder } = require('discord.js');
 const { datosDe, xpParaNivel, posicion, rangoDe, multiplicador, LOGROS } = require('../niveles');
-const { brandEmbed } = require('../utils/replies');
+const { brandEmbed, miles } = require('../utils/replies');
 
-// Barra de progreso ASCII entre el nivel actual y el siguiente.
+// Emoji por rango para la descripción.
+const EMOJI_RANGO = { Leyenda: '👑', Veterano: '🛡️', Experto: '🌟', Activo: '⚡', Novato: '🌱' };
+
+// Barra de progreso ASCII entre el nivel actual y el siguiente (20 celdas: más detalle).
 function barra(xp, nivel) {
   const actual = xpParaNivel(nivel);
   const siguiente = xpParaNivel(nivel + 1);
   const progreso = Math.min(Math.max((xp - actual) / (siguiente - actual), 0), 1);
-  const llenos = Math.round(progreso * 14);
-  return `${'█'.repeat(llenos)}${'░'.repeat(14 - llenos)} ${Math.round(progreso * 100)}%`;
+  const llenos = Math.round(progreso * 20);
+  return `${'█'.repeat(llenos)}${'░'.repeat(20 - llenos)}`;
 }
 
 module.exports = {
@@ -28,34 +31,43 @@ module.exports = {
     const bono = multiplicador(datos.racha);
     const logrosObtenidos = datos.logros ?? [];
 
+    const siguienteNivel = datos.nivel + 1;
+    const xpSiguiente = xpParaNivel(siguienteNivel);
+    const faltan = Math.max(xpSiguiente - datos.xp, 0);
+
     // XP ganado por logros ya cobrados.
     const ganadoLogros = LOGROS.filter((l) => logrosObtenidos.includes(l.id)).reduce((s, l) => s + (l.premio || 0), 0);
 
-    const lineasLogros = LOGROS.map((l) => {
-      const conseguido = logrosObtenidos.includes(l.id);
-      return `${conseguido ? l.emoji : '▢'} **${l.nombre}** · ${l.premio} XP — ${conseguido ? 'obtenido' : l.desc}`;
-    }).join('\n');
+    // Logros en dos columnas compactas: ✅ conseguidos y 🔒 pendientes.
+    const check = (l) => (logrosObtenidos.includes(l.id) ? `${l.emoji}` : '🔒');
+    const linea = (l) => `${check(l)} **${l.nombre}** · ${miles(l.premio)} XP`;
+    const mitad = Math.ceil(LOGROS.length / 2);
+    const colA = LOGROS.slice(0, mitad).map(linea).join('\n');
+    const colB = LOGROS.slice(mitad).map(linea).join('\n');
 
     const embed = brandEmbed({
       color: rango.color,
       title: `Perfil de niveles — ${user.username}`,
       thumbnail: user.displayAvatarURL({ size: 256 }),
-      description: `**${rango.nombre}** · Nivel **${datos.nivel}** · Puesto **#${puesto || '—'}** del server`,
+      description:
+        `${EMOJI_RANGO[rango.nombre] ?? '🎖️'} **${rango.nombre}** · Nivel **${datos.nivel}** · Puesto **#${puesto || '—'}** del server\n` +
+        `Le faltan **${miles(faltan)} XP** para el nivel ${siguienteNivel}`,
       fields: [
-        { name: 'XP', value: `**${datos.xp}** / ${xpParaNivel(datos.nivel + 1)} (nivel ${datos.nivel + 1})`, inline: true },
-        { name: 'Mensajes', value: `**${datos.mensajes}**`, inline: true },
-        { name: 'Racha', value: `**${datos.racha || 0}** día(s)`, inline: true },
-        { name: 'Progreso al siguiente nivel', value: `\`${barra(datos.xp, datos.nivel)}\``, inline: false },
+        { name: '💎 XP total', value: `**${miles(datos.xp)}** / ${miles(xpSiguiente)}`, inline: true },
+        { name: '💬 Mensajes', value: `**${miles(datos.mensajes)}**`, inline: true },
+        { name: '🔥 Racha', value: `**${datos.racha || 0}** día(s)`, inline: true },
+        { name: 'Progreso al siguiente nivel', value: `\`${barra(datos.xp, datos.nivel)}\` ${Math.round(((datos.xp - xpParaNivel(datos.nivel)) / (xpSiguiente - xpParaNivel(datos.nivel))) * 100)}%`, inline: false },
         {
-          name: 'Bonus activos',
+          name: '✨ Bonus activos',
           value: bono.partes.length ? bono.partes.join(' · ') + ` → total **x${bono.total.toFixed(2)}**` : 'Ninguno ahora (activá racha con actividad diaria)',
           inline: false,
         },
         {
-          name: `Logros (${logrosObtenidos.length}/${LOGROS.length}) · ${ganadoLogros} XP ganado`,
-          value: lineasLogros.slice(0, 1024),
-          inline: false,
+          name: `🏅 Logros — ${logrosObtenidos.length}/${LOGROS.length} · ${miles(ganadoLogros)} XP cobrado`,
+          value: colA,
+          inline: true,
         },
+        { name: '\u200b', value: colB, inline: true },
       ],
       footer: 'TriggerBOT • ganás XP escribiendo (máx. 1 mensaje por minuto) • findes: x2',
     });

@@ -34,7 +34,8 @@ function construirGuia(client) {
       {
         name: 'Diversión y comunidad',
         value:
-          '`/interaccion beso/abrazo/abofetear...` (con GIFs) · `/meme` · `/8ball` · `/diversion dado/moneda`',
+          '`/beso` · `/abrazo` · `/caricia` · `/abofetear` · `/morder` · `/pellizco` · `/chocar` · `/guino` (con GIFs y contadores)\n' +
+          '`/dado` · `/moneda` · `/meme` · `/8ball`',
       },
       {
         name: 'Chat con IA',

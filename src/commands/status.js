@@ -1,7 +1,11 @@
-const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const { estadoIA, getStatsIA } = require('../utils/ia');
-const { brandEmbed } = require('../utils/replies');
+const { brandEmbed, miles, duracion, UMBRALES, nivel } = require('../utils/replies');
 const db = require('../db/supabase');
+
+// Snapshot de CPU al arrancar el módulo, para calcular el uso medio del proceso.
+const inicioCPU = process.cpuUsage();
+const inicioMs = Date.now();
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -15,48 +19,69 @@ module.exports = {
     const stats = getStatsIA();
     const dbOk = db.configurada ? await db.ping() : false;
 
-    const iaGemini = ia.gemini.configurada ? `\`${ia.gemini.modelo}\`` : '—';
-    const iaGroq = ia.groq.configurada ? `\`${ia.groq.modelo}\`` : '—';
-    const iaOk = ia.gemini.configurada || ia.groq.configurada;
-    const totalRespuestas = stats.gemini + stats.groq + stats.local;
-    const statsTexto =
+    // ---------- Rendimiento ----------
+    const apiBruta = Math.round(client.ws.ping);
+    const api = apiBruta >= 0 ? apiBruta : null;
+    const calPing = api !== null ? nivel(api, UMBRALES.ping) : null;
+
+    const mem = Math.round(process.memoryUsage().rss / 1048576);
+    const heap = Math.round(process.memoryUsage().heapUsed / 1048576);
+    const calMem = nivel(mem, UMBRALES.memoria);
+
+    const delta = process.cpuUsage(inicioCPU);
+    const transcurrido = Math.max(Date.now() - inicioMs, 1);
+    const cpu = ((delta.user + delta.system) / 1000 / transcurrido) * 100; // % medio desde el arranque
+
+    // ---------- IA ----------
+    const iaOk = ia.groq.configurada || ia.gemini.configurada;
+    const totalRespuestas = stats.groq + stats.gemini + stats.local;
+    const statsIA =
       totalRespuestas === 0
         ? 'Sin conversaciones todavía'
-        : `Groq: **${stats.groq}** · Gemini: **${stats.gemini}** · Local: **${stats.local}**`;
-    const estadoIATexto = iaOk ? 'Operativa' : 'Sin claves configuradas';
+        : `Groq: **${miles(stats.groq)}** · Gemini: **${miles(stats.gemini)}** · Local: **${miles(stats.local)}**`;
+    const chipIA = (proveedor) =>
+      proveedor.configurada ? `\`${proveedor.modelo}\`` : '`—` sin clave';
 
-    const uptime = process.uptime();
-    const dias = Math.floor(uptime / 86400);
-    const horas = Math.floor((uptime % 86400) / 3600);
-    const minutos = Math.floor((uptime % 3600) / 60);
-    const uptimeTexto = dias > 0 ? `${dias}d ${horas}h ${minutos}m` : horas > 0 ? `${horas}h ${minutos}m` : `${minutos}m`;
+    // ---------- Base de datos ----------
+    let textoDB;
+    if (!db.configurada) textoDB = '⚪ No configurada — guardando solo en `data/` local';
+    else if (dbOk && db.estado.permisoEscritura === false)
+      textoDB = '⚠️ Conectada **sin permiso de escritura**: la clave parece ser la anon. Usá la `service_role` en `SUPABASE_KEY`.';
+    else if (dbOk) {
+      const hace = db.estado.ultimaSync ? ` · último hace ${duracion((Date.now() - db.estado.ultimaSync.getTime()) / 1000)}` : '';
+      textoDB = `✅ Conectada — **${miles(db.estado.subidasOk)}** respaldos en la nube${hace}`;
+    } else textoDB = `❌ Error de conexión${db.estado.ultimoError ? `: \`${db.estado.ultimoError}\`` : ''}`;
 
-    const embed = new EmbedBuilder()
-      .setTitle('Estado de TriggerBOT')
-      .setColor(iaOk ? 0x57f287 : 0xfee75c)
-      .setDescription(`**${estadoIATexto}** · ${client.guilds.cache.size} servidor(es) · ${client.commands.size} comandos`)
-      .addFields(
-        { name: 'IA principal (Groq)', value: iaGroq, inline: true },
-        { name: 'IA de respaldo (Gemini)', value: iaGemini, inline: true },
-        { name: 'Latencia', value: `${Math.round(client.ws.ping)}ms`, inline: true },
-        { name: 'Respuestas de IA', value: statsTexto, inline: false },
-        { name: 'Tiempo encendido', value: uptimeTexto, inline: true },
-        { name: 'Memoria del proceso', value: `${Math.round(process.memoryUsage().rss / 1024 / 1024)} MB`, inline: true },
-        { name: 'Node.js', value: process.version, inline: true },
+    // Color general: verde si todo bien; amarillo si algo está degradado; rojo si la BD configurada falla.
+    const degradado = (api !== null && api > UMBRALES.ping.ok) || !iaOk;
+    const color = db.configurada && !dbOk ? 0xed4245 : degradado ? 0xfee75c : 0x57f287;
+    const estadoGeneral = db.configurada && !dbOk ? 'Degradado' : degradado ? 'Funcionando con avisos' : 'Todo en orden';
+
+    const embed = brandEmbed({
+      color,
+      title: `${db.configurada && !dbOk ? '❌' : degradado ? '🟠' : '🟢'} Estado de TriggerBOT — ${estadoGeneral}`,
+      thumbnail: client.user.displayAvatarURL({ size: 256 }),
+      description:
+        `**${client.commands.size} comandos** cargados en **${client.guilds.cache.size}** servidor(es). ` +
+        `Escribí en cualquier canal y el bot responde.`,
+      fields: [
         {
-          name: 'Base de datos (Supabase)',
-          value: !db.configurada
-            ? 'No configurada (solo data/ local)'
-            : dbOk && db.estado.permisoEscritura === false
-              ? 'Conectada pero SIN permiso de escritura: la clave parece ser la anon. Usá la service_role en SUPABASE_KEY.'
-              : dbOk
-                ? `Conectada · ${db.estado.subidasOk} respaldos${db.estado.ultimaSync ? ` · último ${db.estado.ultimaSync.toLocaleTimeString('es-AR')}` : ''}`
-                : `Error de conexión${db.estado.ultimoError ? `: ${db.estado.ultimoError}` : ''}`,
+          name: '⚡ Rendimiento',
+          value:
+            `**Latencia API:** ${api === null ? '⏳ midiendo…' : `${calPing.emoji} ${api} ms (${calPing.texto})`}\n` +
+            `**Memoria:** ${calMem.emoji} ${mem} MB en uso (${heap} MB de JS)\n` +
+            `**CPU:** ${cpu.toFixed(1)} % de promedio`,
           inline: false,
-        }
-      )
-      .setFooter({ text: 'TriggerBOT' })
-      .setTimestamp();
+        },
+        { name: '⏱️ Tiempo encendido', value: `**${duracion(process.uptime())}**`, inline: true },
+        { name: '🟢 Node.js', value: `\`${process.version}\``, inline: true },
+        { name: '🧠 IA principal (Groq)', value: chipIA(ia.groq), inline: true },
+        { name: '🧠 Respaldo (Gemini)', value: chipIA(ia.gemini), inline: true },
+        { name: '💬 Respuestas de IA', value: statsIA, inline: false },
+        { name: '🗄️ Base de datos (Supabase)', value: textoDB, inline: false },
+      ],
+      footer: `TriggerBOT v1.0.0 • Uptime del proceso • ${new Date().toLocaleDateString('es-AR')}`,
+    });
 
     return interaction.editReply({ embeds: [embed] });
   },

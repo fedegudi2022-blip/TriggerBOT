@@ -76,11 +76,11 @@ XP por escribir (15-25 por mensaje, máximo 1 por minuto para evitar farmeo) con
 ### Diversión y comunidad
 | Comando | Qué hace |
 |---|---|
-| `/interaccion beso/abrazo/caricia/abofetear/morder/pellizco/chocar/guino @usuario` | Interacciones con GIF animado y contadores de pareja persistentes |
+| `/beso` `/abrazo` `/caricia` `/abofetear` `/morder` `/pellizco` `/chocar` `/guino` | Interacciones con GIF animado y contadores persistentes (uno por comando, con @usuario) |
 | `/meme` | Meme al azar de Reddit (r/memes, r/memesesp y más) con botón Otro |
 | `/8ball pregunta` | La bola 8 mágica responde con 20 veredictos |
-| `/diversion dado [caras]` | Tira un dado (1-6 o hasta 100 caras) |
-| `/diversion moneda` | Cara o ceca |
+| `/dado [caras]` | Tira un dado (1-6 o hasta 100 caras) |
+| `/moneda` | Cara o ceca |
 
 ### Configuración (solo staff)
 
