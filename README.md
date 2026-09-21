@@ -27,8 +27,11 @@ src/
 | Comando | Qué hace | Quién lo usa |
 |---|---|---|
 | `/ping` | Latencia del bot | Todos |
-| `/status` | Estado del bot: modelo de IA, latencia, tiempo encendido | Todos |
-| `/help` | Guía completa de comandos | Todos |
+| `/status` | Estado del bot: modelos de IA, latencia, tiempo encendido, uso | Todos |
+| `/help` | Guía completa por categorías | Todos |
+| `/userinfo [usuario]` | Ficha de usuario: fechas, roles, permisos, warns | Todos |
+| `/serverinfo` | Ficha del server: dueño, canales, roles, boosts | Todos |
+| `/avatar [usuario]` | Avatar en grande con link de descarga | Todos |
 | Mencionar al bot (`@TriggerBOT`) | Charla con IA, con indicador de escribiendo y contexto | Todos |
 | `@TriggerBOT muteá a @fulano por spam` | La IA interpreta el pedido y el staff lo confirma con botones | Todos (confirma staff) |
 | `@TriggerBOT ping` | Ping rápido por mención | Todos |
@@ -52,6 +55,20 @@ src/
 
 > Todos los comandos de moderación validan jerarquía (no podés moderar a alguien con rol igual o superior), avisan al usuario por DM cuando es posible y quedan registrados en el mod-log.
 
+### Utilidades
+| Comando | Qué hace |
+|---|---|
+| `/afk [motivo]` | Te marca ausente; al mencionarte, el bot avisa. Se saca solo al volver a hablar |
+| `/encuesta tema [opciones]` | Encuesta con reacciones (Sí/No o hasta 6 opciones propias) |
+| `/embed titulo texto [color] [imagen] [canal]` | Anuncios profesionales con embeds (staff) |
+
+### Diversión
+| Comando | Qué hace |
+|---|---|
+| `/diversion dado [caras]` | Tira un dado (1-6 o hasta 100 caras) |
+| `/diversion moneda` | Cara o ceca |
+| `/diversion beso @usuario` | Besos virtuales 😘 |
+
 ### Configuración (solo staff)
 | Subcomando | Qué hace |
 |---|---|
@@ -71,9 +88,9 @@ El bot puede conversar cuando lo mencionás, con memoria de contexto por usuario
 
 **Acciones de moderación por chat:** si un usuario le pide `@TriggerBOT banear a @fulano por flodeo`, la IA interpreta el pedido y muestra un embed con botones. **Solo el staff** (permisos de moderación o roles de `/config staff`) puede apretar **Ejecutar**; la acción queda registrada en el mod-log. Hay cooldown de 20 s por usuario para evitar abusos y las solicitudes expiran a los 5 minutos.
 
-**Cadena de respaldo automática:**
-1. **Gemini** (principal) — si Google retira un modelo lo reemplaza solo; si está saturado (503/429) prueba hasta 2 modelos alternos.
-2. **Groq** (respaldo) — si todos los modelos de Gemini fallan, usa Llama vía Groq.
+**Cadena de respaldo automática (optimizada por velocidad):**
+1. **Groq** (principal) — chips LPU: responde en ~0,3-0,8 s, 5-10x más rápido que Gemini.
+2. **Gemini** (respaldo de calidad) — si Groq no tiene clave, falla o se queda sin cuota; se autorrepara si Google retira un modelo.
 3. **Respuestas locales** — si no hay claves o todo falla, usa su repertorio propio. Nunca se queda mudo.
 
 Para activarlo:

@@ -1,13 +1,17 @@
 const { brandEmbed } = require('./replies');
 
-// Guía completa del bot, con el estilo visual unificado.
+// Guía completa del bot organizada por categorías, con el estilo visual unificado.
 // La usan tanto el comando /help como la respuesta al mencionar al bot.
 function construirGuia(client) {
   return brandEmbed({
     color: 0x5865f2,
     title: `👋 Hola! Soy ${client.user.username}`,
-    description: 'Soy el bot de moderación de la comunidad Trigger. Acá va una guía rápida de todo lo que sé hacer.',
+    description: 'Bot de moderación y comunidad de Trigger. Acá tenés todo lo que sé hacer, por categoría:',
     fields: [
+      {
+        name: 'ℹ️ Información',
+        value: '`/userinfo` · `/serverinfo` · `/avatar` · `/status` · `/ping`',
+      },
       {
         name: '🛡️ Moderación',
         value:
@@ -15,21 +19,22 @@ function construirGuia(client) {
           '`/softban` · `/timeout` · `/mute` · `/unmute` · `/clear` · `/lockdown` · `/slowmode`',
       },
       {
-        name: '⚠️ Warns',
-        value:
-          'Al **3er `/warn`** el usuario queda silenciado 1 hora automáticamente. ' +
-          'Consultá el historial con `/warnings` y borrá advertencias con `/quitarnota`.',
-      },
-      {
         name: '⚙️ Configuración (staff)',
-        value: '`/config ver` · `welcome` · `modlog` · `logs` · `avisos` · `staff` · `mute` · `desactivar`',
+        value: '`/config` con: `ver` · `welcome` · `modlog` · `logs` · `avisos` · `staff` · `mute` · `ia` · `desactivar`',
       },
       {
-        name: '💡 Datos útiles',
+        name: '🧰 Utilidades',
+        value: '`/afk` · `/encuesta` · `/embed` (staff)',
+      },
+      {
+        name: '🎲 Diversión',
+        value: '`/diversion dado` · `/diversion moneda` · `/diversion beso`',
+      },
+      {
+        name: '🤖 Chat con IA',
         value:
-          '• Todos los comandos de moderación avisan al usuario por DM y quedan registrados en el mod-log.\n' +
-          '• Necesitás permisos de moderación o un rol de staff (configurable con `/config staff`).\n' +
-          '• Si me mencionás en el chat, te puedo contestar: salúdame o pedime `ping`.',
+          'Mencioname y charlamos. También entiendo pedidos de moderación en criollo: ' +
+          '`@TriggerBOT muteá a @fulano por flodeo` (el staff confirma con un botón).',
       },
     ],
     footer: 'TriggerBOT • usá /help cuando necesites la guía',

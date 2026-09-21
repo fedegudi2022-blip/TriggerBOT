@@ -3,6 +3,7 @@ const { brandEmbed } = require('../utils/replies');
 const { responderCharla, normalizar } = require('../utils/charla');
 const { conversar } = require('../utils/ia');
 const { pedirConfirmacion } = require('../utils/accionesIA');
+const { getAFK, quitarAFK } = require('../commands/afk');
 const { getGuildConfig } = require('../store');
 
 // Limita el tamaño del buffer de mensajes recientes por canal para no crecer sin control.
@@ -108,6 +109,27 @@ module.exports = {
     if (!message.guild || message.author?.bot) return;
 
     guardarEnBuffer(message);
+
+    // Si el usuario estaba AFK y volvió a hablar, se le saca la marca.
+    if (getAFK(message.guild.id, message.author.id)) {
+      quitarAFK(message.guild.id, message.author.id);
+      await message.reply('¡Bienvenido de vuelta! Te saqué la marca AFK. 👋').catch(() => {});
+    }
+
+    // Si el mensaje menciona a alguien AFK, se avisa.
+    for (const [userId] of message.mentions.users) {
+      if (userId === message.author.id) continue;
+      const afk = getAFK(message.guild.id, userId);
+      if (afk) {
+        const minutos = Math.floor((Date.now() - afk.desde) / 60000);
+        const tiempo = minutos >= 60 ? `${Math.floor(minutos / 60)} h` : `${Math.max(minutos, 1)} min`;
+        await message
+          .reply(`😴 **${message.guild.members.cache.get(userId)?.displayName || 'Ese usuario'}** está AFK desde hace ${tiempo}: ${afk.motivo}`)
+          .catch(() => {});
+        break; // un solo aviso por mensaje
+      }
+    }
+
     await manejarMencion(message);
   },
 };

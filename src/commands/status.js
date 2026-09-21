@@ -32,8 +32,8 @@ module.exports = {
       .setTitle('📊 Estado de TriggerBOT')
       .setColor(iaOk ? 0x57f287 : 0xfee75c)
       .addFields(
-        { name: '🤖 IA principal (Gemini)', value: iaGemini, inline: true },
-        { name: '⚡ IA de respaldo (Groq)', value: iaGroq, inline: true },
+        { name: '⚡ IA principal (Groq)', value: iaGroq, inline: true },
+        { name: '🤖 IA de respaldo (Gemini)', value: iaGemini, inline: true },
         { name: '📡 Latencia de la API', value: `${Math.round(client.ws.ping)}ms`, inline: true },
         { name: '📈 Respuestas de IA', value: statsTexto, inline: false },
         { name: '⏱️ Tiempo encendido', value: uptimeTexto, inline: true },

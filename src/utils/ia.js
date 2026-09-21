@@ -1,7 +1,7 @@
-// Chat con IA: Google Gemini como proveedor principal y Groq como respaldo
-// automático (ambos con niveles gratuitos). No agrega dependencias: usa el
-// fetch nativo de Node 18+. Si ambos fallan o no hay claves, el bot cae a sus
-// respuestas locales de charla (ver ../utils/charla.js) y nunca se queda mudo.
+// Chat con IA: Groq como proveedor principal (ultrarrápido) y Google Gemini
+// como respaldo de calidad (ambos con niveles gratuitos). No agrega dependencias:
+// usa el fetch nativo de Node 18+. Si ambos fallan o no hay claves, el bot cae a
+// sus respuestas locales de charla (ver ../utils/charla.js) y nunca se queda mudo.
 //
 // Además de conversar, la IA detecta solicitudes de moderación en lenguaje
 // natural ("muteá a fulano") y las devuelve como acciones para que el staff
@@ -9,7 +9,7 @@
 
 const TIMEOUT_MS = 10_000;
 
-// ---------- Gemini (principal): elige solo el mejor modelo flash disponible ----------
+// ---------- Gemini (respaldo de calidad): elige solo el mejor modelo flash disponible ----------
 const GEMINI_DEFAULT = 'gemini-3.6-flash';
 let modelosGemini = null;
 
@@ -53,7 +53,7 @@ function quitarModeloGemini(modelo) {
   if (modelosGemini) modelosGemini = modelosGemini.filter((m) => m !== modelo);
 }
 
-// ---------- Groq (respaldo): modelos Llama ultrarrápidos ----------
+// ---------- Groq (principal, ultrarrápido): modelos Llama ----------
 const GROQ_DEFAULT = 'llama-3.3-70b-versatile';
 let modeloGroq = null;
 
@@ -267,23 +267,25 @@ async function conversar(userId, mensaje, contexto = {}) {
 
   let texto = null;
 
-  if (process.env.GEMINI_API_KEY) {
+  // 1) Groq (principal): LPU de Groq responden en ~0,3-0,8 s, 5-10x más rápido que Gemini.
+  if (process.env.GROQ_API_KEY) {
+    try {
+      texto = await llamarGroq(mensaje, previos, sistema);
+      statsIA.groq += 1;
+    } catch (error) {
+      console.warn(`[TriggerBOT] Groq falló, pruebo con Gemini: ${error.message.slice(0, 120)}`);
+    }
+  }
+
+  // 2) Gemini (respaldo de calidad): si Groq no tiene clave, falla o se queda sin cuota.
+  if (!texto && process.env.GEMINI_API_KEY) {
     try {
       const contenidos = previos.map((t) => ({ role: t.role, parts: [{ text: t.text }] }));
       contenidos.push({ role: 'user', parts: [{ text: mensaje }] });
       texto = await llamarGemini(contenidos, sistema);
       statsIA.gemini += 1;
     } catch (error) {
-      console.warn(`[TriggerBOT] Gemini falló, pruebo con Groq: ${error.message.slice(0, 120)}`);
-    }
-  }
-
-  if (!texto && process.env.GROQ_API_KEY) {
-    try {
-      texto = await llamarGroq(mensaje, previos, sistema);
-      statsIA.groq += 1;
-    } catch (error) {
-      console.warn(`[TriggerBOT] Groq también falló, uso respuestas locales: ${error.message.slice(0, 120)}`);
+      console.warn(`[TriggerBOT] Gemini también falló, uso respuestas locales: ${error.message.slice(0, 120)}`);
     }
   }
 
