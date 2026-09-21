@@ -7,8 +7,8 @@ const { getGuildConfig } = require('../store');
 // Limita el tamaño del buffer de mensajes recientes por canal para no crecer sin control.
 const MAX_BUFFER = 100;
 
-// Cooldown de charla: 1 respuesta por usuario cada 15 segundos.
-const COOLDOWN_MS = 15_000;
+// Cooldown de charla: 1 respuesta por usuario cada 3 segundos (spam friendly).
+const COOLDOWN_MS = 3_000;
 const cooldowns = new Map();
 
 function clave(guildId, channelId) {

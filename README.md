@@ -64,11 +64,11 @@ src/
 
 ## Chat con IA (opcional)
 
-El bot puede conversar cuando lo mencionás, con memoria de contexto por usuario (los últimos 6 turnos, se olvida a los 10 minutos).
+El bot puede conversar cuando lo mencionás, con memoria de contexto por usuario (los últimos 6 turnos, se olvida a los 10 minutos). Si Google retira el modelo que usa, el bot detecta solo el reemplazo disponible — no hace falta tocar código.
 
 1. Conseguí una clave gratis en [aistudio.google.com/apikey](https://aistudio.google.com/apikey) (cuenta Google, 2 minutos, sin tarjeta).
 2. Agregá la variable `GEMINI_API_KEY` en el panel de Wispbyte (Startup → Variables) o en tu `.env` local.
-3. (Opcional) `GEMINI_MODEL` para cambiar el modelo — por defecto `gemini-2.0-flash`.
+3. (Opcional) `GEMINI_MODEL` para fijar el modelo — por defecto el bot detecta solo el mejor modelo flash disponible (hoy: `gemini-3.6-flash`).
 
 **Sin clave configurada el bot funciona igual**: usa su repertorio local de respuestas. Si la IA falla o se queda sin cuota, también cae al respaldo automáticamente — nunca se queda mudo.
 
