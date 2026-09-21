@@ -7,6 +7,7 @@
 const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags } = require('discord.js');
 const { successEmbed } = require('../utils/replies');
 const { panel } = require('../utils/tickets');
+const { setGuildConfig } = require('../store');
 
 module.exports = {
   data: new SlashCommandBuilder()
