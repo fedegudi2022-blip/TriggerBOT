@@ -20,7 +20,7 @@ module.exports = {
     const statsTexto =
       totalRespuestas === 0
         ? 'Sin conversaciones todavía'
-        : `🟢 Gemini: **${stats.gemini}** · ⚡ Groq: **${stats.groq}** · 💬 Local: **${stats.local}**`;
+        : `Gemini: **${stats.gemini}** · Groq: **${stats.groq}** · Local: **${stats.local}**`;
 
     const uptime = process.uptime();
     const dias = Math.floor(uptime / 86400);
@@ -29,16 +29,16 @@ module.exports = {
     const uptimeTexto = dias > 0 ? `${dias}d ${horas}h ${minutos}m` : horas > 0 ? `${horas}h ${minutos}m` : `${minutos}m`;
 
     const embed = new EmbedBuilder()
-      .setTitle('📊 Estado de TriggerBOT')
+      .setTitle('Estado de TriggerBOT')
       .setColor(iaOk ? 0x57f287 : 0xfee75c)
       .addFields(
-        { name: '⚡ IA principal (Groq)', value: iaGroq, inline: true },
-        { name: '🤖 IA de respaldo (Gemini)', value: iaGemini, inline: true },
-        { name: '📡 Latencia de la API', value: `${Math.round(client.ws.ping)}ms`, inline: true },
-        { name: '📈 Respuestas de IA', value: statsTexto, inline: false },
-        { name: '⏱️ Tiempo encendido', value: uptimeTexto, inline: true },
-        { name: '🏠 Servidores', value: String(client.guilds.cache.size), inline: true },
-        { name: '📚 Node.js', value: process.version, inline: true }
+        { name: 'IA principal (Groq)', value: iaGroq, inline: true },
+        { name: 'IA de respaldo (Gemini)', value: iaGemini, inline: true },
+        { name: 'Latencia de la API', value: `${Math.round(client.ws.ping)}ms`, inline: true },
+        { name: 'Respuestas de IA', value: statsTexto, inline: false },
+        { name: 'Tiempo encendido', value: uptimeTexto, inline: true },
+        { name: 'Servidores', value: String(client.guilds.cache.size), inline: true },
+        { name: 'Node.js', value: process.version, inline: true }
       )
       .setFooter({ text: 'TriggerBOT' })
       .setTimestamp();

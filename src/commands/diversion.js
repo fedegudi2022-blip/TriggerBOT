@@ -26,14 +26,14 @@ module.exports = {
       const caras = interaction.options.getInteger('caras') ?? 6;
       const resultado = Math.floor(Math.random() * caras) + 1;
       return interaction.reply({
-        embeds: [successEmbed(`🎲 Sacaste un **${resultado}** (dado de ${caras} caras).`, '¡A jugar!')],
+        embeds: [successEmbed(`Sacaste un **${resultado}** con el dado de ${caras} caras.`, 'Dado 🎲')],
       });
     }
 
     if (sub === 'moneda') {
       const esCara = Math.random() < 0.5;
       return interaction.reply({
-        embeds: [successEmbed(`🪙 Salió **${esCara ? 'CARA' : 'CECA'}**.`, '¡A jugar!')],
+        embeds: [successEmbed(`Salió **${esCara ? 'CARA' : 'CECA'}**.`, 'Moneda 🪙')],
       });
     }
 

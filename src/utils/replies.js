@@ -16,13 +16,13 @@ function brandEmbed({ color = COLORS.info, title, description, fields, footer })
   return embed;
 }
 
-const successEmbed = (description, title = '✅ Acción completada') =>
+const successEmbed = (description, title = 'Acción completada') =>
   brandEmbed({ color: COLORS.success, title, description });
 
-const errorEmbed = (description, title = '❌ No se pudo completar') =>
+const errorEmbed = (description, title = 'No se pudo completar') =>
   brandEmbed({ color: COLORS.error, title, description });
 
-const warnEmbed = (description, title = '⚠️ Atención') =>
+const warnEmbed = (description, title = 'Atención') =>
   brandEmbed({ color: COLORS.warn, title, description });
 
 const infoEmbed = (description, title) =>

@@ -11,7 +11,7 @@ function logAction(guild, { action, color = 0xed4245, target, moderator, reason,
   if (!channel) return;
 
   const embed = new EmbedBuilder()
-    .setTitle(`🛡️ ${action}`)
+    .setTitle(action)
     .setColor(color)
     .addFields(
       { name: 'Usuario', value: target.raw ?? `<@${target.id}> (\`${target.tag ?? target.id}\`)`, inline: true },

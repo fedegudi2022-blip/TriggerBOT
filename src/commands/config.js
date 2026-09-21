@@ -168,7 +168,7 @@ module.exports = {
       const logsChannel = config.logs ? `<#${config.logs}>` : null;
       const avisos = config.avisosChannel ? `<#${config.avisosChannel}>` : null;
       const muteRole = config.muteRole ? `<@&${config.muteRole}>` : null;
-      const iaEstado = config.iaActivada === false ? '❌ Apagada' : '✅ Prendida';
+      const iaEstado = config.iaActivada === false ? 'Apagada' : 'Prendida';
 
       const embed = new EmbedBuilder()
         .setTitle('⚙️ Configuración de TriggerBOT')
@@ -252,7 +252,7 @@ module.exports = {
       const activada = interaction.options.getBoolean('activada');
 
       if (activada === null) {
-        const actual = config.iaActivada === false ? '❌ apagada' : '✅ prendida';
+        const actual = config.iaActivada === false ? 'apagada' : 'prendida';
         return interaction.reply({
           embeds: [successEmbed(`El chat con IA está ${actual}. Pasame la opción \`activada\` para cambiarlo.`)],
           flags: MessageFlags.Ephemeral,
@@ -263,7 +263,7 @@ module.exports = {
         c.iaActivada = activada;
       });
       return interaction.reply({
-        embeds: [successEmbed(`Chat con IA ${activada ? '✅ prendido' : '❌ apagado'} en este servidor.`)],
+        embeds: [successEmbed(`Chat con IA ${activada ? 'prendido' : 'apagado'} en este servidor.`)],
         flags: MessageFlags.Ephemeral,
       });
     }

@@ -53,13 +53,24 @@ function quitarModeloGemini(modelo) {
   if (modelosGemini) modelosGemini = modelosGemini.filter((m) => m !== modelo);
 }
 
-// ---------- Groq (principal, ultrarrápido): modelos Llama ----------
+// ---------- Groq (principal, ultrarrápido): modelos de texto ----------
 const GROQ_DEFAULT = 'llama-3.3-70b-versatile';
-let modeloGroq = null;
+const GROQ_PREFERIDOS = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'];
+let modelosGroq = null;
 
-async function resolverModeloGroq() {
-  if (process.env.GROQ_MODEL) return process.env.GROQ_MODEL;
-  if (modeloGroq) return modeloGroq;
+// Ordena: preferidos explícitos primero, después cualquier Llama de texto.
+function ordenarGroq(ids) {
+  const puntaje = (id) => {
+    const idx = GROQ_PREFERIDOS.indexOf(id);
+    if (idx !== -1) return 100 - idx;
+    if (/^llama/.test(id)) return 50;
+    return 10;
+  };
+  return [...ids].sort((a, b) => puntaje(b) - puntaje(a));
+}
+
+async function listarModelosGroq() {
+  if (modelosGroq) return modelosGroq;
   try {
     const resp = await fetch('https://api.groq.com/openai/v1/models', {
       headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
@@ -69,17 +80,21 @@ async function resolverModeloGroq() {
       const datos = await resp.json();
       const ids = (datos.data || [])
         .map((m) => m.id)
-        // Descarta audio/guardrails y modelos de razonamiento (gastan los tokens
-        // en "pensar" y devuelven contenido vacío con límites bajos).
-        .filter((id) => !/whisper|guard|tts|distil|gpt-oss|deepseek-r1|qwen3/.test(id));
-      modeloGroq =
-        ids.find((id) => /llama-3\.3|llama.*70b/.test(id)) || ids.find((id) => id.includes('llama')) || ids[0] || GROQ_DEFAULT;
-      console.log(`[TriggerBOT] IA: Groq usando ${modeloGroq} (respaldo)`);
+        // Descarta audio/TTS, guardrails y modelos de razonamiento: solo chat de texto.
+        .filter((id) => !/whisper|guard|tts|distil|gpt-oss|deepseek-r1|qwen3|orpheus|playai|kokoro|voice|arabic/.test(id));
+      modelosGroq = ordenarGroq(ids);
+      if (modelosGroq.length) {
+        console.log(`[TriggerBOT] IA: Groq usando ${modelosGroq[0]} (${modelosGroq.length} disponibles como alternativa)`);
+      }
     }
   } catch {
     // si falla el listado, usamos el default estático
   }
-  return modeloGroq || GROQ_DEFAULT;
+  return modelosGroq;
+}
+
+function quitarModeloGroq(id) {
+  if (modelosGroq) modelosGroq = modelosGroq.filter((m) => m !== id);
 }
 
 // ---------- Estadísticas de uso (desde el último arranque) ----------
@@ -225,14 +240,7 @@ async function llamarGemini(contenidos, sistema) {
   throw ultimoError;
 }
 
-async function llamarGroq(mensajeUsuario, previos, sistema) {
-  const modelo = await resolverModeloGroq();
-  const mensajes = [
-    { role: 'system', content: sistema },
-    ...previos.map((t) => ({ role: t.role === 'model' ? 'assistant' : 'user', content: t.text })),
-    { role: 'user', content: mensajeUsuario },
-  ];
-
+async function generarConGroq(modelo, mensajes) {
   const respuesta = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -252,6 +260,31 @@ async function llamarGroq(mensajeUsuario, previos, sistema) {
   const texto = datos?.choices?.[0]?.message?.content?.trim();
   if (!texto) throw new Error('Groq devolvió una respuesta vacía');
   return texto;
+}
+
+async function llamarGroq(mensajeUsuario, previos, sistema) {
+  const mensajes = [
+    { role: 'system', content: sistema },
+    ...previos.map((t) => ({ role: t.role === 'model' ? 'assistant' : 'user', content: t.text })),
+    { role: 'user', content: mensajeUsuario },
+  ];
+
+  // Con GROQ_MODEL fijado no hay lista de alternos; si no, prueba hasta 3 candidatos.
+  const lista = process.env.GROQ_MODEL ? [process.env.GROQ_MODEL] : (await listarModelosGroq()) || [];
+  const candidatos = lista.length ? lista.slice(0, 3) : [GROQ_DEFAULT];
+
+  let ultimoError;
+  for (let i = 0; i < candidatos.length; i++) {
+    try {
+      return await generarConGroq(candidatos[i], mensajes);
+    } catch (error) {
+      ultimoError = error;
+      // Modelo inaceptable (retirado o con términos sin aceptar): lo sacamos y seguimos.
+      if (/HTTP (400|404)/.test(error.message)) quitarModeloGroq(candidatos[i]);
+      if (i === candidatos.length - 1) throw error;
+    }
+  }
+  throw ultimoError;
 }
 
 // ---------- Entrada principal: Gemini → Groq → respaldo local ----------
@@ -328,7 +361,7 @@ async function estadoIA() {
     gemini.modelo = process.env.GEMINI_MODEL || (await listarModelosGemini())?.[0] || GEMINI_DEFAULT;
   }
   if (groq.configurada) {
-    groq.modelo = await resolverModeloGroq();
+    groq.modelo = process.env.GROQ_MODEL || (await listarModelosGroq())?.[0] || GROQ_DEFAULT;
   }
   return { gemini, groq };
 }

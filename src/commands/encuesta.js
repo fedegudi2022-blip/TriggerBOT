@@ -39,9 +39,9 @@ module.exports = {
       footer: `Encuesta de ${interaction.user.tag} • votá con las reacciones`,
     });
 
-    await interaction.reply({ embeds: [embed], fetchReply: true }).then((mensaje) => {
-      VOTACION_ABIERTA.set(mensaje.id, { autorId: interaction.user.id, tema, titulo: `📊 ${tema}` });
-      for (let i = 0; i < opciones.length; i++) mensaje.react(emojis[i]).catch(() => {});
-    });
+    await interaction.reply({ embeds: [embed] });
+    const mensaje = await interaction.fetchReply();
+    VOTACION_ABIERTA.set(mensaje.id, { autorId: interaction.user.id, tema, titulo: `📊 ${tema}` });
+    for (let i = 0; i < opciones.length; i++) mensaje.react(emojis[i]).catch(() => {});
   },
 };

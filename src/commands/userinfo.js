@@ -38,20 +38,20 @@ module.exports = {
 
     const embed = brandEmbed({
       color: member?.displayColor || 0x5865f2,
-      title: `👤 ${user.tag}`,
+      title: user.tag,
       thumbnail: user.displayAvatarURL({ size: 256 }),
       fields: [
-        { name: '🆔 ID', value: `\`${user.id}\``, inline: true },
-        { name: '📅 Cuenta creada', value: creado, inline: true },
-        { name: '📥 Se unió', value: unido, inline: true },
-        { name: '⚠️ Advertencias', value: `${warns}`, inline: true },
-        { name: '🤖 Es bot', value: user.bot ? 'Sí' : 'No', inline: true },
+        { name: 'ID', value: `\`${user.id}\``, inline: true },
+        { name: 'Cuenta creada', value: creado, inline: true },
+        { name: 'Se unió', value: unido, inline: true },
+        { name: 'Advertencias', value: `${warns}`, inline: true },
+        { name: 'Es bot', value: user.bot ? 'Sí' : 'No', inline: true },
         {
-          name: '👑 Roles destacados',
+          name: 'Roles destacados',
           value: permisos.length ? permisos.map((p) => `\`${p}\``).join(', ') : '*ninguno*',
           inline: false,
         },
-        { name: `🎭 Roles (${member ? member.roles.cache.size - 1 : 0})`, value: roles.slice(0, 1024) || '*sin roles*', inline: false },
+        { name: `Roles (${member ? member.roles.cache.size - 1 : 0})`, value: roles.slice(0, 1024) || '*sin roles*', inline: false },
       ],
       footer: 'TriggerBOT • /avatar para el avatar en grande',
     });

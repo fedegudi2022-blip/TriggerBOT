@@ -12,7 +12,7 @@ module.exports = {
 
     const embed = brandEmbed({
       color: 0x5865f2,
-      title: `🖼️ Avatar de ${user.tag}`,
+      title: `Avatar de ${user.tag}`,
       image: { url: user.displayAvatarURL({ size: 1024, extension: 'png' }) },
       description: `[Descargar en 1024px](${user.displayAvatarURL({ size: 1024, extension: 'png' })})`,
     });

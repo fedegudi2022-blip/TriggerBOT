@@ -5,33 +5,33 @@ const { brandEmbed } = require('./replies');
 function construirGuia(client) {
   return brandEmbed({
     color: 0x5865f2,
-    title: `👋 Hola! Soy ${client.user.username}`,
+    title: `Hola! Soy ${client.user.username}`,
     description: 'Bot de moderación y comunidad de Trigger. Acá tenés todo lo que sé hacer, por categoría:',
     fields: [
       {
-        name: 'ℹ️ Información',
+        name: 'Información',
         value: '`/userinfo` · `/serverinfo` · `/avatar` · `/status` · `/ping`',
       },
       {
-        name: '🛡️ Moderación',
+        name: 'Moderación',
         value:
           '`/warn` · `/warnings` · `/quitarnota` · `/kick` · `/ban` · `/unban`\n' +
           '`/softban` · `/timeout` · `/mute` · `/unmute` · `/clear` · `/lockdown` · `/slowmode`',
       },
       {
-        name: '⚙️ Configuración (staff)',
+        name: 'Configuración (staff)',
         value: '`/config` con: `ver` · `welcome` · `modlog` · `logs` · `avisos` · `staff` · `mute` · `ia` · `desactivar`',
       },
       {
-        name: '🧰 Utilidades',
+        name: 'Utilidades',
         value: '`/afk` · `/encuesta` · `/embed` (staff)',
       },
       {
-        name: '🎲 Diversión',
+        name: 'Diversión',
         value: '`/diversion dado` · `/diversion moneda` · `/diversion beso`',
       },
       {
-        name: '🤖 Chat con IA',
+        name: 'Chat con IA',
         value:
           'Mencioname y charlamos. También entiendo pedidos de moderación en criollo: ' +
           '`@TriggerBOT muteá a @fulano por flodeo` (el staff confirma con un botón).',

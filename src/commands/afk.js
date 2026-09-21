@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const { successEmbed } = require('../utils/replies');
 
 // Estado AFK por servidor: { [guildId]: { [userId]: { motivo, desde } } }
@@ -56,8 +56,8 @@ module.exports = {
     const motivo = interaction.options.getString('motivo') || 'sin motivo especificado';
     setAFK(interaction.guildId, interaction.user.id, motivo);
     return interaction.reply({
-      embeds: [successEmbed(`Quedaste marcado como **AFK**: ${motivo}.\nCuando vuelvas a hablar, se te saca automáticamente.`)],
-      ephemeral: true,
+      embeds: [successEmbed(`Quedaste marcado como **AFK**: ${motivo}.\nCuando volvas a hablar, se te saca automáticamente.`, 'Modo ausente')],
+      flags: MessageFlags.Ephemeral,
     });
   },
 };
