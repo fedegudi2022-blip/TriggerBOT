@@ -1,9 +1,10 @@
 const { Events } = require('discord.js');
-const { brandEmbed } = require('../utils/replies');
 const { responderCharla, normalizar } = require('../utils/charla');
 const { conversar } = require('../utils/ia');
 const { pedirConfirmacion } = require('../utils/accionesIA');
 const { getAFK, quitarAFK } = require('../commands/afk');
+const { procesarMensaje, datosDe, xpParaNivel, canalAnuncios, LOGROS } = require('../niveles');
+const { brandEmbed } = require('../utils/replies');
 const { getGuildConfig } = require('../store');
 
 // Limita el tamaño del buffer de mensajes recientes por canal para no crecer sin control.
@@ -37,7 +38,6 @@ function guardarEnBuffer(message) {
 }
 
 // Devuelve true si el usuario está dentro del cooldown; si no, registra el intento.
-// Limpia entradas viejas de tanto en tanto para que el Map no crezca para siempre.
 function estaEnCooldown(userId) {
   const ahora = Date.now();
   const ultima = cooldowns.get(userId) ?? 0;
@@ -51,8 +51,40 @@ function estaEnCooldown(userId) {
   return false;
 }
 
+// Anuncia subida de nivel o logros en el canal configurado (si existe).
+async function anunciarProgreso(message, progreso) {
+  if (!progreso.subio && progreso.logrosNuevos.length === 0) return;
+
+  const canalId = canalAnuncios(message.guild.id);
+  if (!canalId) return;
+  const canal = message.guild.channels.cache.get(canalId);
+  if (!canal) return;
+
+  if (progreso.subio) {
+    const faltan = xpParaNivel(progreso.nivelNuevo + 1) - datosDe(message.guild.id, message.author.id).xp;
+    const embed = brandEmbed({
+      color: 0xfee75c,
+      title: '¡Subiste de nivel!',
+      description:
+        `**${message.author}** llegó al nivel **${progreso.nivelNuevo}**.\n` +
+        `Le faltan **${Math.max(faltan, 0)} XP** para el nivel ${progreso.nivelNuevo + 1}.`,
+    });
+    await canal.send({ embeds: [embed] }).catch(() => {});
+  }
+
+  for (const logro of progreso.logrosNuevos) {
+    const definicion = LOGROS.find((l) => l.id === logro);
+    if (!definicion) continue;
+    const embed = brandEmbed({
+      color: 0xf1c40f,
+      title: `${definicion.emoji} Logro desbloqueado: ${definicion.nombre}`,
+      description: `**${message.author}** desbloqueó **${definicion.nombre}** — ${definicion.desc}.`,
+    });
+    await canal.send({ embeds: [embed] }).catch(() => {});
+  }
+}
+
 // Responde cuando alguien menciona al bot: siempre contesta con un mensaje.
-// La guía completa vive exclusivamente en /help.
 async function manejarMencion(message) {
   const client = message.client;
   if (!message.mentions.users.has(client.user.id)) return;
@@ -74,7 +106,7 @@ async function manejarMencion(message) {
   if (texto === 'ping') {
     const embed = brandEmbed({
       color: 0x57f287,
-      title: '🏓 Pong!',
+      title: 'Pong!',
       description: `**Latencia de la API:** ${Math.round(client.ws.ping)}ms\nPara más detalle usá /ping.`,
     });
     return message.reply({ embeds: [embed] }).catch(() => {});
@@ -110,10 +142,18 @@ module.exports = {
 
     guardarEnBuffer(message);
 
+    // Sistema de niveles: XP y logros (el anuncio es silencioso si no hay canal configurado).
+    try {
+      const progreso = procesarMensaje(message.guild.id, message.author.id);
+      await anunciarProgreso(message, progreso);
+    } catch (error) {
+      console.error('[TriggerBOT] Error procesando niveles:', error.message);
+    }
+
     // Si el usuario estaba AFK y volvió a hablar, se le saca la marca.
     if (getAFK(message.guild.id, message.author.id)) {
-      quitarAFK(message.guild.id, message.author.id);
-      await message.reply('¡Bienvenido de vuelta! Te saqué la marca AFK. 👋').catch(() => {});
+      quitarAFK(message.guildId ?? message.guild.id, message.author.id);
+      await message.reply('Bienvenido de vuelta, te saqué la marca AFK.').catch(() => {});
     }
 
     // Si el mensaje menciona a alguien AFK, se avisa.

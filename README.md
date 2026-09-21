@@ -55,12 +55,22 @@ src/
 
 > Todos los comandos de moderación validan jerarquía (no podés moderar a alguien con rol igual o superior), avisan al usuario por DM cuando es posible y quedan registrados en el mod-log.
 
+### Niveles y logros
+| Comando | Qué hace |
+|---|---|
+| `/estadisticas [usuario]` | Perfil completo: nivel, XP con barra de progreso, racha de días, puesto y logros |
+| `/top [pagina]` | Ranking de actividad del server con podio |
+
+XP por escribir (15-25 por mensaje, máximo 1 por minuto para evitar farmeo), racha de días activos y 8 logros desbloqueables. El staff configura el canal de anuncios de subidas/logros en el panel `/config → Niveles y XP`.
+
 ### Utilidades
 | Comando | Qué hace |
 |---|---|
 | `/afk [motivo]` | Te marca ausente; al mencionarte, el bot avisa. Se saca solo al volver a hablar |
 | `/encuesta tema [opciones]` | Encuesta con reacciones (Sí/No o hasta 6 opciones propias) |
 | `/embed titulo texto [color] [imagen] [canal]` | Anuncios profesionales con embeds (staff) |
+| `/plantillas agregar/quitar/lista` | Razones rápidas que autocompletan `/warn`, `/ban`, `/kick`, etc. (staff) |
+| `/frases configurar/agregar/publicar/lista/quitar` | Frase del día publicada automáticamente a la hora elegida (staff) |
 
 ### Diversión
 | Comando | Qué hace |

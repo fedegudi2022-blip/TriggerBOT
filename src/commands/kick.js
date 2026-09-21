@@ -2,6 +2,7 @@ const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('disc
 const { logAction } = require('../utils/modlog');
 const { successEmbed, errorEmbed } = require('../utils/replies');
 const { motivoNoModerable, avisarPorDM } = require('../utils/moderation');
+const { autocompletar } = require('../utils/plantillas');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -9,7 +10,11 @@ module.exports = {
     .setDescription('Expulsa a un usuario del servidor')
     .setDefaultMemberPermissions(PermissionFlagsBits.KickMembers)
     .addUserOption((o) => o.setName('usuario').setDescription('Usuario a expulsar').setRequired(true))
-    .addStringOption((o) => o.setName('razon').setDescription('Motivo de la expulsión').setMaxLength(500)),
+    .addStringOption((o) => o.setName('razon').setDescription('Motivo de la expulsión (escribí para ver plantillas)').setMaxLength(500).setAutocomplete(true)),
+
+  async autocomplete(interaction) {
+    return autocompletar(interaction);
+  },
 
   async execute(interaction) {
     const user = interaction.options.getUser('usuario', true);

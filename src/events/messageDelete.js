@@ -1,5 +1,5 @@
 const { Events } = require('discord.js');
-const { logEvent } = require('../utils/log');
+const { logEvent, cita, tiempoRelativo } = require('../utils/log');
 
 module.exports = {
   name: Events.MessageDelete,
@@ -13,21 +13,21 @@ module.exports = {
     const contenido = message.content || cached?.contenido;
     if (!contenido) return; // sin contenido registrado no hay nada útil que reportar
 
-    const fragmentos = [];
-    if (cached?.autorId) {
-      fragmentos.push({ name: 'Autor', value: `<@${cached.autorId}> (\`${cached.autorTag}\`)`, inline: true });
-      fragmentos.push({ name: 'Canal', value: `<#${message.channelId}>`, inline: true });
-    } else if (message.author) {
-      fragmentos.push({ name: 'Autor', value: `<@${message.author.id}> (\`${message.author.tag}\`)`, inline: true });
-      fragmentos.push({ name: 'Canal', value: `<#${message.channelId}>`, inline: true });
-    }
-    fragmentos.push({ name: 'Mensaje', value: contenido.slice(0, 1024) });
+    const autorId = cached?.autorId ?? message.author?.id;
+    const autorTag = cached?.autorTag ?? message.author?.tag;
+    const edad = message.createdTimestamp ? tiempoRelativo(Date.now() - message.createdTimestamp) : null;
+
+    const fields = [
+      { name: 'Autor', value: `<@${autorId}> (\`${autorTag}\`)`, inline: true },
+      { name: 'Canal', value: `<#${message.channelId}>`, inline: true },
+    ];
+    if (edad) fields.push({ name: 'Enviado', value: `hace ${edad}`, inline: true });
+    fields.push({ name: 'Contenido', value: cita(contenido) });
 
     logEvent(message.guild, {
       color: 0xed4245,
-      title: '🗑️ Mensaje borrado',
-      description: null,
-      fields: fragmentos,
+      title: 'Mensaje borrado',
+      fields,
     });
   },
 };

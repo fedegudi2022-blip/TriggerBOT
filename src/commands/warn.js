@@ -4,6 +4,7 @@ const { logAction } = require('../utils/modlog');
 const { logEvent } = require('../utils/log');
 const { successEmbed, errorEmbed } = require('../utils/replies');
 const { motivoNoModerable, avisarPorDM } = require('../utils/moderation');
+const { autocompletar } = require('../utils/plantillas');
 
 const LIMITE_WARNS = 3;
 
@@ -13,7 +14,11 @@ module.exports = {
     .setDescription('Advierte a un usuario (a los 3 warns queda silenciado 1 hora automáticamente)')
     .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
     .addUserOption((o) => o.setName('usuario').setDescription('Usuario a advertir').setRequired(true))
-    .addStringOption((o) => o.setName('razon').setDescription('Motivo de la advertencia').setMaxLength(500)),
+    .addStringOption((o) => o.setName('razon').setDescription('Motivo de la advertencia (escribí para ver plantillas)').setMaxLength(500).setAutocomplete(true)),
+
+  async autocomplete(interaction) {
+    return autocompletar(interaction);
+  },
 
   async execute(interaction) {
     const user = interaction.options.getUser('usuario', true);
@@ -74,7 +79,7 @@ module.exports = {
     });
     logEvent(interaction.guild, {
       color: 0xfee75c,
-      title: '⚠️ Advertencia',
+      title: 'Advertencia',
       description: `${user} fue advertido por ${interaction.user}.`,
       fields: [
         { name: 'Motivo', value: reason || '*Sin especificar*' },

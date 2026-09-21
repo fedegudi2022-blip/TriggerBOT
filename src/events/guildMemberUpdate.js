@@ -18,7 +18,8 @@ module.exports = {
     if (oldMember.nickname !== newMember.nickname) {
       logEvent(newMember.guild, {
         color: 0x5865f2,
-        title: '🏷️ Apodo actualizado',
+        title: 'Apodo actualizado',
+        thumbnail: newMember.user.displayAvatarURL({ size: 128 }),
         description: `${newMember.user} (\`${newMember.user.tag}\`)`,
         fields: [
           { name: 'Antes', value: oldMember.nickname ? `\`${oldMember.nickname}\`` : '*sin apodo*', inline: true },
@@ -32,12 +33,13 @@ module.exports = {
     if (agregados.length === 0 && quitados.length === 0) return;
 
     const fields = [];
-    if (agregados.length) fields.push({ name: '➕ Roles añadidos', value: agregados.join(', ').slice(0, 1024) });
-    if (quitados.length) fields.push({ name: '➖ Roles quitados', value: quitados.join(', ').slice(0, 1024) });
+    if (agregados.length) fields.push({ name: 'Roles añadidos', value: agregados.join(', ').slice(0, 1024) });
+    if (quitados.length) fields.push({ name: 'Roles quitados', value: quitados.join(', ').slice(0, 1024) });
 
     logEvent(newMember.guild, {
       color: agregados.length ? 0x57f287 : 0xe67e22,
-      title: '🎭 Roles actualizados',
+      title: 'Roles actualizados',
+      thumbnail: newMember.user.displayAvatarURL({ size: 128 }),
       description: `${newMember.user} (\`${newMember.user.tag}\`)`,
       fields,
     });

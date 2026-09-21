@@ -3,6 +3,7 @@ const { getGuildConfig, setGuildConfig } = require('../store');
 const { logAction } = require('../utils/modlog');
 const { successEmbed, errorEmbed } = require('../utils/replies');
 const { motivoNoModerable, avisarPorDM } = require('../utils/moderation');
+const { autocompletar } = require('../utils/plantillas');
 
 // Devuelve el rol de silenciado configurado. Si no existe, lo crea y le quita
 // los permisos de habla/escritura en todos los canales donde el bot puede hacerlo.
@@ -40,7 +41,11 @@ module.exports = {
     .setDescription('Silencia a un usuario con el rol Silenciado (hasta que alguien lo quite)')
     .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
     .addUserOption((o) => o.setName('usuario').setDescription('Usuario a silenciar').setRequired(true))
-    .addStringOption((o) => o.setName('razon').setDescription('Motivo del silencio').setMaxLength(500)),
+    .addStringOption((o) => o.setName('razon').setDescription('Motivo del silencio (escribí para ver plantillas)').setMaxLength(500).setAutocomplete(true)),
+
+  async autocomplete(interaction) {
+    return autocompletar(interaction);
+  },
 
   async execute(interaction) {
     const user = interaction.options.getUser('usuario', true);

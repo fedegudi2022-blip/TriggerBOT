@@ -2,6 +2,7 @@ const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('disc
 const { logAction } = require('../utils/modlog');
 const { successEmbed, errorEmbed } = require('../utils/replies');
 const { motivoNoModerable, avisarPorDM } = require('../utils/moderation');
+const { autocompletar } = require('../utils/plantillas');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -9,7 +10,7 @@ module.exports = {
     .setDescription('Banea a un usuario del servidor')
     .setDefaultMemberPermissions(PermissionFlagsBits.BanMembers)
     .addUserOption((o) => o.setName('usuario').setDescription('Usuario a banear').setRequired(true))
-    .addStringOption((o) => o.setName('razon').setDescription('Motivo del baneo').setMaxLength(500))
+    .addStringOption((o) => o.setName('razon').setDescription('Motivo del baneo (escribí para ver plantillas)').setMaxLength(500).setAutocomplete(true))
     .addIntegerOption((o) =>
       o
         .setName('borrar_dias')
@@ -17,6 +18,10 @@ module.exports = {
         .setMinValue(0)
         .setMaxValue(7)
     ),
+
+  async autocomplete(interaction) {
+    return autocompletar(interaction);
+  },
 
   async execute(interaction) {
     const user = interaction.options.getUser('usuario', true);

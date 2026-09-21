@@ -43,6 +43,49 @@ for (const file of fs.readdirSync(eventsPath).filter((f) => f.endsWith('.js'))) 
   }
 }
 
+// ---------- Frase del día: publicación diaria a la hora configurada ----------
+setInterval(async () => {
+  try {
+    const { getGuildConfig, setGuildConfig } = require('./store');
+    for (const guild of client.guilds.cache.values()) {
+      const config = getGuildConfig(guild.id);
+      const frase = config.fraseDelDia;
+      if (!frase?.canalId || !frase.frases?.length) continue;
+
+      const horaArg = Number(
+        new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', hour12: false }).format(new Date())
+      );
+      const diaHoy = new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', day: 'numeric', month: 'numeric', year: 'numeric' }).format(new Date());
+      if (frase.ultima === diaHoy || horaArg !== frase.hora) continue;
+
+      const canal = guild.channels.cache.get(frase.canalId);
+      if (!canal) continue;
+
+      const elegida = frase.frases[Math.floor(Math.random() * frase.frases.length)];
+      const { brandEmbed } = require('./utils/replies');
+      await canal
+        .send({
+          embeds: [
+            brandEmbed({
+              color: 0x5865f2,
+              title: 'Frase del día',
+              description: `> ${elegida.texto}`,
+              footer: `— ${elegida.autor} • TriggerBOT`,
+            }),
+          ],
+        })
+        .then(() => {
+          setGuildConfig(guild.id, (c) => {
+            c.fraseDelDia.ultima = diaHoy;
+          });
+        })
+        .catch(() => {});
+    }
+  } catch (error) {
+    console.error('[TriggerBOT] Error en la frase del día:', error.message);
+  }
+}, 60 * 1000).unref();
+
 // ---------- Componentes interactivos (botones, selectores y modales) ----------
 const { manejarBoton } = require('./utils/accionesIA');
 const { manejarComponente } = require('./utils/configPanel');

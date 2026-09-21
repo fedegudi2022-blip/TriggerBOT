@@ -2,6 +2,7 @@ const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('disc
 const { logAction } = require('../utils/modlog');
 const { successEmbed, errorEmbed } = require('../utils/replies');
 const { motivoNoModerable, avisarPorDM } = require('../utils/moderation');
+const { autocompletar } = require('../utils/plantillas');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -16,7 +17,11 @@ module.exports = {
         .setMinValue(0)
         .setMaxValue(7)
     )
-    .addStringOption((o) => o.setName('razon').setDescription('Motivo del softban').setMaxLength(500)),
+    .addStringOption((o) => o.setName('razon').setDescription('Motivo del softban (escribí para ver plantillas)').setMaxLength(500).setAutocomplete(true)),
+
+  async autocomplete(interaction) {
+    return autocompletar(interaction);
+  },
 
   async execute(interaction) {
     const user = interaction.options.getUser('usuario', true);

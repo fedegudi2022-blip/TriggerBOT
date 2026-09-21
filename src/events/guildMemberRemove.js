@@ -1,24 +1,30 @@
 const { Events } = require('discord.js');
-const { logEvent } = require('../utils/log');
+const { logEvent, tiempoRelativo } = require('../utils/log');
 
 module.exports = {
   name: Events.GuildMemberRemove,
   async execute(member) {
     if (member.user.bot) return;
 
+    const fields = [
+      { name: 'Usuario', value: `${member.user} (\`${member.user.tag}\`)`, inline: true },
+      { name: 'ID', value: `\`${member.id}\``, inline: true },
+      { name: 'Miembros totales', value: String(member.guild.memberCount), inline: true },
+    ];
+
+    if (member.joinedTimestamp) {
+      fields.push({
+        name: 'Estuvo en el server',
+        value: tiempoRelativo(Date.now() - member.joinedTimestamp),
+        inline: true,
+      });
+    }
+
     logEvent(member.guild, {
       color: 0x99aab5,
-      title: '👋 Miembro salió',
-      description: `**${member.user.tag}** dejó el servidor.`,
+      title: 'Miembro salió',
       thumbnail: member.user.displayAvatarURL({ size: 128 }),
-      fields: [
-        { name: 'Miembro #', value: String(member.guild.memberCount), inline: true },
-        {
-          name: 'Se unió',
-          value: member.joinedTimestamp ? `<t:${Math.floor(member.joinedTimestamp / 1000)}:R>` : '*desconocido*',
-          inline: true,
-        },
-      ],
+      fields,
     });
   },
 };

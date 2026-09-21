@@ -2,6 +2,7 @@ const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('disc
 const { logAction } = require('../utils/modlog');
 const { successEmbed, errorEmbed } = require('../utils/replies');
 const { motivoNoModerable, avisarPorDM } = require('../utils/moderation');
+const { autocompletar } = require('../utils/plantillas');
 
 const DURATIONS = {
   '5m': 5 * 60 * 1000,
@@ -38,7 +39,11 @@ module.exports = {
           { name: '28 días (máximo de Discord)', value: '28d' }
         )
     )
-    .addStringOption((o) => o.setName('razon').setDescription('Motivo del silencio').setMaxLength(500)),
+    .addStringOption((o) => o.setName('razon').setDescription('Motivo del silencio (escribí para ver plantillas)').setMaxLength(500).setAutocomplete(true)),
+
+  async autocomplete(interaction) {
+    return autocompletar(interaction);
+  },
 
   async execute(interaction) {
     const user = interaction.options.getUser('usuario', true);

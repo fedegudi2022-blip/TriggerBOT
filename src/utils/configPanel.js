@@ -25,7 +25,9 @@ const SECCIONES = [
   { value: 'staff', label: 'Roles de staff', description: 'Quiénes son admin, mod y helper para el bot', emoji: '5️⃣' },
   { value: 'mute', label: 'Rol de silenciado', description: 'Rol que usa /mute (si no hay, se crea uno solo)', emoji: '6️⃣' },
   { value: 'ia', label: 'Chat con IA', description: 'Prender o apagar las respuestas al mencionar al bot', emoji: '7️⃣' },
-  { value: 'desactivar', label: 'Desactivar funciones', description: 'Apagar funciones que ya no querés usar', emoji: '8️⃣' },
+  { value: 'niveles', label: 'Niveles y XP', description: 'Canal donde se anuncian subidas de nivel y logros', emoji: '8️⃣' },
+  { value: 'frases', label: 'Frase del día', description: 'Canal y hora de la frase automática diaria', emoji: '9️⃣' },
+  { value: 'desactivar', label: 'Desactivar funciones', description: 'Apagar funciones que ya no querés usar', emoji: '🔟' },
 ];
 
 const NOMBRE_SECCION = Object.fromEntries(SECCIONES.map((s) => [s.value, s.label]));
@@ -83,6 +85,8 @@ function panelCompleto(guild) {
       { name: 'Avisos al staff', value: estado(config.avisosChannel ? `<#${config.avisosChannel}>` : null), inline: true },
       { name: 'Rol de silenciado', value: estado(config.muteRole ? `<@&${config.muteRole}>` : null), inline: true },
       { name: 'Chat con IA', value: config.iaActivada === false ? 'Apagada' : 'Prendida', inline: true },
+      { name: 'Canal de niveles', value: estado(config.canalNiveles ? `<#${config.canalNiveles}>` : null), inline: true },
+      { name: 'Frase del día', value: estado(config.fraseDelDia?.canalId ? `<#${config.fraseDelDia.canalId}>` : null), inline: true },
       { name: 'Staff del bot', value: staffLines, inline: false }
     )
     .setFooter({ text: 'TriggerBOT' })
@@ -205,6 +209,27 @@ function vistaSeccion(guild, seccion, guardado = false) {
       )
     );
     components.push(filaVolver());
+  } else if (seccion === 'niveles' || seccion === 'frases') {
+    const esNiveles = seccion === 'niveles';
+    const canalId = esNiveles ? config.canalNiveles : config.fraseDelDia?.canalId;
+    const extra = esNiveles
+      ? 'Ahí se anuncian subidas de nivel y logros desbloqueados. XP por hablar con anti-farm: /estadisticas y /top para consultar.'
+      : `**Hora de publicación:** ${config.fraseDelDia?.hora ?? 12}:00 (Argentina)\n**Frases cargadas:** ${config.fraseDelDia?.frases?.length ?? 0}\n\nLa hora y las frases se gestionan con /frases.`;
+
+    embed = new EmbedBuilder()
+      .setTitle(esNiveles ? 'Niveles y XP' : 'Frase del día')
+      .setColor(0x5865f2)
+      .setDescription(`**Canal actual:** ${canalActual(canalId)}\n\n${extra}${nota}`);
+
+    components.push(
+      new ActionRowBuilder().addComponents(
+        new ChannelSelectMenuBuilder()
+          .setCustomId(`cfg:set:${seccion}:canal`)
+          .setPlaceholder('Elegí el canal')
+          .setChannelTypes(ChannelType.GuildText)
+      )
+    );
+    components.push(new ActionRowBuilder().addComponents(filaDesactivar(seccion).components[0], filaVolver().components[0]));
   } else if (seccion === 'desactivar') {
     embed = new EmbedBuilder()
       .setTitle('Desactivar funciones')
@@ -275,6 +300,11 @@ function aplicarSet(guildId, seccion, campo, valor) {
       c.logs = valor;
     } else if (seccion === 'avisos') {
       c.avisosChannel = valor;
+    } else if (seccion === 'niveles') {
+      c.canalNiveles = valor;
+    } else if (seccion === 'frases') {
+      c.fraseDelDia = c.fraseDelDia || { canalId: null, hora: 12, frases: [], ultima: null };
+      c.fraseDelDia.canalId = valor;
     } else if (seccion === 'staff') {
       c[`${campo}Role`] = valor;
     } else if (seccion === 'mute' && campo === 'rol') {
@@ -292,6 +322,8 @@ function aplicarDesactivado(guildId, feature) {
     else if (feature === 'logs') delete c.logs;
     else if (feature === 'avisos') delete c.avisosChannel;
     else if (feature === 'mute') delete c.muteRole;
+    else if (feature === 'niveles') delete c.canalNiveles;
+    else if (feature === 'frases') delete c.fraseDelDia;
     else if (feature === 'ia') c.iaActivada = false;
   });
 }

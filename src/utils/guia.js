@@ -23,8 +23,12 @@ function construirGuia(client) {
         value: '`/config` con: `ver` · `welcome` · `modlog` · `logs` · `avisos` · `staff` · `mute` · `ia` · `desactivar`',
       },
       {
+        name: 'Niveles y logros',
+        value: '`/estadisticas` · `/top` — ganás XP escribiendo, subís de nivel y desbloqueás logros',
+      },
+      {
         name: 'Utilidades',
-        value: '`/afk` · `/encuesta` · `/embed` (staff)',
+        value: '`/afk` · `/encuesta` · `/embed` (staff) · `/plantillas` (staff) · `/frases` (staff)',
       },
       {
         name: 'Diversión',
