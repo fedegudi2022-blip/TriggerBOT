@@ -29,10 +29,10 @@ function construirGuia(client) {
         value:
           '• Todos los comandos de moderación avisan al usuario por DM y quedan registrados en el mod-log.\n' +
           '• Necesitás permisos de moderación o un rol de staff (configurable con `/config staff`).\n' +
-          '• También podés escribirme: mencioname seguido de `ayuda` o `ping`.',
+          '• Si me mencionás en el chat, te puedo contestar: salúdame o pedime `ping`.',
       },
     ],
-    footer: 'TriggerBOT • usá /help o mencioname cuando necesites ayuda',
+    footer: 'TriggerBOT • usá /help cuando necesites la guía',
   });
 }
 

@@ -1,11 +1,12 @@
 const { Events } = require('discord.js');
-const { construirGuia } = require('../utils/guia');
+const { brandEmbed } = require('../utils/replies');
+const { responderCharla, normalizar, EMOJIS_REACCION } = require('../utils/charla');
 const { getGuildConfig } = require('../store');
 
 // Limita el tamaño del buffer de mensajes recientes por canal para no crecer sin control.
 const MAX_BUFFER = 100;
 
-// Cooldown del sistema de guía: 1 respuesta por usuario cada 15 segundos.
+// Cooldown de charla: 1 respuesta por usuario cada 15 segundos.
 const COOLDOWN_MS = 15_000;
 const cooldowns = new Map();
 
@@ -47,19 +48,25 @@ function estaEnCooldown(userId) {
   return false;
 }
 
-// Responde cuando alguien menciona al bot: guía, o comando estilo prefijo (@TriggerBOT ping).
+// Probabilidad de que el bot responda con una reacción de emoji en vez de charla.
+const PROBABILIDAD_REACCION = 0.25;
+
+// Responde cuando alguien menciona al bot: a veces reacciona con un emoji y
+// otras charla. La guía completa vive exclusivamente en /help.
 async function manejarMencion(message) {
   const client = message.client;
   if (!message.mentions.users.has(client.user.id)) return;
   if (estaEnCooldown(message.author.id)) return;
 
-  // Texto que quedó después de la mención: "@TriggerBOT ping" → "ping"
-  const texto = message.content
-    .replaceAll(`<@${client.user.id}>`, '')
-    .replaceAll(`<@!${client.user.id}>`, '')
-    .trim()
-    .toLowerCase();
+  // Texto que quedó después de la mención: "@TriggerBOT hola" → "hola"
+  const texto = normalizar(
+    message.content
+      .replaceAll(`<@${client.user.id}>`, '')
+      .replaceAll(`<@!${client.user.id}>`, '')
+      .trim()
+  );
 
+  // Ping rápido con formato del bot; el resto es charla.
   if (texto === 'ping') {
     const embed = brandEmbed({
       color: 0x57f287,
@@ -69,16 +76,13 @@ async function manejarMencion(message) {
     return message.reply({ embeds: [embed] }).catch(() => {});
   }
 
-  if (texto && !['ayuda', 'help', 'guia', 'guía', 'comandos'].includes(texto)) {
-    return message
-      .reply({
-        content: `No reconozco \`${texto.slice(0, 50)}\` como comando... pero acá está la guía:`,
-        embeds: [construirGuia(client)],
-      })
-      .catch(() => {});
+  // A veces solo reacciona con un emoji; el resto del tiempo charla.
+  if (Math.random() < PROBABILIDAD_REACCION) {
+    const emoji = EMOJIS_REACCION[Math.floor(Math.random() * EMOJIS_REACCION.length)];
+    return message.react(emoji).catch(() => {});
   }
 
-  return message.reply({ embeds: [construirGuia(client)] }).catch(() => {});
+  await message.reply({ content: responderCharla(texto) }).catch(() => {});
 }
 
 module.exports = {

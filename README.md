@@ -28,8 +28,8 @@ src/
 |---|---|---|
 | `/ping` | Latencia del bot | Todos |
 | `/help` | Guía completa de comandos | Todos |
-| Mencionar al bot (`@TriggerBOT`) | Muestra la misma guía que `/help` | Todos |
-| `@TriggerBOT ping` / `@TriggerBOT ayuda` | Ping rápido o guía por mención | Todos |
+| Mencionar al bot (`@TriggerBOT`) | Charla: saludos, cortesías y respuestas variadas | Todos |
+| `@TriggerBOT ping` | Ping rápido por mención | Todos |
 
 ### Moderación
 | Comando | Qué hace | Permisos |
