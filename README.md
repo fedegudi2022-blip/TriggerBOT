@@ -72,12 +72,14 @@ XP por escribir (15-25 por mensaje, máximo 1 por minuto para evitar farmeo), ra
 | `/plantillas agregar/quitar/lista` | Razones rápidas que autocompletan `/warn`, `/ban`, `/kick`, etc. (staff) |
 | `/frases configurar/agregar/publicar/lista/quitar` | Frase del día publicada automáticamente a la hora elegida (staff) |
 
-### Diversión
+### Diversión y comunidad
 | Comando | Qué hace |
 |---|---|
+| `/interaccion beso/abrazo/caricia/abofetear/morder/pellizco/chocar/guino @usuario` | Interacciones con GIF animado y contadores de pareja persistentes |
+| `/meme` | Meme al azar de Reddit (r/memes, r/memesesp y más) con botón Otro |
+| `/8ball pregunta` | La bola 8 mágica responde con 20 veredictos |
 | `/diversion dado [caras]` | Tira un dado (1-6 o hasta 100 caras) |
 | `/diversion moneda` | Cara o ceca |
-| `/diversion beso @usuario` | Besos virtuales 😘 |
 
 ### Configuración (solo staff)
 
@@ -103,6 +105,27 @@ Para activarlo:
 Con `/status` ves qué modelo está usando cada IA.
 
 **Sin clave configurada el bot funciona igual**: usa su repertorio local de respuestas. Si la IA falla o se queda sin cuota, también cae al respaldo automáticamente — nunca se queda mudo.
+
+## Base de datos (Supabase)
+
+Los datos (configuración, warns, niveles, afk, interacciones) se guardan en `data/*.json` **y se respaldan en Supabase** (PostgreSQL en la nube, gratis):
+
+- Cada cambio local se sube a la nube 3 segundos después (agrupa ráfagas de escrituras).
+- Al arrancar, el bot compara local vs nube y aplica la copia más nueva: si el host borra `data/`, todo se restaura solo desde Supabase.
+- Cuando el bot es expulsado de un servidor, sus datos se limpian de ambos lados.
+
+**Configuración (5 minutos):**
+1. Creá el proyecto gratis en [supabase.com](https://supabase.com) (sin tarjeta).
+2. **SQL Editor → New query**: pegá el contenido de `sql/schema.sql` y apretá **Run**.
+3. **Project Settings → API**: copiá la **Project URL** y la **service_role key** (¡la service_role, no la anon!).
+4. En Wispbyte (Startup → Variables) o en tu `.env` local:
+   ```
+   SUPABASE_URL=https://xxxx.supabase.co
+   SUPABASE_KEY=eyJ... (service_role)
+   ```
+5. Restart. En el log vas a ver `Supabase conectado: ...` y `/status` muestra el estado de la BD.
+
+Sin `SUPABASE_URL`/`SUPABASE_KEY` el bot funciona igual, solo con archivos locales.
 
 ## Setup local
 

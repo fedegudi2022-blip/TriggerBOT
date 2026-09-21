@@ -4,6 +4,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { marcarSucio } = require('./db/sync');
 
 const DATA_DIR = path.join(__dirname, '..', 'data');
 const FILE = path.join(DATA_DIR, 'warns.json');
@@ -38,6 +39,7 @@ function addWarn(guildId, userId, entry) {
   cache[guildId][userId] = cache[guildId][userId] || [];
   cache[guildId][userId].push(entry);
   save();
+  marcarSucio(guildId, 'warns', () => cache[guildId] ?? {});
   return cache[guildId][userId].length;
 }
 
@@ -48,9 +50,27 @@ function removeWarn(guildId, userId, index) {
   const [removed] = warns.splice(index - 1, 1);
   if (warns.length === 0) delete cache[guildId][userId];
   save();
+  marcarSucio(guildId, 'warns', () => cache[guildId] ?? {});
   return removed;
+}
+
+// ---------- Integración con Supabase (respaldo en la nube) ----------
+function leerGuilds() {
+  const mtime = fs.existsSync(FILE) ? fs.statSync(FILE).mtimeMs : 0;
+  const out = {};
+  for (const guildId of Object.keys(cache)) out[guildId] = mtime;
+  return out;
+}
+
+function leer(guildId) {
+  return cache[guildId] ?? {};
+}
+
+function escribir(guildId, datos) {
+  cache[guildId] = datos ?? {};
+  save();
 }
 
 load();
 
-module.exports = { getWarns, addWarn, removeWarn };
+module.exports = { getWarns, addWarn, removeWarn, leerGuilds, leer, escribir };

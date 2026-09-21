@@ -4,6 +4,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { marcarSucio } = require('./db/sync');
 
 const DATA_DIR = path.join(__dirname, '..', 'data');
 const FILE = path.join(DATA_DIR, 'config.json');
@@ -37,8 +38,27 @@ function setGuildConfig(guildId, updater) {
   updater(guildConfig);
   cache[guildId] = guildConfig;
   save();
+  marcarSucio(guildId, 'config', () => cache[guildId] ?? {});
+}
+
+// ---------- Integración con Supabase (respaldo en la nube) ----------
+// mtime del archivo compartido por todos los servidores de este almacén.
+function leerGuilds() {
+  const mtime = fs.existsSync(FILE) ? fs.statSync(FILE).mtimeMs : 0;
+  const out = {};
+  for (const guildId of Object.keys(cache)) out[guildId] = mtime;
+  return out;
+}
+
+function leer(guildId) {
+  return cache[guildId] ?? {};
+}
+
+function escribir(guildId, datos) {
+  cache[guildId] = datos ?? {};
+  save();
 }
 
 load();
 
-module.exports = { getGuildConfig, setGuildConfig };
+module.exports = { getGuildConfig, setGuildConfig, leerGuilds, leer, escribir };

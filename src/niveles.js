@@ -7,6 +7,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { marcarSucio } = require('./db/sync');
 
 const DATA_DIR = path.join(__dirname, '..', 'data');
 const FILE = path.join(DATA_DIR, 'niveles.json');
@@ -102,11 +103,15 @@ function procesarMensaje(guildId, userId) {
   const nivelAnterior = u.nivel;
   u.nivel = nivelNuevo;
   save();
+  marcarSucio(guildId, 'niveles', () => cache[guildId] ?? {});
 
   // Logros recién cumplidos (no repetidos).
   const logrosNuevos = LOGROS.filter((l) => !u.logros.includes(l.id) && l.cond(u, nivelNuevo));
   u.logros.push(...logrosNuevos.map((l) => l.id));
-  if (logrosNuevos.length) save();
+  if (logrosNuevos.length) {
+    save();
+    marcarSucio(guildId, 'niveles', () => cache[guildId] ?? {});
+  }
 
   return { xpGanado, subio, nivelAnterior, nivelNuevo, logrosNuevos, totalMensajes: u.mensajes };
 }
@@ -142,6 +147,23 @@ function getGuildConfigSafe(guildId) {
   return getGuildConfig(guildId);
 }
 
+// ---------- Integración con Supabase (respaldo en la nube) ----------
+function leerGuilds() {
+  const mtime = fs.existsSync(FILE) ? fs.statSync(FILE).mtimeMs : 0;
+  const out = {};
+  for (const guildId of Object.keys(cache)) out[guildId] = mtime;
+  return out;
+}
+
+function leer(guildId) {
+  return cache[guildId] ?? {};
+}
+
+function escribir(guildId, datos) {
+  cache[guildId] = datos ?? {};
+  save();
+}
+
 load();
 
 module.exports = {
@@ -155,4 +177,7 @@ module.exports = {
   canalAnuncios,
   XP_MIN,
   XP_MAX,
+  leerGuilds,
+  leer,
+  escribir,
 };

@@ -5,6 +5,7 @@ const { successEmbed } = require('../utils/replies');
 // Guardado en disco para sobrevivir reinicios.
 const fs = require('node:fs');
 const path = require('node:path');
+const { marcarSucio } = require('../db/sync');
 
 const DATA_DIR = path.join(__dirname, '..', '..', 'data');
 const FILE = path.join(DATA_DIR, 'afk.json');
@@ -29,6 +30,7 @@ function setAFK(guildId, userId, motivo) {
   cache[guildId] = cache[guildId] || {};
   cache[guildId][userId] = { motivo, desde: Date.now() };
   guardar();
+  marcarSucio(guildId, 'afk', () => cache[guildId] ?? {});
 }
 
 function getAFK(guildId, userId) {
@@ -39,13 +41,34 @@ function quitarAFK(guildId, userId) {
   if (cache[guildId]?.[userId]) {
     delete cache[guildId][userId];
     guardar();
+    marcarSucio(guildId, 'afk', () => cache[guildId] ?? {});
   }
+}
+
+// ---------- Integración con Supabase (respaldo en la nube) ----------
+function leerGuilds() {
+  const mtime = fs.existsSync(FILE) ? fs.statSync(FILE).mtimeMs : 0;
+  const out = {};
+  for (const guildId of Object.keys(cache)) out[guildId] = mtime;
+  return out;
+}
+
+function leer(guildId) {
+  return cache[guildId] ?? {};
+}
+
+function escribir(guildId, datos) {
+  cache[guildId] = datos ?? {};
+  guardar();
 }
 
 module.exports = {
   setAFK,
   getAFK,
   quitarAFK,
+  leerGuilds,
+  leer,
+  escribir,
 
   data: new SlashCommandBuilder()
     .setName('afk')

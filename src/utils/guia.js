@@ -31,8 +31,9 @@ function construirGuia(client) {
         value: '`/afk` · `/encuesta` · `/embed` (staff) · `/plantillas` (staff) · `/frases` (staff)',
       },
       {
-        name: 'Diversión',
-        value: '`/diversion dado` · `/diversion moneda` · `/diversion beso`',
+        name: 'Diversión y comunidad',
+        value:
+          '`/interaccion beso/abrazo/abofetear...` (con GIFs) · `/meme` · `/8ball` · `/diversion dado/moneda`',
       },
       {
         name: 'Chat con IA',

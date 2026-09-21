@@ -1,5 +1,5 @@
 // TriggerBOT — punto de entrada
-// Bot privado para la comunidad Trigger. Sin base de datos: todo en memoria.
+// Bot privado para la comunidad Trigger. Persistencia: JSON local + Supabase como respaldo maestro.
 
 require('dotenv').config();
 const fs = require('node:fs');
@@ -89,10 +89,13 @@ setInterval(async () => {
 // ---------- Componentes interactivos (botones, selectores y modales) ----------
 const { manejarBoton } = require('./utils/accionesIA');
 const { manejarComponente } = require('./utils/configPanel');
+const memeCmd = require('./commands/meme');
 client.on('interactionCreate', async (interaction) => {
   try {
     if (interaction.isButton() && interaction.customId.startsWith('ia_accion:')) {
       await manejarBoton(interaction);
+    } else if (interaction.isButton() && interaction.customId === 'meme:otro') {
+      await memeCmd.boton(interaction);
     } else if (interaction.customId?.startsWith('cfg:')) {
       await manejarComponente(interaction);
     }

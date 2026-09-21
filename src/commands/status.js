@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require('discord.js');
 const { estadoIA, getStatsIA } = require('../utils/ia');
 const { brandEmbed } = require('../utils/replies');
+const db = require('../db/supabase');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -12,6 +13,7 @@ module.exports = {
 
     const ia = await estadoIA();
     const stats = getStatsIA();
+    const dbOk = db.configurada ? await db.ping() : false;
 
     const iaGemini = ia.gemini.configurada ? `\`${ia.gemini.modelo}\`` : '—';
     const iaGroq = ia.groq.configurada ? `\`${ia.groq.modelo}\`` : '—';
@@ -40,7 +42,16 @@ module.exports = {
         { name: 'Respuestas de IA', value: statsTexto, inline: false },
         { name: 'Tiempo encendido', value: uptimeTexto, inline: true },
         { name: 'Memoria del proceso', value: `${Math.round(process.memoryUsage().rss / 1024 / 1024)} MB`, inline: true },
-        { name: 'Node.js', value: process.version, inline: true }
+        { name: 'Node.js', value: process.version, inline: true },
+        {
+          name: 'Base de datos (Supabase)',
+          value: !db.configurada
+            ? 'No configurada (solo data/ local)'
+            : dbOk
+              ? `Conectada · ${db.estado.subidasOk} respaldos${db.estado.ultimaSync ? ` · último ${db.estado.ultimaSync.toLocaleTimeString('es-AR')}` : ''}`
+              : `Error de conexión${db.estado.ultimoError ? `: ${db.estado.ultimoError}` : ''}`,
+          inline: false,
+        }
       )
       .setFooter({ text: 'TriggerBOT' })
       .setTimestamp();

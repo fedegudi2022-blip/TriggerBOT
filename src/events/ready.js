@@ -1,4 +1,6 @@
 const { Events, ActivityType, REST, Routes } = require('discord.js');
+const { estado } = require('../db/supabase');
+const { restaurar } = require('../db/sync');
 
 module.exports = {
   name: Events.ClientReady,
@@ -9,6 +11,31 @@ module.exports = {
       `[TriggerBOT] Servidores activos: ${client.guilds.cache.map((g) => g.name).join(', ') || 'ninguno'}`
     );
     console.log(`[TriggerBOT] Comandos cargados: ${client.commands.size}`);
+
+    // ---------- Base de datos (Supabase): restaurar/respaldar al arrancar ----------
+    if (estado.configurada) {
+      try {
+        const resumen = await restaurar({
+          config: require('../store'),
+          warns: require('../warns'),
+          niveles: require('../niveles'),
+          afk: require('../commands/afk'),
+          interacciones: require('../utils/interacciones'),
+        });
+        if (resumen.errores) {
+          console.warn(`[TriggerBOT] Supabase: restauración con errores (${resumen.errores}). El bot sigue con datos locales.`);
+        } else {
+          console.log(
+            `[TriggerBOT] Supabase conectado: ${resumen.restaurados} restaurado(s) desde la nube, ` +
+            `${resumen.nube} subido(s) como respaldo.`
+          );
+        }
+      } catch (error) {
+        console.warn(`[TriggerBOT] Supabase: no se pudo completar la restauración (${error.message}). El bot sigue con datos locales.`);
+      }
+    } else {
+      console.log('[TriggerBOT] Supabase no configurado: los datos se guardan solo en data/ local.');
+    }
 
     client.user.setPresence({
       activities: [{ name: 'Moderando Trigger.Arena', type: ActivityType.Watching }],
