@@ -29,7 +29,8 @@ src/
 | `/ping` | Latencia del bot | Todos |
 | `/status` | Estado del bot: modelo de IA, latencia, tiempo encendido | Todos |
 | `/help` | Guía completa de comandos | Todos |
-| Mencionar al bot (`@TriggerBOT`) | Charla con IA (si está configurada) o respuestas locales | Todos |
+| Mencionar al bot (`@TriggerBOT`) | Charla con IA, con indicador de escribiendo y contexto | Todos |
+| `@TriggerBOT muteá a @fulano por spam` | La IA interpreta el pedido y el staff lo confirma con botones | Todos (confirma staff) |
 | `@TriggerBOT ping` | Ping rápido por mención | Todos |
 
 ### Moderación
@@ -67,6 +68,8 @@ src/
 ## Chat con IA (opcional)
 
 El bot puede conversar cuando lo mencionás, con memoria de contexto por usuario (los últimos 6 turnos, se olvida a los 10 minutos).
+
+**Acciones de moderación por chat:** si un usuario le pide `@TriggerBOT banear a @fulano por flodeo`, la IA interpreta el pedido y muestra un embed con botones. **Solo el staff** (permisos de moderación o roles de `/config staff`) puede apretar **Ejecutar**; la acción queda registrada en el mod-log. Hay cooldown de 20 s por usuario para evitar abusos y las solicitudes expiran a los 5 minutos.
 
 **Cadena de respaldo automática:**
 1. **Gemini** (principal) — si Google retira un modelo lo reemplaza solo; si está saturado (503/429) prueba hasta 2 modelos alternos.

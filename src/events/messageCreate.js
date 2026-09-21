@@ -1,7 +1,8 @@
 const { Events } = require('discord.js');
 const { brandEmbed } = require('../utils/replies');
 const { responderCharla, normalizar } = require('../utils/charla');
-const { responderConIA } = require('../utils/ia');
+const { conversar } = require('../utils/ia');
+const { pedirConfirmacion } = require('../utils/accionesIA');
 const { getGuildConfig } = require('../store');
 
 // Limita el tamaño del buffer de mensajes recientes por canal para no crecer sin control.
@@ -68,7 +69,7 @@ async function manejarMencion(message) {
       .trim()
   );
 
-  // Ping rápido con formato del bot; el resto es charla.
+  // Ping rápido con formato del bot; el resto es charla o acciones con IA.
   if (texto === 'ping') {
     const embed = brandEmbed({
       color: 0x57f287,
@@ -78,12 +79,21 @@ async function manejarMencion(message) {
     return message.reply({ embeds: [embed] }).catch(() => {});
   }
 
+  // Indicador de "escribiendo" mientras la IA piensa.
+  await message.channel.sendTyping().catch(() => {});
+
   // Chat con IA si está configurada; si falla o no hay clave, respaldo local.
   try {
-    const respuestaIA = await responderConIA(message.author.id, texto || '(el usuario solo te mencionó)');
-    if (respuestaIA) {
-      await message.reply({ content: respuestaIA.slice(0, 2000) }).catch(() => {});
-      return;
+    const respuesta = await conversar(message.author.id, texto || '(el usuario solo te mencionó)', {
+      usuario: message.member?.displayName || message.author.username,
+      canal: message.channel.name,
+    });
+
+    if (respuesta?.tipo === 'accion') {
+      return pedirConfirmacion(message, respuesta);
+    }
+    if (respuesta?.tipo === 'chat' && respuesta.texto) {
+      return message.reply({ content: respuesta.texto.slice(0, 2000) }).catch(() => {});
     }
   } catch (error) {
     console.warn(`[TriggerBOT] IA no disponible, uso respuesta local: ${error.message}`);

@@ -43,6 +43,18 @@ for (const file of fs.readdirSync(eventsPath).filter((f) => f.endsWith('.js'))) 
   }
 }
 
+// ---------- Botones de confirmación de acciones por chat con IA ----------
+const { manejarBoton } = require('./utils/accionesIA');
+client.on('interactionCreate', async (interaction) => {
+  if (interaction.isButton() && interaction.customId.startsWith('ia_accion:')) {
+    try {
+      await manejarBoton(interaction);
+    } catch (error) {
+      console.error('[TriggerBOT] Error en botón de acción IA:', error);
+    }
+  }
+});
+
 // ---------- Manejador de comandos slash ----------
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
