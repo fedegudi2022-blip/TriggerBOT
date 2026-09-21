@@ -1,5 +1,6 @@
 // Sistema de niveles: XP por actividad con anti-farm, bonus, curva de niveles y logros.
-// Persistencia en data/niveles.json con escritura atómica (misma mecánica que store.js).
+// Persistencia en data/niveles.json con escritura atómica y DEBOUNCE: los cambios
+// quedan en memoria y se escriben a disco cada 5 s (o al apagar), no en cada mensaje.
 //
 // XP base: entre 15 y 25 por mensaje, con cooldown de 60 s por usuario (anti-farm).
 // Bonus acumulables:
@@ -11,12 +12,25 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { marcarSucio } = require('./db/sync');
+const { marcarSucio, tocar } = require('./db/sync');
 
 const DATA_DIR = path.join(__dirname, '..', 'data');
 const FILE = path.join(DATA_DIR, 'niveles.json');
 
+// Debounce de escritura: el event loop no se bloquea en cada mensaje.
+const GUARDADO_DEBOUNCE_MS = 5_000;
+let sucio = false;
+let timerGuardado = null;
+
 let cache = {};
+
+// Marca del último cambio local POR servidor (comparación guild-por-guild con la nube).
+// Al arrancar usa el mtime del archivo; cada mutación la actualiza con Date.now().
+const marcasCambio = new Map();
+function tocarMarca(guildId) {
+  const previa = marcasCambio.get(guildId) ?? 0;
+  marcasCambio.set(guildId, Math.max(previa, Date.now()));
+}
 
 function load() {
   try {
@@ -27,11 +41,45 @@ function load() {
   }
 }
 
-function save() {
+// Escritura atómica inmediata (tmp + rename).
+function guardarAhora() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
   const tmp = FILE + '.tmp';
   fs.writeFileSync(tmp, JSON.stringify(cache, null, 2));
   fs.renameSync(tmp, FILE);
+  sucio = false;
+}
+
+// Programa un guardado con debounce; evita escribir en cada mensaje.
+function programarGuardado() {
+  sucio = true;
+  if (timerGuardado) return;
+  timerGuardado = setTimeout(() => {
+    timerGuardado = null;
+    if (sucio) {
+      try {
+        guardarAhora();
+      } catch (error) {
+        console.error('[TriggerBOT] No se pudo guardar data/niveles.json:', error.message);
+      }
+    }
+  }, GUARDADO_DEBOUNCE_MS);
+  timerGuardado.unref?.();
+}
+
+// Volcado forzado (lo llama el apagado controlado).
+function volcar() {
+  if (timerGuardado) {
+    clearTimeout(timerGuardado);
+    timerGuardado = null;
+  }
+  if (sucio) {
+    try {
+      guardarAhora();
+    } catch (error) {
+      console.error('[TriggerBOT] No se pudo volcar data/niveles.json:', error.message);
+    }
+  }
 }
 
 // ---------- XP y niveles ----------
@@ -134,6 +182,8 @@ function usuario(guildId, userId) {
 }
 
 // Procesa un mensaje: suma XP con bonus, paga logros nuevos y devuelve lo que cambió.
+// NO escribe a disco en cada mensaje: deja el cambio en memoria (debounce de guardado)
+// y solo agenda subida a Supabase cuando hubo datos nuevos para ese guild.
 function procesarMensaje(guildId, userId, fecha = new Date()) {
   const u = usuario(guildId, userId);
   const ahora = fecha.getTime();
@@ -191,7 +241,10 @@ function procesarMensaje(guildId, userId, fecha = new Date()) {
     }
   }
 
-  save();
+  // Persistencia diferida: disco con debounce, nube con debounce propio de sync.js.
+  programarGuardado();
+  tocarMarca(guildId);
+  tocar(guildId, 'niveles');
   marcarSucio(guildId, 'niveles', () => cache[guildId] ?? {});
 
   return {
@@ -243,11 +296,9 @@ function getGuildConfigSafe(guildId) {
 }
 
 // ---------- Integración con Supabase (respaldo en la nube) ----------
-function leerGuilds() {
-  const mtime = fs.existsSync(FILE) ? fs.statSync(FILE).mtimeMs : 0;
-  const out = {};
-  for (const guildId of Object.keys(cache)) out[guildId] = mtime;
-  return out;
+// Marca de tiempo del último cambio real POR servidor (la usa db/sync.js).
+function marcasPorGuild() {
+  return Object.fromEntries(marcasCambio);
 }
 
 function leer(guildId) {
@@ -256,10 +307,16 @@ function leer(guildId) {
 
 function escribir(guildId, datos) {
   cache[guildId] = datos ?? {};
-  save();
+  guardarAhora();
+  tocarMarca(guildId);
+  tocar(guildId, 'niveles');
 }
 
 load();
+{
+  const mtime = fs.existsSync(FILE) ? fs.statSync(FILE).mtimeMs : 0;
+  for (const guildId of Object.keys(cache)) marcasCambio.set(guildId, mtime);
+}
 
 module.exports = {
   procesarMensaje,
@@ -277,7 +334,8 @@ module.exports = {
   canalAnuncios,
   XP_MIN,
   XP_MAX,
-  leerGuilds,
+  marcasPorGuild,
   leer,
   escribir,
+  volcar,
 };

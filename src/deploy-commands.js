@@ -1,10 +1,12 @@
 // Registra los comandos slash. Con GUILD_ID definido se registran al instante
 // en tu servidor (ideal para desarrollo); si falta, se registran globalmente.
+//
+// Usa la misma carga única que el runtime (src/commandLoader.js), así "npm run
+// register" registra EXACTAMENTE los mismos 43 comandos que carga el bot.
 
 require('dotenv').config();
-const fs = require('node:fs');
-const path = require('node:path');
 const { REST, Routes } = require('discord.js');
+const { cargarComandos } = require('./commandLoader');
 
 const { DISCORD_TOKEN, CLIENT_ID, GUILD_ID } = process.env;
 
@@ -13,11 +15,7 @@ if (!DISCORD_TOKEN || !CLIENT_ID) {
   process.exit(1);
 }
 
-const commands = [];
-const commandsPath = path.join(__dirname, 'commands');
-for (const file of fs.readdirSync(commandsPath).filter((f) => f.endsWith('.js'))) {
-  commands.push(require(path.join(commandsPath, file)).data.toJSON());
-}
+const commands = cargarComandos().map((c) => c.data.toJSON());
 
 const rest = new REST().setToken(DISCORD_TOKEN);
 

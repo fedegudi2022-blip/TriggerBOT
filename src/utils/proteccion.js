@@ -9,10 +9,13 @@
 // Config por server (config.proteccion, se edita desde /config → Anti-spam y anti-raid):
 //   activado, accionSpam (aviso|timeout|mute|kick|ban), accionRaid (nada|kick|ban),
 //   spamMensajes, spamSegundos, raidJoins, raidSegundos, accionesRapidas.
+//
+// IMPORTANTE: cada acción devuelve lo que REALMENTE hizo ({ ok, error }), nunca
+// lo que intentó. Si Discord rechaza la operación, el log y la alerta lo dicen.
 const { PermissionFlagsBits } = require('discord.js');
-const { getGuildConfig, setGuildConfig } = require('../store');
+const { getGuildConfig } = require('../store');
 const { brandEmbed } = require('./replies');
-const { avisarPorDM } = require('./moderation');
+const { avisarPorDM, validarAccionDelBot } = require('./moderation');
 const { logAction } = require('./modlog');
 
 const POR_DEFECTO = {
@@ -76,6 +79,38 @@ function puede(guild, permiso) {
   return Boolean(guild.members.me?.permissions.has(permiso));
 }
 
+// Aplica el timeout y devuelve lo que REALMENTE pasó: { ok, error }.
+async function aplicarTimeout(member, razon, duracionMs = DURACION_TIMEOUT_MS) {
+  const error = validarAccionDelBot(member.guild, member, PermissionFlagsBits.ModerateMembers);
+  if (error) return { ok: false, error };
+  try {
+    await member.timeout(duracionMs, razon);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: `Discord rechazó el timeout: ${e.message}` };
+  }
+}
+
+// Aplica el rol de mute si existe. Si NO existe, aplica timeout como fallback real
+// (antes solo anunciaba el fallback sin ejecutarlo). Devuelve { ok, error, fallback }.
+async function aplicarMute(member, razon) {
+  const muteRole = getGuildConfig(member.guild.id).muteRole;
+  const rol = member.guild.roles.cache.get(muteRole);
+  if (rol) {
+    const error = validarAccionDelBot(member.guild, member, PermissionFlagsBits.ManageRoles);
+    if (error) return { ok: false, error };
+    try {
+      await member.roles.add(rol, razon);
+      return { ok: true, fallback: false };
+    } catch (e) {
+      return { ok: false, error: `Discord rechazó asignar el rol de silenciado: ${e.message}` };
+    }
+  }
+  // Fallback REAL: sin rol configurado → timeout de 10 minutos.
+  const res = await aplicarTimeout(member, `${razon} (fallback: no hay rol de silenciado configurado)`);
+  return { ...res, fallback: true };
+}
+
 async function borrarRafaga(guild, mensajes) {
   if (!puede(guild, PermissionFlagsBits.ManageMessages)) return 0;
   // Agrupa por canal: bulkDelete falla entero si algún mensaje tiene más de 14 días,
@@ -95,35 +130,42 @@ async function borrarRafaga(guild, mensajes) {
   return borrados;
 }
 
-async function aplicarMute(member, razon) {
-  const muteRole = getGuildConfig(member.guild.id).muteRole;
-  const rol = member.guild.roles.cache.get(muteRole);
-  if (!rol) return false; // sin rol configurado: la vista del panel aclara el fallback
-  await member.roles.add(rol, razon).catch(() => null);
-  return true;
-}
-
-// Ejecuta la acción configurada sobre el miembro. Devuelve un texto con lo que hizo.
+// Ejecuta la acción configurada sobre el miembro. Devuelve un texto con lo que
+// REALMENTE hizo (con ⚠️ y el motivo si Discord rechazó la operación).
 async function ejecutarAccion(member, accion, razon, tipo) {
   const guild = member.guild;
   const resultado = [];
 
   if (accion === 'timeout') {
-    if (!puede(guild, PermissionFlagsBits.ModerateMembers)) return '⚠️ sin permiso de silenciar miembros';
-    await member.timeout(DURACION_TIMEOUT_MS, razon).catch(() => null);
-    resultado.push('timeout de 10 min');
+    const res = await aplicarTimeout(member, razon);
+    resultado.push(res.ok ? 'timeout de 10 min' : `⚠️ timeout falló: ${res.error}`);
   } else if (accion === 'mute') {
-    const ok = await aplicarMute(member, razon);
-    resultado.push(ok ? 'silenciado con rol' : '⚠️ sin rol de silenciado configurado (usé timeout)');
+    const res = await aplicarMute(member, razon);
+    if (res.ok) resultado.push(res.fallback ? '⚠️ sin rol de silenciado: apliqué timeout de 10 min' : 'silenciado con rol');
+    else resultado.push(`⚠️ mute falló: ${res.error}`);
   } else if (accion === 'kick') {
-    if (!puede(guild, PermissionFlagsBits.KickMembers)) return '⚠️ sin permiso de expulsar';
-    await avisarPorDM(member.user, `Fuiste expulsado automáticamente de **${guild.name}**: ${razon}`);
-    await member.kick(razon).catch(() => null);
-    resultado.push('expulsado');
+    const error = validarAccionDelBot(guild, member, PermissionFlagsBits.KickMembers);
+    if (error) resultado.push(`⚠️ expulsión rechazada: ${error}`);
+    else {
+      await avisarPorDM(member.user, `Fuiste expulsado automáticamente de **${guild.name}**: ${razon}`);
+      try {
+        await member.kick(razon);
+        resultado.push('expulsado');
+      } catch (e) {
+        resultado.push(`⚠️ Discord rechazó la expulsión: ${e.message}`);
+      }
+    }
   } else if (accion === 'ban') {
-    if (!puede(guild, PermissionFlagsBits.BanMembers)) return '⚠️ sin permiso de banear';
-    await member.ban({ reason: razon, deleteMessageSeconds: 3600 }).catch(() => null);
-    resultado.push('baneado');
+    const error = validarAccionDelBot(guild, member, PermissionFlagsBits.BanMembers);
+    if (error) resultado.push(`⚠️ baneo rechazado: ${error}`);
+    else {
+      try {
+        await member.ban({ reason: razon, deleteMessageSeconds: 3600 });
+        resultado.push('baneado');
+      } catch (e) {
+        resultado.push(`⚠️ Discord rechazó el baneo: ${e.message}`);
+      }
+    }
   }
 
   logAction(guild, {
@@ -229,6 +271,8 @@ async function registrarIngreso(member) {
   let aplicado = 'solo alerta';
   if (config.accionesRapidas && config.accionRaid !== 'nada') {
     const resultados = [];
+    let ok = 0;
+    let fallos = 0;
     for (const m of registro.miembros.slice(-config.raidJoins)) {
       const objetivo = member.guild.members.cache.get(m.id);
       if (!objetivo || objetivo.user.bot) continue;
@@ -237,9 +281,11 @@ async function registrarIngreso(member) {
       const razon = `Anti-raid: ${enVentana.length} ingresos en ${config.raidSegundos} s`;
       const res = await ejecutarAccion(objetivo, config.accionRaid, razon, 'raid');
       resultados.push(res);
+      if (res.startsWith('⚠️')) fallos += 1;
+      else ok += 1;
     }
     aplicado = resultados.length
-      ? `${config.accionRaid} aplicado a ${resultados.length} cuenta(s) nueva(s)`
+      ? `${config.accionRaid} aplicado a ${ok} cuenta(s) nueva(s)` + (fallos ? ` — ${fallos} rechazada(s) por Discord ⚠️` : '')
       : 'nadie calificó para auto-acción (cuentas nuevas sin roles)';
   }
 
@@ -267,4 +313,4 @@ function resetear() {
   ultimaAlertaRaid.clear();
 }
 
-module.exports = { procesarMensajeParaSpam, registrarIngreso, configDe, resetear, POR_DEFECTO, ETIQUETA_ACCION_SPAM, ETIQUETA_ACCION_RAID, borrarRafaga, ejecutarAccion };
+module.exports = { procesarMensajeParaSpam, registrarIngreso, configDe, resetear, POR_DEFECTO, ETIQUETA_ACCION_SPAM, ETIQUETA_ACCION_RAID, borrarRafaga, ejecutarAccion, aplicarMute, aplicarTimeout };

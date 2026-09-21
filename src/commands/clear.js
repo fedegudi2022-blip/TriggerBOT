@@ -25,22 +25,45 @@ module.exports = {
 
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-    const fetched = await interaction.channel.bulkDelete(amount, true).catch((error) => {
+    // Con filtro por usuario hay que traer de más: se piden hasta 5×cantidad
+    // (tope 400) y se borran SOLO los que coinciden, hasta llegar a la cuenta pedida.
+    const aBuscar = user ? Math.min(amount * 5, 400) : amount;
+
+    const mensajes = await interaction.channel.messages.fetch({ limit: aBuscar }).catch((error) => {
+      console.error(`[TriggerBOT] Error al fetch de mensajes: ${error.message}`);
+      return null;
+    });
+
+    if (!mensajes) {
+      return interaction.editReply({
+        embeds: [errorEmbed('No pude leer los mensajes del canal. Verificá que tenga permiso de **Leer historial**.')],
+      });
+    }
+
+    // Filtra por usuario (si corresponde) y toma solo la cantidad pedida.
+    const aBorrar = [...mensajes.values()]
+      .filter((m) => !user || m.author.id === user.id)
+      .slice(0, amount);
+
+    if (aBorrar.length === 0) {
+      const quien = user ? ` de **${user.tag}**` : '';
+      return interaction.editReply({
+        embeds: [errorEmbed(`No encontré mensajes${quien} para borrar en este canal.`)],
+      });
+    }
+
+    const borrados = await interaction.channel.bulkDelete(aBorrar, true).catch((error) => {
       console.error(`[TriggerBOT] Error en bulkDelete: ${error.message}`);
       return null;
     });
 
-    if (!fetched) {
+    if (!borrados) {
       return interaction.editReply({
         embeds: [errorEmbed('No pude borrar mensajes. Discord no permite borrar mensajes de más de 14 días.')],
       });
     }
 
-    let deleted = fetched.size;
-    if (user) {
-      deleted = fetched.filter((m) => m.author.id === user.id).size;
-    }
-
+    const deleted = borrados.size;
     const who = user ? ` de ${user}` : '';
     await interaction.editReply({ embeds: [successEmbed(`Borré **${deleted}** mensaje(s)${who}.`, '🧹 Limpieza')] });
 

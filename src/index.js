@@ -2,8 +2,6 @@
 // Bot privado para la comunidad Trigger. Persistencia: JSON local + Supabase como respaldo maestro.
 
 require('dotenv').config();
-const fs = require('node:fs');
-const path = require('node:path');
 const { Client, Collection, GatewayIntentBits, Partials, MessageFlags } = require('discord.js');
 
 const client = new Client({
@@ -19,30 +17,17 @@ const client = new Client({
 // Buffer de mensajes recientes (para mostrar contenido en los logs de borrados/ediciones).
 client.buffersMensajes = new Map();
 
-// ---------- Carga de comandos slash (src/commands/*) ----------
+// ---------- Carga de comandos slash (única fuente: src/commandLoader.js) ----------
+// Incluye los directos, los generados por fábrica (/beso, /abrazo...) y /moneda.
+const { cargarComandos } = require('./commandLoader');
 client.commands = new Collection();
-
-const commandsPath = path.join(__dirname, 'commands');
-for (const file of fs.readdirSync(commandsPath).filter((f) => f.endsWith('.js'))) {
-  const command = require(path.join(commandsPath, file));
-  if ('data' in command && 'execute' in command) {
-    client.commands.set(command.data.name, command);
-  } else {
-    console.warn(`[AVISO] El comando "${file}" no tiene "data" o "execute" y se ignoró.`);
-  }
-}
-
-// Comandos generados por fábrica: /beso, /abrazo, etc. (uno por interacción social).
-const { comandos } = require('./utils/fabricaInteracciones');
-for (const comando of comandos) client.commands.set(comando.data.name, comando);
-
-// /moneda vive junto a /dado pero se registra como comando propio.
-client.commands.set('moneda', require('./commands/diversion').moneda);
+for (const comando of cargarComandos()) client.commands.set(comando.data.name, comando);
 
 // ---------- Eventos (src/events/*) ----------
-const eventsPath = path.join(__dirname, 'events');
+const eventsPath = require('node:path').join(__dirname, 'events');
+const fs = require('node:fs');
 for (const file of fs.readdirSync(eventsPath).filter((f) => f.endsWith('.js'))) {
-  const event = require(path.join(eventsPath, file));
+  const event = require(require('node:path').join(eventsPath, file));
   if (event.once) {
     client.once(event.name, (...args) => event.execute(...args, client));
   } else {
@@ -176,6 +161,32 @@ process.on('unhandledRejection', (error) => console.error('[TriggerBOT] Promesa 
 client.on('error', (error) => console.error(`[TriggerBOT] Error en la conexión con Discord: ${error.message}`));
 client.on('shardDisconnect', (event) => console.warn(`[TriggerBOT] Conexión perdida con Discord. Reintentando automáticamente... ${event?.message ?? ''}`));
 client.on('shardReconnecting', () => console.log('[TriggerBOT] Reconectando con Discord...'));
+
+// ---------- Apagado controlado (SIGTERM/SIGINT: Wispbyte, Ctrl+C, etc.) ----------
+// Orden: 1) bloquear nuevas señales, 2) volcar a disco los JSON pendientes,
+// 3) esperar subidas a Supabase, 4) cerrar Discord, 5) salir.
+let apagando = false;
+async function apagadoControlado(señal) {
+  if (apagando) return;
+  apagando = true;
+  console.log(`[TriggerBOT] Recibí ${señal}: iniciando apagado controlado...`);
+  try {
+    const { volcarTodo, esperarSubidasPendientes } = require('./db/sync');
+    volcarTodo();
+    await esperarSubidasPendientes();
+  } catch (error) {
+    console.error('[TriggerBOT] Error al volcar datos en el apagado:', error.message);
+  }
+  try {
+    await client.destroy();
+  } catch (error) {
+    console.error('[TriggerBOT] Error al cerrar Discord:', error.message);
+  }
+  console.log('[TriggerBOT] Apagado completado. ¡Hasta la próxima!');
+  process.exit(0);
+}
+process.on('SIGTERM', () => apagadoControlado('SIGTERM'));
+process.on('SIGINT', () => apagadoControlado('SIGINT'));
 
 // ---------- Inicio de sesión con reintentos automáticos ----------
 let intentos = 0;

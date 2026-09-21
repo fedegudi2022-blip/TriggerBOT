@@ -35,12 +35,33 @@ function botonesTicket() {
   );
 }
 
+// Bloqueo anti-carrera: dos clics casi simultáneos pueden pasar ambos el chequeo de
+// "ya tenés un ticket" antes de que ninguno creara el canal → dos tickets por persona.
+// Mientras se crea el canal, el userId queda en este Set y el segundo intento sale.
+const abriendoAhora = new Set();
+
 // Abre un ticket para el usuario. Devuelve el canal creado o { error }.
 async function abrirTicket(interaction, motivo) {
   const guild = interaction.guild;
   const user = interaction.user;
   const config = configDe(guild.id);
   const raiz = getGuildConfig(guild.id);
+
+  const claveAbriendo = `${guild.id}:${user.id}`;
+  if (abriendoAhora.has(claveAbriendo)) {
+    return { error: 'Ya estoy abriendo tu ticket, esperá unos segundos...' };
+  }
+  abriendoAhora.add(claveAbriendo);
+  try {
+    return await abrirTicketInterno(interaction, motivo, { config, raiz });
+  } finally {
+    abriendoAhora.delete(claveAbriendo);
+  }
+}
+
+async function abrirTicketInterno(interaction, motivo, { config, raiz }) {
+  const guild = interaction.guild;
+  const user = interaction.user;
 
   // Un ticket abierto por persona (los canales llevan el userId en el topic).
   const existente = guild.channels.cache.find((c) => c.topic?.startsWith(`${guild.id}:${user.id}:`));
@@ -110,9 +131,11 @@ async function cerrarTicket(interaction, cerradoPor) {
   await canal.send({ embeds: [brandEmbed({ color: 0xfee75c, title: '📦 Generando transcript…', description: `El canal se cierra en un momento, ${cerradoPor}.` })] }).catch(() => {});
 
   // Transcript: todos los mensajes del canal, en orden (de a 100 por fetch).
+  // Tope práctico: 50.000 mensajes (500 páginas). Un ticket normal nunca llega;
+  // si llegara, se corta y el conteo del aviso refleja lo guardado.
   const lineas = [];
   let antes = null;
-  for (let vuelta = 0; vuelta < 100; vuelta++) {
+  for (let vuelta = 0; vuelta < 500; vuelta++) {
     const lote = await canal.messages.fetch({ limit: 100, before: antes }).catch(() => null);
     if (!lote?.size) break;
     for (const m of lote.values()) {

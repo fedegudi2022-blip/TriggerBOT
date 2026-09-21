@@ -7,6 +7,7 @@ const {
 } = require('discord.js');
 const { logAction } = require('./modlog');
 const { successEmbed, errorEmbed, brandEmbed } = require('./replies');
+const { validarAccionDelBot } = require('./moderation');
 
 const LABELS = {
   warn: { titulo: '⚠️ Advertencia', verbo: 'advertir' },
@@ -14,6 +15,15 @@ const LABELS = {
   mute: { titulo: '🔇 Silencio (rol)', verbo: 'mutear' },
   kick: { titulo: '👢 Expulsión', verbo: 'expulsar' },
   ban: { titulo: '🔨 Baneo', verbo: 'banear' },
+};
+
+// Permiso concreto que el BOT necesita para cada acción (se valida antes de ejecutar).
+const PERMISO_ACCION = {
+  warn: PermissionFlagsBits.ModerateMembers,
+  timeout: PermissionFlagsBits.ModerateMembers,
+  mute: PermissionFlagsBits.ManageRoles,
+  kick: PermissionFlagsBits.KickMembers,
+  ban: PermissionFlagsBits.BanMembers,
 };
 
 const COOLDOWN_MS = 20_000;
@@ -31,7 +41,39 @@ setInterval(() => {
   }
 }, 60 * 1000).unref();
 
+// MISMAS validaciones que moderation.js aplica a los comandos normales, pero
+// pensadas para acciones iniciadas por IA (el "moderador" es quien confirma).
+// Devuelve un mensaje de error o null si todo está bien.
+function validarAccionIA(accion, interaction, miembro) {
+  const guild = interaction.guild;
+
+  // 1) El objetivo no puede ser el dueño del servidor.
+  if (miembro.id === guild.ownerId) return 'El objetivo es el dueño del servidor: no se puede moderar.';
+
+  // 2) El objetivo no puede ser el propio bot.
+  if (miembro.id === interaction.client.user.id) return 'El objetivo es el propio bot.';
+
+  // 3) Jerarquía respecto de quien confirma: sin rol igual o superior (salvo que sea el dueño).
+  const esDuenoModerador = guild.ownerId === interaction.user.id;
+  if (!esDuenoModerador && miembro.roles.highest.position >= interaction.member.roles.highest.position) {
+    return 'Tu rol más alto está por debajo o al mismo nivel del de ese usuario.';
+  }
+
+  // 4) El bot debe poder moderar al objetivo y tener el permiso concreto necesario.
+  //    (mute sin rol configurado cae a timeout, así que también exige ModerateMembers.)
+  const permiso = PERMISO_ACCION[accion];
+  const error = validarAccionDelBot(guild, miembro, permiso);
+  if (error) return `El bot no puede ejecutar la acción: ${error}`;
+  if (accion === 'mute' && !guild.roles.cache.get(require('../store').getGuildConfig(guild.id).muteRole)) {
+    const errorTimeout = validarAccionDelBot(guild, miembro, PermissionFlagsBits.ModerateMembers);
+    if (errorTimeout) return `Sin rol de silenciado y ${errorTimeout.toLowerCase()}`;
+  }
+
+  return null;
+}
+
 // Ejecuta la acción de moderación ya confirmada. Devuelve el texto de resultado.
+// Lanza solo si la acción es desconocida; los fallos de Discord se reportan tal cual.
 async function ejecutarAccion(interaction, accion, miembro, motivo, duracionMin) {
   const guild = interaction.guild;
   const etiqueta = `<@${miembro.id}>`;
@@ -45,8 +87,11 @@ async function ejecutarAccion(interaction, accion, miembro, motivo, duracionMin)
     });
     let escalado = '';
     if (total >= 3 && miembro.moderatable) {
-      await miembro.timeout(60 * 60 * 1000, `Acumuló ${total} advertencias — por ${interaction.user.tag}`).catch(() => {});
-      escalado = ' Quedó silenciado 1 hora por llegar a 3.';
+      const ok = await miembro
+        .timeout(60 * 60 * 1000, `Acumuló ${total} advertencias — por ${interaction.user.tag}`)
+        .then(() => true)
+        .catch(() => false);
+      escalado = ok ? ' Quedó silenciado 1 hora por llegar a 3.' : ' (El timeout automático por acumulación fue rechazado por Discord.)';
     }
     logAction(guild, {
       action: 'Advertencia (warn)',
@@ -61,7 +106,11 @@ async function ejecutarAccion(interaction, accion, miembro, motivo, duracionMin)
 
   if (accion === 'timeout') {
     const minutos = Math.min(Math.max(duracionMin || 60, 5), 28 * 24 * 60); // 5 min a 28 días
-    await miembro.timeout(minutos * 60 * 1000, `${motivo || 'Solicitud por chat con IA'} — por ${interaction.user.tag}`);
+    try {
+      await miembro.timeout(minutos * 60 * 1000, `${motivo || 'Solicitud por chat con IA'} — por ${interaction.user.tag}`);
+    } catch (error) {
+      throw new Error(`Discord rechazó el timeout: ${error.message}`);
+    }
     logAction(guild, {
       action: 'Silencio (timeout)',
       target: miembro.user,
@@ -75,8 +124,17 @@ async function ejecutarAccion(interaction, accion, miembro, motivo, duracionMin)
 
   if (accion === 'mute') {
     const { asegurarRolMute } = require('../commands/mute');
-    const rol = await asegurarRolMute(guild);
-    await miembro.roles.add(rol, `${motivo || 'Solicitud por chat con IA'} — por ${interaction.user.tag}`);
+    let rol;
+    try {
+      rol = await asegurarRolMute(guild);
+    } catch (error) {
+      throw new Error(`No pude preparar el rol Silenciado (¿tengo permiso de Gestionar roles?): ${error.message}`);
+    }
+    try {
+      await miembro.roles.add(rol, `${motivo || 'Solicitud por chat con IA'} — por ${interaction.user.tag}`);
+    } catch (error) {
+      throw new Error(`Discord rechazó asignar el rol de silenciado: ${error.message}`);
+    }
     logAction(guild, {
       action: 'Silencio (mute)',
       target: miembro.user,
@@ -89,7 +147,11 @@ async function ejecutarAccion(interaction, accion, miembro, motivo, duracionMin)
   }
 
   if (accion === 'kick') {
-    await miembro.kick(`${motivo || 'Solicitud por chat con IA'} — por ${interaction.user.tag}`);
+    try {
+      await miembro.kick(`${motivo || 'Solicitud por chat con IA'} — por ${interaction.user.tag}`);
+    } catch (error) {
+      throw new Error(`Discord rechazó la expulsión: ${error.message}`);
+    }
     logAction(guild, {
       action: 'Expulsión (kick)',
       target: miembro.user,
@@ -101,9 +163,13 @@ async function ejecutarAccion(interaction, accion, miembro, motivo, duracionMin)
   }
 
   if (accion === 'ban') {
-    await guild.members.ban(miembro.id, {
-      reason: `${motivo || 'Solicitud por chat con IA'} — por ${interaction.user.tag}`,
-    });
+    try {
+      await guild.members.ban(miembro.id, {
+        reason: `${motivo || 'Solicitud por chat con IA'} — por ${interaction.user.tag}`,
+      });
+    } catch (error) {
+      throw new Error(`Discord rechazó el baneo: ${error.message}`);
+    }
     logAction(guild, {
       action: 'Baneo (ban)',
       target: miembro.user,
@@ -219,6 +285,16 @@ async function manejarBoton(interaction) {
     return interaction.editReply({ embeds: [errorEmbed('El usuario ya no está en el servidor.')], components: [] });
   }
 
+  // Revalidación completa (dueño, bot, jerarquía, permisos del bot) ANTES de ejecutar:
+  // las mismas reglas que los comandos normales, no confiamos ciegamente en la IA.
+  const errorValidacion = validarAccionIA(datos.accion, interaction, miembro);
+  if (errorValidacion) {
+    return interaction.editReply({
+      embeds: [errorEmbed(`No se puede ejecutar: ${errorValidacion}`)],
+      components: [],
+    });
+  }
+
   try {
     const resultado = await ejecutarAccion(interaction, datos.accion, miembro, datos.motivo, datos.duracionMin);
     await interaction.editReply({
@@ -233,4 +309,4 @@ async function manejarBoton(interaction) {
   }
 }
 
-module.exports = { pedirConfirmacion, manejarBoton, ejecutarAccion };
+module.exports = { pedirConfirmacion, manejarBoton, ejecutarAccion, validarAccionIA };

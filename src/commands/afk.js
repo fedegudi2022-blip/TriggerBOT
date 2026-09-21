@@ -12,11 +12,22 @@ const FILE = path.join(DATA_DIR, 'afk.json');
 
 let cache = {};
 
+// Marca del último cambio local POR servidor (comparación guild-por-guild con la nube).
+const marcasCambio = new Map();
+function tocarMarca(guildId) {
+  const previa = marcasCambio.get(guildId) ?? 0;
+  marcasCambio.set(guildId, Math.max(previa, Date.now()));
+}
+
 try {
   if (fs.existsSync(FILE)) cache = JSON.parse(fs.readFileSync(FILE, 'utf8'));
 } catch (error) {
   console.error('[TriggerBOT] No se pudo leer data/afk.json:', error.message);
   cache = {};
+}
+{
+  const mtime = fs.existsSync(FILE) ? fs.statSync(FILE).mtimeMs : 0;
+  for (const guildId of Object.keys(cache)) marcasCambio.set(guildId, mtime);
 }
 
 function guardar() {
@@ -30,6 +41,7 @@ function setAFK(guildId, userId, motivo) {
   cache[guildId] = cache[guildId] || {};
   cache[guildId][userId] = { motivo, desde: Date.now() };
   guardar();
+  tocarMarca(guildId);
   marcarSucio(guildId, 'afk', () => cache[guildId] ?? {});
 }
 
@@ -41,11 +53,21 @@ function quitarAFK(guildId, userId) {
   if (cache[guildId]?.[userId]) {
     delete cache[guildId][userId];
     guardar();
+    tocarMarca(guildId);
     marcarSucio(guildId, 'afk', () => cache[guildId] ?? {});
   }
 }
 
+// Volcado forzado (el AFK ya guarda síncrono; existe por simetría con el apagado).
+function volcar() {
+  /* el AFK se escribe siempre al momento */ }
+
 // ---------- Integración con Supabase (respaldo en la nube) ----------
+// Marca del último cambio real por servidor (la usa db/sync.js al restaurar).
+function marcasPorGuild() {
+  return Object.fromEntries(marcasCambio);
+}
+
 function leerGuilds() {
   const mtime = fs.existsSync(FILE) ? fs.statSync(FILE).mtimeMs : 0;
   const out = {};
@@ -60,6 +82,7 @@ function leer(guildId) {
 function escribir(guildId, datos) {
   cache[guildId] = datos ?? {};
   guardar();
+  tocarMarca(guildId);
 }
 
 module.exports = {
@@ -67,8 +90,10 @@ module.exports = {
   getAFK,
   quitarAFK,
   leerGuilds,
+  marcasPorGuild,
   leer,
   escribir,
+  volcar,
 
   data: new SlashCommandBuilder()
     .setName('afk')

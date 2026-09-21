@@ -10,11 +10,22 @@ const FILE = path.join(DATA_DIR, 'interacciones.json');
 
 let cache = {};
 
+// Marca del último cambio local POR servidor (comparación guild-por-guild con la nube).
+const marcasCambio = new Map();
+function tocarMarca(guildId) {
+  const previa = marcasCambio.get(guildId) ?? 0;
+  marcasCambio.set(guildId, Math.max(previa, Date.now()));
+}
+
 try {
   if (fs.existsSync(FILE)) cache = JSON.parse(fs.readFileSync(FILE, 'utf8'));
 } catch (error) {
   console.error('[TriggerBOT] No se pudo leer data/interacciones.json:', error.message);
   cache = {};
+}
+{
+  const mtime = fs.existsSync(FILE) ? fs.statSync(FILE).mtimeMs : 0;
+  for (const guildId of Object.keys(cache)) marcasCambio.set(guildId, mtime);
 }
 
 function guardar() {
@@ -63,11 +74,21 @@ function contar(guildId, accion, quienId, receptorId) {
   const clave = `${quienId}:${receptorId}`;
   cache[guildId][accion][clave] = (cache[guildId][accion][clave] || 0) + 1;
   guardar();
+  tocarMarca(guildId);
   marcarSucio(guildId, 'interacciones', () => cache[guildId] ?? {});
   return cache[guildId][accion][clave];
 }
 
+// Volcado forzado (las interacciones ya guardan síncrono; por simetría con el apagado).
+function volcar() {
+  /* las interacciones se escriben siempre al momento */ }
+
 // ---------- Integración con Supabase (respaldo en la nube) ----------
+// Marca del último cambio real por servidor (la usa db/sync.js al restaurar).
+function marcasPorGuild() {
+  return Object.fromEntries(marcasCambio);
+}
+
 function leerGuilds() {
   const mtime = fs.existsSync(FILE) ? fs.statSync(FILE).mtimeMs : 0;
   const out = {};
@@ -82,6 +103,7 @@ function leer(guildId) {
 function escribir(guildId, datos) {
   cache[guildId] = datos ?? {};
   guardar();
+  tocarMarca(guildId);
 }
 
 // Cuántas veces `quien` hizo la acción a `receptor` (o el total recibido si quien es null).
@@ -91,4 +113,4 @@ function total(guildId, accion, receptorId, quienId = null) {
   return Object.entries(mapa).reduce((suma, [clave, valor]) => (clave.endsWith(`:${receptorId}`) ? suma + valor : suma), 0);
 }
 
-module.exports = { ACCIONES, traerGIF, contar, total, leerGuilds, leer, escribir };
+module.exports = { ACCIONES, traerGIF, contar, total, leerGuilds, marcasPorGuild, leer, escribir, volcar };

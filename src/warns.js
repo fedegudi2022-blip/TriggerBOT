@@ -11,6 +11,13 @@ const FILE = path.join(DATA_DIR, 'warns.json');
 
 let cache = {};
 
+// Marca del último cambio local POR servidor (comparación guild-por-guild con la nube).
+const marcasCambio = new Map();
+function tocarMarca(guildId) {
+  const previa = marcasCambio.get(guildId) ?? 0;
+  marcasCambio.set(guildId, Math.max(previa, Date.now()));
+}
+
 function load() {
   try {
     if (fs.existsSync(FILE)) {
@@ -29,6 +36,10 @@ function save() {
   fs.renameSync(tmp, FILE); // escritura atómica: si algo falla, no se corrompe el archivo
 }
 
+// Volcado forzado (los warns ya guardan síncrono; existe por simetría con el apagado).
+function volcar() {
+  /* los warns se escriben siempre al momento */ }
+
 function getWarns(guildId, userId) {
   return cache[guildId]?.[userId] ?? [];
 }
@@ -39,6 +50,7 @@ function addWarn(guildId, userId, entry) {
   cache[guildId][userId] = cache[guildId][userId] || [];
   cache[guildId][userId].push(entry);
   save();
+  tocarMarca(guildId);
   marcarSucio(guildId, 'warns', () => cache[guildId] ?? {});
   return cache[guildId][userId].length;
 }
@@ -50,11 +62,17 @@ function removeWarn(guildId, userId, index) {
   const [removed] = warns.splice(index - 1, 1);
   if (warns.length === 0) delete cache[guildId][userId];
   save();
+  tocarMarca(guildId);
   marcarSucio(guildId, 'warns', () => cache[guildId] ?? {});
   return removed;
 }
 
 // ---------- Integración con Supabase (respaldo en la nube) ----------
+// Marca del último cambio real por servidor (la usa db/sync.js al restaurar).
+function marcasPorGuild() {
+  return Object.fromEntries(marcasCambio);
+}
+
 function leerGuilds() {
   const mtime = fs.existsSync(FILE) ? fs.statSync(FILE).mtimeMs : 0;
   const out = {};
@@ -69,8 +87,13 @@ function leer(guildId) {
 function escribir(guildId, datos) {
   cache[guildId] = datos ?? {};
   save();
+  tocarMarca(guildId);
 }
 
 load();
+{
+  const mtime = fs.existsSync(FILE) ? fs.statSync(FILE).mtimeMs : 0;
+  for (const guildId of Object.keys(cache)) marcasCambio.set(guildId, mtime);
+}
 
-module.exports = { getWarns, addWarn, removeWarn, leerGuilds, leer, escribir };
+module.exports = { getWarns, addWarn, removeWarn, leerGuilds, marcasPorGuild, leer, escribir, volcar };

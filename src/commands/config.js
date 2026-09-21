@@ -19,7 +19,11 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('config')
     .setDescription('Abre el panel de configuración del bot para este servidor (solo staff)')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+  ,
+  // Sin setDefaultMemberPermissions: la política interna (isMod: ManageGuild O roles
+  // admin/mod/helper configurados) es la única fuente de verdad. Si declaráramos
+  // ManageGuild acá, Discord le ocultaría el comando a un moderador configurado
+  // por rol, aunque isMod() lo aceptaría. El chequeo efímero de execute() basta.
 
   async execute(interaction) {
     if (!isMod(interaction)) {
