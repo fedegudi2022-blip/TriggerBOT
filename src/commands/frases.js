@@ -5,6 +5,34 @@ const { brandEmbed, successEmbed, errorEmbed } = require('../utils/replies');
 // Frases del día por servidor: { canal, hora, frases: [{ texto, autor }], ultima }.
 // El scheduler global las publica una vez por día a la hora configurada.
 
+// Convierte menciones <@ID> (o IDs sueltos) en nombres visibles: el footer de
+// los embeds NO renderiza menciones, muestra el markup crudo. Se aplica al
+// guardar y también al publicar (así las frases viejas ya guardadas quedan bien).
+async function resolverAutor(guild, texto) {
+  if (!texto || !texto.trim()) return 'Anónimo';
+  let resultado = texto.trim();
+  const patron = /<@!?(\d{17,20})>/g;
+  for (const coincidencia of [...resultado.matchAll(patron)]) {
+    const id = coincidencia[1];
+    let nombre = null;
+    try {
+      const miembro = guild.members.cache.get(id) ?? (await guild.members.fetch(id).catch(() => null));
+      nombre = miembro?.displayName ?? null;
+    } catch {
+      /* usuario no encontrado */
+    }
+    if (nombre) resultado = resultado.replaceAll(coincidencia[0], `@${nombre}`);
+    else resultado = resultado.replaceAll(coincidencia[0], '@usuario'); // salió del server
+  }
+  // Autor = solo un ID suelto (sin markup): también se resuelve.
+  if (/^\d{17,20}$/.test(resultado)) {
+    const miembro = guild.members.cache.get(resultado) ?? (await guild.members.fetch(resultado).catch(() => null));
+    if (miembro) return `@${miembro.displayName}`;
+    return '@usuario';
+  }
+  return resultado;
+}
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('frases')
@@ -53,7 +81,8 @@ module.exports = {
 
     if (sub === 'agregar') {
       const texto = interaction.options.getString('texto', true).trim();
-      const autor = interaction.options.getString('autor')?.trim() || interaction.user.username;
+      const autorCrudo = interaction.options.getString('autor')?.trim() || interaction.user.username;
+      const autor = await resolverAutor(interaction.guild, autorCrudo);
       setGuildConfig(interaction.guildId, (c) => {
         c.fraseDelDia = c.fraseDelDia || { canalId: null, hora: 12, frases: [], ultima: null };
         c.fraseDelDia.frases.push({ texto, autor });
@@ -71,11 +100,12 @@ module.exports = {
         return interaction.reply({ embeds: [errorEmbed('No hay frases cargadas. Agregá la primera con `/frases agregar`.')], flags: MessageFlags.Ephemeral });
       }
       const frase = frases[Math.floor(Math.random() * frases.length)];
+      const autor = await resolverAutor(interaction.guild, frase.autor);
       const embed = brandEmbed({
         color: 0x5865f2,
         title: 'Frase del día',
         description: `> ${frase.texto}`,
-        footer: `— ${frase.autor} • TriggerBOT`,
+        footer: `— ${autor} • TriggerBOT`,
       });
       await interaction.channel.send({ embeds: [embed] });
       return interaction.reply({ embeds: [successEmbed('Frase publicada en este canal.')], flags: MessageFlags.Ephemeral });

@@ -62,6 +62,13 @@ setInterval(async () => {
       if (!canal) continue;
 
       const elegida = frase.frases[Math.floor(Math.random() * frase.frases.length)];
+      // El footer no renderiza menciones: resuelve <@ID> → @Nombre.
+      let autor = (elegida.autor || 'Anónimo').trim();
+      const marca = autor.match(/^<@!?(\d{17,20})>$/);
+      if (marca) {
+        const miembro = guild.members.cache.get(marca[1]) ?? (await guild.members.fetch(marca[1]).catch(() => null));
+        if (miembro) autor = `@${miembro.displayName}`;
+      }
       const { brandEmbed } = require('./utils/replies');
       await canal
         .send({
@@ -70,7 +77,7 @@ setInterval(async () => {
               color: 0x5865f2,
               title: 'Frase del día',
               description: `> ${elegida.texto}`,
-              footer: `— ${elegida.autor} • TriggerBOT`,
+              footer: `— ${autor} • TriggerBOT`,
             }),
           ],
         })
