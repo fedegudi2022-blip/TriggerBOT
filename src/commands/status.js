@@ -20,7 +20,8 @@ module.exports = {
     const statsTexto =
       totalRespuestas === 0
         ? 'Sin conversaciones todavía'
-        : `Gemini: **${stats.gemini}** · Groq: **${stats.groq}** · Local: **${stats.local}**`;
+        : `Groq: **${stats.groq}** · Gemini: **${stats.gemini}** · Local: **${stats.local}**`;
+    const estadoIATexto = iaOk ? 'Operativa' : 'Sin claves configuradas';
 
     const uptime = process.uptime();
     const dias = Math.floor(uptime / 86400);
@@ -31,13 +32,14 @@ module.exports = {
     const embed = new EmbedBuilder()
       .setTitle('Estado de TriggerBOT')
       .setColor(iaOk ? 0x57f287 : 0xfee75c)
+      .setDescription(`**${estadoIATexto}** · ${client.guilds.cache.size} servidor(es) · ${client.commands.size} comandos`)
       .addFields(
         { name: 'IA principal (Groq)', value: iaGroq, inline: true },
         { name: 'IA de respaldo (Gemini)', value: iaGemini, inline: true },
-        { name: 'Latencia de la API', value: `${Math.round(client.ws.ping)}ms`, inline: true },
+        { name: 'Latencia', value: `${Math.round(client.ws.ping)}ms`, inline: true },
         { name: 'Respuestas de IA', value: statsTexto, inline: false },
         { name: 'Tiempo encendido', value: uptimeTexto, inline: true },
-        { name: 'Servidores', value: String(client.guilds.cache.size), inline: true },
+        { name: 'Memoria del proceso', value: `${Math.round(process.memoryUsage().rss / 1024 / 1024)} MB`, inline: true },
         { name: 'Node.js', value: process.version, inline: true }
       )
       .setFooter({ text: 'TriggerBOT' })

@@ -29,16 +29,15 @@ module.exports = {
     }).join('\n');
 
     const embed = brandEmbed({
-      color: 0xfee75c,
-      title: `Perfil de ${user.username}`,
+      color: 0xe67e22,
+      title: `Perfil de niveles — ${user.username}`,
       thumbnail: user.displayAvatarURL({ size: 128 }),
+      description: `**Nivel ${datos.nivel}** · Puesto **#${puesto || '—'}** del server`,
       fields: [
-        { name: 'Nivel', value: `**${datos.nivel}**`, inline: true },
-        { name: 'XP', value: `${datos.xp} (siguiente nivel: ${xpParaNivel(datos.nivel + 1)})`, inline: true },
-        { name: 'Puesto en el server', value: puesto ? `#${puesto}` : '—', inline: true },
-        { name: 'Progreso', value: `\`${barra(datos.xp, datos.nivel)}\``, inline: false },
-        { name: 'Mensajes', value: String(datos.mensajes), inline: true },
-        { name: 'Días seguidos activo', value: `${datos.racha || 0}`, inline: true },
+        { name: 'XP total', value: `**${datos.xp}** / ${xpParaNivel(datos.nivel + 1)} para el nivel ${datos.nivel + 1}`, inline: true },
+        { name: 'Mensajes', value: `**${datos.mensajes}**`, inline: true },
+        { name: 'Racha', value: `**${datos.racha || 0}** día(s) seguidos`, inline: true },
+        { name: 'Progreso al siguiente nivel', value: `\`${barra(datos.xp, datos.nivel)}\``, inline: false },
         { name: `Logros (${logrosObtenidos.length}/${LOGROS.length})`, value: lineasLogros.slice(0, 1024), inline: false },
       ],
       footer: 'TriggerBOT • ganás XP escribiendo (máximo 1 mensaje por minuto cuenta)',
