@@ -25,13 +25,17 @@ function construirGuia(client) {
       },
       {
         name: 'Configuración (staff)',
-        value: '`/config` con: `ver` · `welcome` · `modlog` · `logs` · `avisos` · `staff` · `mute` · `ia` · `proteccion` · `desactivar`',
+        value: '`/config` con: `ver` · `welcome` · `modlog` · `logs` · `avisos` · `staff` · `mute` · `ia` · `proteccion` · `tickets` · `desactivar`',
       },
       {
         name: 'Niveles y logros',
         value:
           '`/estadisticas` · `/logros` · `/top` · `/rolnivel` (staff) — ganás XP escribiendo; racha suma bonus, los findes es x2 y los logros pagan XP.\n' +
           '*`/top` tiene podio y páginas con botones; `/logros` te muestra cuánto falta para cada uno.*',
+      },
+      {
+        name: 'Soporte',
+        value: '`/ticket` (staff) — publicá el panel con botón: cada usuario abre su canal privado y al cerrarlo el transcript queda en logs y en su DM.',
       },
       {
         name: 'Utilidades',

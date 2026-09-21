@@ -30,6 +30,7 @@ src/
 | `/status` | Estado del bot: modelos de IA, latencia, tiempo encendido, uso — con botón de refresco | Todos |
 | `/servidores` | Estado en vivo de los servers CS 1.6 (jugadores, mapa, IP). Staff: `publicar:true` fija un panel que se actualiza solo | Todos |
 | `/ip [servidor]` | IP para conectarte, lista para copiar. Con filtro por nombre muestra mapa y jugadores de ahora | Todos |
+| `/ticket publicar/categoria/logs/mensaje` | Panel de soporte con botón, canales privados por ticket y transcript al cerrar | Staff (config) |
 | `/help` | Guía completa por categorías | Todos |
 | `/userinfo [usuario]` | Ficha de usuario: fechas, roles, permisos, warns | Todos |
 | `/serverinfo` | Ficha del server: dueño, canales, roles, boosts | Todos |
@@ -56,6 +57,15 @@ src/
 | `/slowmode segundos [canal]` | Modo lento de 0 s a 6 h | Mods |
 
 > Todos los comandos de moderación validan jerarquía (no podés moderar a alguien con rol igual o superior), avisan al usuario por DM cuando es posible y quedan registrados en el mod-log.
+
+### Tickets de soporte
+
+Se arma en 3 pasos: `/ticket logs` (dónde quedan los transcripts) → `/ticket categoria` (dónde se crean los canales) → `/ticket publicar` en tu canal de soporte.
+
+- **Panel con botón**: cada usuario abre su ticket con un clic; se crea un canal privado `ticket-001` visible solo por él y el staff (roles admin/mod/helper de `/config`). Un ticket abierto por persona.
+- **Al abrir**: el usuario cuenta el motivo en una ventana emergente y queda registrado con su cuenta.
+- **Al cerrar** (botón 🔒, disponible para el dueño o el staff): el bot genera un **transcript .txt** con toda la conversación, lo manda al canal de logs, se lo deja por **DM al usuario** y borra el canal 30 segundos después. Todo queda registrado.
+- **Personalizable**: `/ticket mensaje` cambia el texto del panel. También se configura desde `/config → Tickets de soporte`.
 
 ### Protección automática (anti-spam y anti-raid)
 
@@ -106,7 +116,7 @@ XP por escribir (15-25 por mensaje, máximo 1 por minuto para evitar farmeo) con
 
 ### Configuración (solo staff)
 
-`/config` abre un **panel interactivo**: un menú desplegable con las secciones (Bienvenida, Mod-log, Logs, Avisos, Staff, Rol de silenciado, Chat con IA, Niveles, Frase del día, Anti-spam y anti-raid, Desactivar) y, dentro de cada una, selectores nativos para elegir canales y roles con un clic — sin tipear IDs ni opciones. El mensaje de bienvenida se edita en una ventana emergente y cada desactivado pide confirmación. Todo se guarda al instante y el panel es visible solo para quien lo abre.
+`/config` abre un **panel interactivo**: un menú desplegable con las secciones (Bienvenida, Mod-log, Logs, Avisos, Staff, Rol de silenciado, Chat con IA, Niveles, Frase del día, Anti-spam y anti-raid, Tickets de soporte, Desactivar) y, dentro de cada una, selectores nativos para elegir canales y roles con un clic — sin tipear IDs ni opciones. El mensaje de bienvenida se edita en una ventana emergente y cada desactivado pide confirmación. Todo se guarda al instante y el panel es visible solo para quien lo abre.
 
 ## Chat con IA (opcional)
 

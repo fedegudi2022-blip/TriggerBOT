@@ -117,6 +117,7 @@ const memeCmd = require('./commands/meme');
 const pingCmd = require('./commands/ping');
 const statusCmd = require('./commands/status');
 const topCmd = require('./commands/top');
+const { manejarBotonTicket, manejarModalTicket } = require('./utils/tickets');
 client.on('interactionCreate', async (interaction) => {
   try {
     if (interaction.isButton() && interaction.customId.startsWith('ia_accion:')) {
@@ -130,6 +131,10 @@ client.on('interactionCreate', async (interaction) => {
     } else if (interaction.isButton() && interaction.customId.startsWith('top:page:')) {
       // El comando /top expone su render para que el botón pida otra página.
       await topCmd.ejecutar(interaction, Number(interaction.customId.split(':')[2]) || 1);
+    } else if (interaction.isButton() && interaction.customId.startsWith('ticket:')) {
+      await manejarBotonTicket(interaction);
+    } else if (interaction.isModalSubmit() && interaction.customId.startsWith('ticket:')) {
+      await manejarModalTicket(interaction);
     } else if (interaction.customId?.startsWith('cfg:')) {
       await manejarComponente(interaction);
     }

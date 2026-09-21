@@ -30,6 +30,7 @@ const SECCIONES = [
   { value: 'frases', label: 'Frase del día', description: 'Canal y hora de la frase automática diaria', emoji: '9️⃣' },
   { value: 'proteccion', label: 'Anti-spam y anti-raid', description: 'Flood y oleadas de ingresos con acción automática', emoji: '🛡️' },
   { value: 'servidores', label: 'Servidores CS 1.6', description: 'Servers con IP, panel en vivo y alertas de caída', emoji: '🎮' },
+  { value: 'tickets', label: 'Tickets de soporte', description: 'Categoría, canal de logs y panel con botón', emoji: '🎫' },
   { value: 'desactivar', label: 'Desactivar funciones', description: 'Apagar funciones que ya no querés usar', emoji: '🔟' },
 ];
 
@@ -90,6 +91,7 @@ function panelCompleto(guild) {
       { name: 'Chat con IA', value: config.iaActivada === false ? 'Apagada' : 'Prendida', inline: true },
       { name: 'Anti-spam/raid', value: config.proteccion?.activado ? 'Prendida' : 'Apagada', inline: true },
       { name: 'Servidores CS', value: config.servidores?.lista?.length ? `${config.servidores.lista.length} cargado(s)` : 'Sin cargar', inline: true },
+      { name: 'Tickets', value: config.tickets?.categoriaId ? `<#${config.tickets.categoriaId}>` : 'Sin configurar', inline: true },
       { name: 'Canal de niveles', value: estado(config.canalNiveles ? `<#${config.canalNiveles}>` : null), inline: true },
       { name: 'Frase del día', value: estado(config.fraseDelDia?.canalId ? `<#${config.fraseDelDia.canalId}>` : null), inline: true },
       { name: 'Staff del bot', value: staffLines, inline: false }
@@ -347,6 +349,36 @@ function vistaSeccion(guild, seccion, guardado = false) {
         filaVolver().components[0]
       )
     );
+  } else if (seccion === 'tickets') {
+    const t = config.tickets || {};
+    embed = new EmbedBuilder()
+      .setTitle('Tickets de soporte')
+      .setColor(0x5865f2)
+      .setDescription(
+        `**Categoría de tickets:** ${canalActual(t.categoriaId)}\n` +
+          `**Canal de transcripts:** ${canalActual(t.canalLogs)}\n` +
+          `**Texto del panel:** ${t.mensajes ? 'personalizado' : 'por defecto'}\n\n` +
+          'Publicá el panel con `/ticket publicar` en tu canal de soporte: cada usuario abre su canal privado ' +
+          'y al cerrarlo el bot guarda el transcript en logs y se lo manda por DM al usuario.'
+      );
+
+    components.push(
+      new ActionRowBuilder().addComponents(
+        new ChannelSelectMenuBuilder()
+          .setCustomId('cfg:set:tickets:categoria')
+          .setPlaceholder('Elegí la categoría donde se crean los tickets')
+          .setChannelTypes(ChannelType.GuildCategory),
+      )
+    );
+    components.push(
+      new ActionRowBuilder().addComponents(
+        new ChannelSelectMenuBuilder()
+          .setCustomId('cfg:set:tickets:logs')
+          .setPlaceholder('Elegí el canal de los transcripts')
+          .setChannelTypes(ChannelType.GuildText)
+      )
+    );
+    components.push(filaVolver());
   } else if (seccion === 'desactivar') {
     embed = new EmbedBuilder()
       .setTitle('Desactivar funciones')
@@ -429,6 +461,9 @@ function aplicarSet(guildId, seccion, campo, valor) {
     } else if (seccion === 'proteccion') {
       c.proteccion = { ...PROTECCION_DEFECTO, ...(c.proteccion || {}) };
       c.proteccion[campo] = valor;
+    } else if (seccion === 'tickets') {
+      c.tickets = c.tickets || {};
+      c.tickets[campo === 'logs' ? 'canalLogs' : 'categoriaId'] = valor;
     }
   });
 }
@@ -447,6 +482,7 @@ function aplicarDesactivado(guildId, feature) {
     else if (feature === 'ia') c.iaActivada = false;
     else if (feature === 'proteccion') delete c.proteccion;
     else if (feature === 'servidores') delete c.servidores;
+    else if (feature === 'tickets') delete c.tickets;
   });
 }
 
