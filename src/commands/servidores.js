@@ -59,8 +59,9 @@ module.exports = {
       const d = resultado.datos;
       const ocup = d.maximo ? d.jugadores / d.maximo : 0;
       const estado = ocup >= 0.9 ? '🔴' : ocup >= 0.6 ? '🟡' : '🟢';
+      const aviso = monitoreo.notaDifiere(server, d);
       return (
-        `**${i + 1}.** ${server.nombre}\n` +
+        `**${i + 1}.** ${server.nombre}${aviso}\n` +
         `> ${estado} **${d.jugadores}/${d.maximo}** jugadores — 🗺️ \`${d.mapa}\` — ⏱️ ${resultado.latenciaMs} ms\n` +
         `> \`${barra(d.jugadores, d.maximo, 10)}\`\n` +
         `> 🔗 \`${host}:${puerto}\` — copiá y conect`

@@ -24,6 +24,14 @@ function clave(host, puerto) {
   return `${host}:${puerto}`;
 }
 
+// Si el server responde con un nombre distinto al configurado, la IP apunta a otro
+// server (puerto cambiado, server de otro dueño en la misma máquina, etc.).
+function notaDifiere(server, datos) {
+  if (!datos?.nombre) return '';
+  const normalizar = (t) => String(t).toLowerCase().replace(/[^a-z0-9]/g, '');
+  return normalizar(datos.nombre) === normalizar(server.nombre) ? '' : ` ⚠ *el server informa llamarse "${datos.nombre}"*`;
+}
+
 // Parsea "cs.nostalgia.ar:27015" o { host, puerto } → [host, puerto].
 function parsearDestino(destino) {
   if (typeof destino === 'string') {
@@ -124,7 +132,7 @@ function construirPanel(guild, config, instantaneas) {
     const ocupacion = s.datos.maximo ? Math.round((s.datos.jugadores / s.datos.maximo) * 100) : 0;
     const estado = ocupacion >= 90 ? '🔴' : ocupacion >= 60 ? '🟡' : '🟢';
     return (
-      `**${i + 1}.** ${server.nombre}\n` +
+      `**${i + 1}.** ${server.nombre}${notaDifiere(server, s.datos)}\n` +
       `> ${estado} **${s.datos.jugadores}/${s.datos.maximo}** · 🗺️ \`${s.datos.mapa}\` · ⏱️ ${s.latenciaMs} ms\n` +
       `> \`${host}:${puerto}\` — copiá y conect`
     );
@@ -166,4 +174,4 @@ async function actualizarPanel(guild, config) {
   await mensaje.edit({ embeds: [embed] }).catch(() => {});
 }
 
-module.exports = { tick, cache, consultar, parsearDestino, construirPanel, INTERVALO_MS };
+module.exports = { tick, cache, consultar, parsearDestino, construirPanel, notaDifiere, INTERVALO_MS };

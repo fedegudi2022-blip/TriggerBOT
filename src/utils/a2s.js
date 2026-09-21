@@ -164,16 +164,18 @@ async function infoServer(host, puerto, opciones = {}) {
   }
 
   if (tipo === A2S_INFO_RESPONSE_GOLDSRC) {
-    // Formato GoldSrc: dirección, nombre, mapa, carpeta, juego, jugadores, max, protocolo, ...
+    // Formato GoldSrc ('m'): direccion, nombre, mapa, carpeta, juego y DESPUÉS
+    // jugadores (1 byte), max (1 byte) y protocolo (1 byte) — sin ningún appid en el medio.
+    // (Leer un short acá corridaba todo: reportaba 47/100 en cualquier server.)
     lector.cadena(); // direccion
     const nombre = lector.cadena();
     const mapa = lector.cadena();
     lector.cadena(); // carpeta
     lector.cadena(); // juego
-    lector.corto(); // appid (GoldSrc viejo) o versión
     const jugadores = lector.byte();
     const maximo = lector.byte();
-    return { nombre, mapa, jugadores, maximo, protocolo: null, vacante: null, bot: null };
+    const protocolo = lector.byte();
+    return { nombre, mapa, jugadores, maximo, protocolo, vacante: null, bot: null };
   }
 
   if (tipo !== A2S_INFO_RESPONSE_SOURCE) throw new Error(`formato de A2S_INFO desconocido (0x${tipo.toString(16)})`);
