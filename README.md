@@ -58,10 +58,11 @@ src/
 ### Niveles y logros
 | Comando | Qué hace |
 |---|---|
-| `/estadisticas [usuario]` | Perfil completo: nivel, XP con barra de progreso, racha de días, puesto y logros |
+| `/estadisticas [usuario]` | Perfil completo: rango, nivel, XP con barra, bonus activos, racha, puesto y logros con premios |
+| `/rolnivel definir/quitar/lista` | Staff: roles que se otorgan automáticamente al alcanzar un nivel |
 | `/top [pagina]` | Ranking de actividad del server con podio |
 
-XP por escribir (15-25 por mensaje, máximo 1 por minuto para evitar farmeo), racha de días activos y 8 logros desbloqueables. El staff configura el canal de anuncios de subidas/logros en el panel `/config → Niveles y XP`.
+XP por escribir (15-25 por mensaje, máximo 1 por minuto para evitar farmeo) con **bonus acumulables**: +1% por día de racha (tope +35%), **x2 los fines de semana** y +10% de madrugada (00-06 h Argentina). **16 logros desbloqueables con recompensa de XP** (se pagan solos al cumplirlos), rangos por nivel (Novato → Activo → Experto → Veterano → Leyenda) y **roles por nivel**: el staff define con `/rolnivel` qué rol se otorga automáticamente al alcanzar cada nivel. El staff configura el canal de anuncios en el panel `/config → Niveles y XP`.
 
 ### Utilidades
 | Comando | Qué hace |

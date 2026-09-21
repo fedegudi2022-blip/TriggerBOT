@@ -24,7 +24,8 @@ function construirGuia(client) {
       },
       {
         name: 'Niveles y logros',
-        value: '`/estadisticas` · `/top` — ganás XP escribiendo, subís de nivel y desbloqueás logros',
+        value:
+          '`/estadisticas` · `/top` · `/rolnivel` (staff) — ganás XP escribiendo; racha suma bonus, los findes es x2 y los logros pagan XP.',
       },
       {
         name: 'Utilidades',

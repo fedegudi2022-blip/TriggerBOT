@@ -1,9 +1,13 @@
-// Sistema de niveles: XP por actividad con anti-farm, curva de niveles y logros.
+// Sistema de niveles: XP por actividad con anti-farm, bonus, curva de niveles y logros.
 // Persistencia en data/niveles.json con escritura atómica (misma mecánica que store.js).
 //
-// XP: entre 15 y 25 por mensaje, con cooldown de 60 s por usuario (anti-farm).
+// XP base: entre 15 y 25 por mensaje, con cooldown de 60 s por usuario (anti-farm).
+// Bonus acumulables:
+//   - Racha de días activos: +1% por día, hasta +35%
+//   - Fin de semana (sáb/dom, hora argentina): x2
+//   - Búho nocturno (00:00-06:00): +10%
 // Nivel: nivel = floor(0.1 * sqrt(xp)) → el XP necesario crece cuadráticamente.
-// Logros: se otorgan una sola vez al cumplir la condición.
+// Logros: 16 en total, desbloqueables una sola vez, con recompensa de XP.
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -35,6 +39,11 @@ const XP_MIN = 15;
 const XP_MAX = 25;
 const COOLDOWN_MS = 60_000;
 
+// Bonus configurables (en porcentaje).
+const BONO_RACHA_MAX = 35; // +1% por día de racha, tope 35%
+const BONO_NOCHE = 10; // de 00:00 a 06:00 (Argentina)
+const MULT_FINDE = 2; // sábados y domingos: doble XP
+
 function xpParaNivel(nivel) {
   return Math.ceil((nivel / 0.1) ** 2); // XP total acumulada necesaria para el nivel
 }
@@ -43,16 +52,66 @@ function nivelDe(xp) {
   return Math.floor(0.1 * Math.sqrt(xp));
 }
 
-// ---------- Logros ----------
+// ---------- Rangos por nivel (para /estadisticas y anuncios) ----------
+const RANGOS = [
+  { desde: 30, nombre: 'Leyenda', color: 0xf1c40f },
+  { desde: 20, nombre: 'Veterano', color: 0x9b59b6 },
+  { desde: 10, nombre: 'Experto', color: 0x57f287 },
+  { desde: 5, nombre: 'Activo', color: 0x5865f2 },
+  { desde: 0, nombre: 'Novato', color: 0x99aab5 },
+];
+
+function rangoDe(nivel) {
+  return RANGOS.find((r) => nivel >= r.desde) ?? RANGOS[RANGOS.length - 1];
+}
+
+// ---------- Helpers de fecha (zona Argentina) ----------
+const FORMATO_DIA = { timeZone: 'America/Argentina/Buenos_Aires', day: 'numeric', month: 'numeric', year: 'numeric' };
+
+function diaArg(fecha) {
+  return new Intl.DateTimeFormat('es-AR', FORMATO_DIA).format(fecha);
+}
+
+function horaArg(fecha) {
+  return Number(new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', hour12: false }).format(fecha));
+}
+
+function esFinde(fecha) {
+  const dia = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Argentina/Buenos_Aires', weekday: 'short' }).format(fecha);
+  return dia === 'Sat' || dia === 'Sun';
+}
+
+// Multiplicador total por bonus del usuario (lo usan anuncios y /estadisticas).
+function multiplicador(racha, fecha = new Date()) {
+  const partes = [];
+  const bonoRacha = Math.min(racha || 0, BONO_RACHA_MAX);
+  if (bonoRacha > 0) partes.push(`+${bonoRacha}% racha`);
+  const noche = horaArg(fecha) < 6;
+  if (noche) partes.push(`+${BONO_NOCHE}% nocturno`);
+  const finde = esFinde(fecha);
+  if (finde) partes.push('x2 finde');
+  const total = 1 + bonoRacha / 100 + (noche ? BONO_NOCHE / 100 : 0) + (finde ? MULT_FINDE - 1 : 0);
+  return { total, partes, finde, noche };
+}
+
+// ---------- Logros (con recompensa de XP) ----------
 const LOGROS = [
-  { id: 'primer_mensaje', nombre: 'Primer mensaje', desc: 'Enviaste tu primer mensaje', nivel: 0, cond: (s) => s.mensajes >= 1, emoji: '🌱' },
-  { id: 'charlatan', nombre: 'Charlatán', desc: '100 mensajes', nivel: 0, cond: (s) => s.mensajes >= 100, emoji: '💬' },
-  { id: 'veterano', nombre: 'Veterano', desc: '1.000 mensajes', nivel: 0, cond: (s) => s.mensajes >= 1000, emoji: '🏆' },
-  { id: 'nivel_5', nombre: 'En racha', desc: 'Llegaste al nivel 5', nivel: 0, cond: (s, lvl) => lvl >= 5, emoji: '⭐' },
-  { id: 'nivel_10', nombre: 'Experto', desc: 'Llegaste al nivel 10', nivel: 0, cond: (s, lvl) => lvl >= 10, emoji: '🌟' },
-  { id: 'nivel_20', nombre: 'Leyenda', desc: 'Llegaste al nivel 20', nivel: 0, cond: (s, lvl) => lvl >= 20, emoji: '👑' },
-  { id: 'semana', nombre: 'Semana activa', desc: '7 días seguidos de actividad', nivel: 0, cond: (s) => s.racha >= 7, emoji: '🔥' },
-  { id: 'mes', nombre: 'Mes activo', desc: '30 días seguidos de actividad', nivel: 0, cond: (s) => s.racha >= 30, emoji: '🚀' },
+  { id: 'primer_mensaje', nombre: 'Primer mensaje', desc: 'Enviaste tu primer mensaje', emoji: '🌱', premio: 50, cond: (s) => s.mensajes >= 1 },
+  { id: 'racha_3', nombre: 'Racha inicial', desc: '3 días seguidos de actividad', emoji: '⚡', premio: 100, cond: (s) => s.racha >= 3 },
+  { id: 'madrugador', nombre: 'Madrugador', desc: 'Escribiste entre las 6 y las 9 de la mañana', emoji: '🌅', premio: 100, cond: (s, lvl, ctx) => ctx.hora >= 6 && ctx.hora < 9 },
+  { id: 'buho', nombre: 'Búho nocturno', desc: 'Escribiste entre las 00 y las 5 de la mañana', emoji: '🦉', premio: 150, cond: (s, lvl, ctx) => ctx.hora < 6 },
+  { id: 'charlatan', nombre: 'Charlatán', desc: '100 mensajes', emoji: '💬', premio: 200, cond: (s) => s.mensajes >= 100 },
+  { id: 'finde', nombre: 'Alma de finde', desc: '50 mensajes en fines de semana', emoji: '🎉', premio: 250, cond: (s) => (s.findes || 0) >= 50 },
+  { id: 'nivel_5', nombre: 'En racha', desc: 'Llegaste al nivel 5', emoji: '⭐', premio: 300, cond: (s, lvl) => lvl >= 5 },
+  { id: 'semana', nombre: 'Semana activa', desc: '7 días seguidos de actividad', emoji: '🔥', premio: 400, cond: (s) => s.racha >= 7 },
+  { id: 'nivel_10', nombre: 'Experto', desc: 'Llegaste al nivel 10', emoji: '🌟', premio: 600, cond: (s, lvl) => lvl >= 10 },
+  { id: 'conversador', nombre: 'Conversador', desc: '500 mensajes', emoji: '🗣️', premio: 800, cond: (s) => s.mensajes >= 500 },
+  { id: 'veterano', nombre: 'Veterano', desc: '1.000 mensajes', emoji: '🏆', premio: 1200, cond: (s) => s.mensajes >= 1000 },
+  { id: 'xp_1000', nombre: 'Colecionista', desc: 'Acumulaste 1.000 XP', emoji: '💎', premio: 250, cond: (s) => s.xp >= 1000 },
+  { id: 'mes', nombre: 'Mes activo', desc: '30 días seguidos de actividad', emoji: '🚀', premio: 1500, cond: (s) => s.racha >= 30 },
+  { id: 'nivel_20', nombre: 'Leyenda del chat', desc: 'Llegaste al nivel 20', emoji: '👑', premio: 2000, cond: (s, lvl) => lvl >= 20 },
+  { id: 'xp_10000', nombre: 'Diez mil', desc: 'Acumulaste 10.000 XP', emoji: '💠', premio: 1000, cond: (s) => s.xp >= 10000 },
+  { id: 'mito', nombre: 'Mito', desc: '5.000 mensajes', emoji: '🐐', premio: 3000, cond: (s) => s.mensajes >= 5000 },
 ];
 
 // ---------- Acceso por guild/usuario ----------
@@ -61,6 +120,7 @@ function usuario(guildId, userId) {
   cache[guildId][userId] = cache[guildId][userId] || {
     xp: 0,
     mensajes: 0,
+    findes: 0,
     nivel: 0,
     racha: 0,
     ultimoMensaje: 0,
@@ -70,55 +130,82 @@ function usuario(guildId, userId) {
   return cache[guildId][userId];
 }
 
-// Procesa un mensaje: suma XP si corresponde y devuelve lo que cambió.
-function procesarMensaje(guildId, userId) {
+// Procesa un mensaje: suma XP con bonus, paga logros nuevos y devuelve lo que cambió.
+function procesarMensaje(guildId, userId, fecha = new Date()) {
   const u = usuario(guildId, userId);
-  const ahora = Date.now();
+  const ahora = fecha.getTime();
 
   u.mensajes += 1;
+  const hora = horaArg(fecha);
+  if (esFinde(fecha)) u.findes = (u.findes || 0) + 1;
 
   // Racha de días activos (zona horaria de Argentina).
-  const hoy = new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', day: 'numeric', month: 'numeric', year: 'numeric' }).format(ahora);
-  if (u.ultimoDia !== hoy) {
-    const ayer = new Intl.DateTimeFormat('es-AR', {
-      timeZone: 'America/Argentina/Buenos_Aires',
-      day: 'numeric',
-      month: 'numeric',
-      year: 'numeric',
-    }).format(ahora - 86400_000);
+  if (u.ultimoDia !== diaArg(fecha)) {
+    const ayer = diaArg(new Date(ahora - 86400_000));
     u.racha = u.ultimoDia === ayer ? (u.racha || 0) + 1 : 1;
-    u.ultimoDia = hoy;
+    u.ultimoDia = diaArg(fecha);
   }
 
-  // XP con cooldown anti-farm.
-  let xpGanado = 0;
+  // XP base con cooldown anti-farm, más bonus acumulables.
+  let xpBase = 0;
+  let detalle = null;
   if (ahora - (u.ultimoMensaje || 0) >= COOLDOWN_MS) {
-    xpGanado = XP_MIN + Math.floor(Math.random() * (XP_MAX - XP_MIN + 1));
-    u.xp += xpGanado;
+    xpBase = XP_MIN + Math.floor(Math.random() * (XP_MAX - XP_MIN + 1));
+    const bono = multiplicador(u.racha, fecha);
+    const total = Math.round(xpBase * bono.total);
+    detalle = {
+      base: xpBase,
+      bonoRacha: Math.min(u.racha || 0, BONO_RACHA_MAX),
+      finde: bono.finde,
+      noche: bono.noche,
+      total,
+    };
+    u.xp += total;
     u.ultimoMensaje = ahora;
   }
 
-  const nivelNuevo = nivelDe(u.xp);
-  const subio = nivelNuevo > u.nivel;
+  let nivelNuevo = nivelDe(u.xp);
   const nivelAnterior = u.nivel;
   u.nivel = nivelNuevo;
+  const subio = nivelNuevo > nivelAnterior;
+
+  // Logros recién cumplidos (no repetidos) con contexto para las condiciones.
+  const ctx = { hora };
+  const logrosNuevos = LOGROS.filter((l) => !u.logros.includes(l.id) && l.cond(u, nivelNuevo, ctx));
+  u.logros.push(...logrosNuevos.map((l) => l.id));
+
+  // Recompensas de XP por logros: se pagan al instante y pueden hacer subir de nivel.
+  const premioTotal = logrosNuevos.reduce((suma, l) => suma + (l.premio || 0), 0);
+  if (premioTotal > 0) {
+    u.xp += premioTotal;
+    nivelNuevo = nivelDe(u.xp);
+    if (nivelNuevo > u.nivel) {
+      u.nivel = nivelNuevo;
+      // Puede que el premio habilite más logros por nivel (ej: nivel_5). Una pasada más:
+      const extra = LOGROS.filter((l) => !u.logros.includes(l.id) && l.cond(u, nivelNuevo, ctx));
+      u.logros.push(...extra.map((l) => l.id));
+      logrosNuevos.push(...extra);
+    }
+  }
+
   save();
   marcarSucio(guildId, 'niveles', () => cache[guildId] ?? {});
 
-  // Logros recién cumplidos (no repetidos).
-  const logrosNuevos = LOGROS.filter((l) => !u.logros.includes(l.id) && l.cond(u, nivelNuevo));
-  u.logros.push(...logrosNuevos.map((l) => l.id));
-  if (logrosNuevos.length) {
-    save();
-    marcarSucio(guildId, 'niveles', () => cache[guildId] ?? {});
-  }
-
-  return { xpGanado, subio, nivelAnterior, nivelNuevo, logrosNuevos, totalMensajes: u.mensajes };
+  return {
+    xpGanado: (detalle?.total || 0) + premioTotal,
+    detalle,
+    premioTotal,
+    subio,
+    nivelAnterior,
+    nivelNuevo,
+    logrosNuevos,
+    totalMensajes: u.mensajes,
+  };
 }
 
 function datosDe(guildId, userId) {
   const u = cache[guildId]?.[userId];
-  if (!u) return { xp: 0, mensajes: 0, nivel: 0, racha: 0, logros: [] };
+  if (!u) return { xp: 0, mensajes: 0, findes: 0, nivel: 0, racha: 0, logros: [] };
   return { ...u, logros: [...(u.logros ?? [])] };
 }
 
@@ -173,7 +260,11 @@ module.exports = {
   posicion,
   xpParaNivel,
   nivelDe,
+  rangoDe,
+  multiplicador,
+  esFinde,
   LOGROS,
+  RANGOS,
   canalAnuncios,
   XP_MIN,
   XP_MAX,

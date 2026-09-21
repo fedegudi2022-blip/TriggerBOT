@@ -3,7 +3,14 @@ const { responderCharla, normalizar } = require('../utils/charla');
 const { conversar } = require('../utils/ia');
 const { pedirConfirmacion } = require('../utils/accionesIA');
 const { getAFK, quitarAFK } = require('../commands/afk');
-const { procesarMensaje, datosDe, xpParaNivel, canalAnuncios, LOGROS } = require('../niveles');
+const {
+  procesarMensaje,
+  datosDe,
+  xpParaNivel,
+  canalAnuncios,
+  rangoDe,
+} = require('../niveles');
+const { asignarRolesNivel } = require('../utils/rolesNivel');
 const { brandEmbed } = require('../utils/replies');
 const { getGuildConfig } = require('../store');
 
@@ -51,6 +58,34 @@ function estaEnCooldown(userId) {
   return false;
 }
 
+// ---------- Anuncios de niveles: frases y colores según el nivel ----------
+const FRASES_SUBIDA = [
+  'subió al nivel **{n}**',
+  'alcanzó el nivel **{n}**',
+  'llegó al nivel **{n}**, sigue así',
+  'se anota nivel **{n}**',
+  'sumó el nivel **{n}** a su cuenta',
+];
+
+function barra(xp, nivel) {
+  const actual = xpParaNivel(nivel);
+  const siguiente = xpParaNivel(nivel + 1);
+  const progreso = Math.min(Math.max((xp - actual) / (siguiente - actual), 0), 1);
+  const llenos = Math.round(progreso * 12);
+  return `${'█'.repeat(llenos)}${'░'.repeat(12 - llenos)}`;
+}
+
+// Elige una frase al azar sin repetir la última usada.
+let ultimaFrase = -1;
+function fraseSubida(nivel) {
+  let i;
+  do {
+    i = Math.floor(Math.random() * FRASES_SUBIDA.length);
+  } while (i === ultimaFrase && FRASES_SUBIDA.length > 1);
+  ultimaFrase = i;
+  return FRASES_SUBIDA[i].replaceAll('{n}', String(nivel));
+}
+
 // Anuncia subida de nivel o logros en el canal configurado (si existe).
 async function anunciarProgreso(message, progreso) {
   if (!progreso.subio && progreso.logrosNuevos.length === 0) return;
@@ -60,25 +95,40 @@ async function anunciarProgreso(message, progreso) {
   const canal = message.guild.channels.cache.get(canalId);
   if (!canal) return;
 
+  const datos = datosDe(message.guild.id, message.author.id);
+
   if (progreso.subio) {
-    const faltan = xpParaNivel(progreso.nivelNuevo + 1) - datosDe(message.guild.id, message.author.id).xp;
+    const rango = rangoDe(progreso.nivelNuevo);
+    const faltan = Math.max(xpParaNivel(progreso.nivelNuevo + 1) - datos.xp, 0);
+    const detalle = progreso.detalle;
+    const partesBonus = [];
+    if (detalle?.bonoRacha) partesBonus.push(`+${detalle.bonoRacha}% racha`);
+    if (detalle?.finde) partesBonus.push('x2 finde');
+    if (detalle?.noche) partesBonus.push('+10% nocturno');
+
     const embed = brandEmbed({
-      color: 0xfee75c,
-      title: '¡Subiste de nivel!',
+      color: rango.color,
+      title: `Nivel ${progreso.nivelNuevo} alcanzado`,
       description:
-        `**${message.author}** llegó al nivel **${progreso.nivelNuevo}**.\n` +
-        `Le faltan **${Math.max(faltan, 0)} XP** para el nivel ${progreso.nivelNuevo + 1}.`,
+        `${message.author} ${fraseSubida(progreso.nivelNuevo)} (${rango.nombre}).\n\n` +
+        `\`${barra(datos.xp, progreso.nivelNuevo)}\` **${datos.xp} XP**\n` +
+        `Le faltan **${faltan} XP** para el nivel ${progreso.nivelNuevo + 1}.` +
+        (partesBonus.length ? `\nBonus activo: ${partesBonus.join(' · ')}` : ''),
+      thumbnail: message.author.displayAvatarURL({ size: 128 }),
     });
     await canal.send({ embeds: [embed] }).catch(() => {});
   }
 
-  for (const logro of progreso.logrosNuevos) {
-    const definicion = LOGROS.find((l) => l.id === logro);
-    if (!definicion) continue;
+  for (const definicion of progreso.logrosNuevos) {
+    if (!definicion?.id) continue;
     const embed = brandEmbed({
       color: 0xf1c40f,
-      title: `${definicion.emoji} Logro desbloqueado: ${definicion.nombre}`,
-      description: `**${message.author}** desbloqueó **${definicion.nombre}** — ${definicion.desc}.`,
+      title: `${definicion.emoji} ${definicion.nombre}`,
+      description:
+        `**${message.author}** desbloqueó un logro nuevo.\n` +
+        `> ${definicion.desc}\n\n` +
+        (definicion.premio ? `Recompensa: **+${definicion.premio} XP**` : ''),
+      thumbnail: message.author.displayAvatarURL({ size: 128 }),
     });
     await canal.send({ embeds: [embed] }).catch(() => {});
   }
@@ -142,10 +192,13 @@ module.exports = {
 
     guardarEnBuffer(message);
 
-    // Sistema de niveles: XP y logros (el anuncio es silencioso si no hay canal configurado).
+    // Sistema de niveles: XP, logros, anuncios y roles por nivel.
     try {
       const progreso = procesarMensaje(message.guild.id, message.author.id);
       await anunciarProgreso(message, progreso);
+      if (progreso.subio || progreso.logrosNuevos.length) {
+        await asignarRolesNivel(message.member, progreso.nivelNuevo);
+      }
     } catch (error) {
       console.error('[TriggerBOT] Error procesando niveles:', error.message);
     }
