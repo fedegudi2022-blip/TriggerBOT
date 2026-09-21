@@ -28,7 +28,7 @@ src/
 |---|---|---|
 | `/ping` | Latencia del bot | Todos |
 | `/help` | Guía completa de comandos | Todos |
-| Mencionar al bot (`@TriggerBOT`) | Charla: saludos, cortesías y respuestas variadas | Todos |
+| Mencionar al bot (`@TriggerBOT`) | Charla con IA (si está configurada) o respuestas locales | Todos |
 | `@TriggerBOT ping` | Ping rápido por mención | Todos |
 
 ### Moderación
@@ -61,6 +61,16 @@ src/
 | `/config staff` | Roles admin/mod/helper del bot |
 | `/config mute` | Rol de silenciado (si no definís uno, `/mute` crea el suyo) |
 | `/config desactivar` | Apaga bienvenida, autorol, mod-log, logs, avisos o el rol de mute |
+
+## Chat con IA (opcional)
+
+El bot puede conversar cuando lo mencionás, con memoria de contexto por usuario (los últimos 6 turnos, se olvida a los 10 minutos).
+
+1. Conseguí una clave gratis en [aistudio.google.com/apikey](https://aistudio.google.com/apikey) (cuenta Google, 2 minutos, sin tarjeta).
+2. Agregá la variable `GEMINI_API_KEY` en el panel de Wispbyte (Startup → Variables) o en tu `.env` local.
+3. (Opcional) `GEMINI_MODEL` para cambiar el modelo — por defecto `gemini-2.0-flash`.
+
+**Sin clave configurada el bot funciona igual**: usa su repertorio local de respuestas. Si la IA falla o se queda sin cuota, también cae al respaldo automáticamente — nunca se queda mudo.
 
 ## Setup local
 

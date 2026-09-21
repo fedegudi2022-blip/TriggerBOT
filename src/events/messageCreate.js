@@ -1,6 +1,7 @@
 const { Events } = require('discord.js');
 const { brandEmbed } = require('../utils/replies');
 const { responderCharla, normalizar } = require('../utils/charla');
+const { responderConIA } = require('../utils/ia');
 const { getGuildConfig } = require('../store');
 
 // Limita el tamaño del buffer de mensajes recientes por canal para no crecer sin control.
@@ -71,6 +72,17 @@ async function manejarMencion(message) {
       description: `**Latencia de la API:** ${Math.round(client.ws.ping)}ms\nPara más detalle usá /ping.`,
     });
     return message.reply({ embeds: [embed] }).catch(() => {});
+  }
+
+  // Chat con IA si está configurada; si falla o no hay clave, respaldo local.
+  try {
+    const respuestaIA = await responderConIA(message.author.id, texto || '(el usuario solo te mencionó)');
+    if (respuestaIA) {
+      await message.reply({ content: respuestaIA.slice(0, 2000) }).catch(() => {});
+      return;
+    }
+  } catch (error) {
+    console.warn(`[TriggerBOT] IA no disponible, uso respuesta local: ${error.message}`);
   }
 
   await message.reply({ content: responderCharla(texto) }).catch(() => {});
