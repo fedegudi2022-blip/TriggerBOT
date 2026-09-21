@@ -642,6 +642,24 @@ async function manejarComponente(interaction) {
             .setStyle(TextInputStyle.Short)
             .setMaxLength(40)
             .setRequired(false)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder()
+            .setCustomId('descripcion')
+            .setLabel('Descripción para la ficha (opcional)')
+            .setStyle(TextInputStyle.Paragraph)
+            .setMaxLength(300)
+            .setPlaceholder('Modo clásico competitivo con equipos de 5 contra 5…')
+            .setRequired(false)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder()
+            .setCustomId('imagen')
+            .setLabel('URL de imagen de la ficha (opcional, ej: mapa)')
+            .setStyle(TextInputStyle.Short)
+            .setMaxLength(300)
+            .setPlaceholder('https://…/dust2.jpg')
+            .setRequired(false)
         )
       );
     return interaction.showModal(modal);
@@ -652,6 +670,8 @@ async function manejarComponente(interaction) {
     const nombre = interaction.fields.getTextInputValue('nombre').trim();
     const ipCruda = interaction.fields.getTextInputValue('ip').trim();
     const modo = (interaction.fields.getTextInputValue('modo') || '').trim();
+    const descripcion = (interaction.fields.getTextInputValue('descripcion') || '').trim();
+    const imagen = (interaction.fields.getTextInputValue('imagen') || '').trim();
     const [hostCrudo, puertoCrudo] = ipCruda.split(':');
     const host = hostCrudo.trim();
     const puerto = Number(puertoCrudo) || 27015;
@@ -666,7 +686,7 @@ async function manejarComponente(interaction) {
     setGuildConfig(guild.id, (c) => {
       c.servidores = c.servidores || {};
       c.servidores.lista = c.servidores.lista || [];
-      c.servidores.lista.push({ nombre, host, puerto, modo });
+      c.servidores.lista.push({ nombre, host, puerto, modo, descripcion, imagen: imagen || undefined });
     });
     if (interaction.isFromMessage()) return interaction.update(vistaSeccion(guild, 'servidores', true));
     return interaction.reply({

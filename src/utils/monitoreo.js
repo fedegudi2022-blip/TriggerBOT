@@ -6,7 +6,7 @@
 //   mensajePanel: id del mensaje del panel (lo publica /servidores con publicar:true)
 //   monitoreo: on/off de las alertas de caída/vuelta (el panel se actualiza siempre)
 //   lista: [{ host, puerto, nombre, modo }]
-const { brandEmbed, barra } = require('./replies');
+const { brandEmbed } = require('./replies');
 const a2s = require('./a2s');
 const { getGuildConfig } = require('../store');
 
@@ -120,40 +120,73 @@ async function alertar(guild, embed) {
 }
 
 // ---------- Panel auto-actualizado ----------
-// Redacta el embed del panel con las últimas instantáneas de la config del guild.
-// Sin latencia: el ping que mide el bot es desde SU hosting, no representa al jugador
-// (suele dar 10x más de lo que la gente ve en el juego y solo genera desconfianza).
+// Una tarjeta por server, al estilo de la ficha de triggerarena.pro: nombre como título,
+// descripción del modo, Estado/Jugadores/Mapa en columnas, la IP en su propia fila y el
+// "Última actualización" en el footer (Discord lo renderiza del timestamp del embed).
+// Sin latencia: el ping que mide el bot es desde SU hosting, no representa al jugador.
+function descripcionDe(server) {
+  return (
+    server.descripcion?.trim() ||
+    (server.modo ? `Modo **${server.modo}** de Counter-Strike 1.6.` : 'Server de Counter-Strike 1.6 de la comunidad TriGGer.Arena.')
+  );
+}
+
+// La tarjeta de un server con su instantánea (s puede ser undefined = todavía sin datos).
+function tarjetaServidor(server, host, puerto, s) {
+  const base = descripcionDe(server);
+
+  if (!s) {
+    return brandEmbed({
+      color: 0x5865f2,
+      title: server.nombre,
+      description: `${base}\n\n⏳ Consultando estado…`,
+      thumbnail: server.imagen || undefined,
+      footer: 'TriGGer.Arena • Última actualización',
+    });
+  }
+
+  if (!s.ok) {
+    return brandEmbed({
+      color: 0xed4245,
+      title: server.nombre,
+      description: base,
+      thumbnail: server.imagen || undefined,
+      fields: [
+        { name: 'Estado', value: '🔴 Caído', inline: true },
+        { name: 'Jugadores', value: '—', inline: true },
+        { name: 'Mapa actual', value: '—', inline: true },
+        { name: 'IP del servidor', value: `\`${host}:${puerto}\``, inline: false },
+      ],
+      footer: 'TriGGer.Arena • Última actualización',
+    });
+  }
+
+  const d = s.datos;
+  const ocup = d.maximo ? d.jugadores / d.maximo : 0;
+  const estado = ocup >= 0.9 ? '🔴 Online (lleno)' : '🟢 Online';
+  const aviso = notaDifiere(server, d);
+
+  return brandEmbed({
+    color: 0x5865f2,
+    title: server.nombre,
+    description: base + (aviso ? `\n\n${aviso.trim()}` : ''),
+    thumbnail: server.imagen || undefined,
+    fields: [
+      { name: 'Estado', value: estado, inline: true },
+      { name: 'Jugadores', value: `**${d.jugadores}/${d.maximo}**`, inline: true },
+      { name: 'Mapa actual', value: `\`${d.mapa}\``, inline: true },
+      { name: 'IP del servidor', value: `\`${host}:${puerto}\``, inline: false },
+    ],
+    footer: 'TriGGer.Arena • Última actualización',
+  });
+}
+
+// El panel completo: hasta 10 tarjetas (límite de embeds por mensaje de Discord).
 function construirPanel(guild, config, instantaneas) {
-  const lineas = config.lista.map((server, i) => {
+  return config.lista.slice(0, 10).map((server) => {
     const [host, puerto] = parsearDestino(server);
-    const s = instantaneas.get(clave(host, puerto));
-    if (!s) return `⏳ **${server.nombre}**\n> consultando…`;
-
-    if (!s.ok) return `🔴 **${server.nombre}** — caído\n> 🔗 \`${host}:${puerto}\``;
-
-    const d = s.datos;
-    const ocup = d.maximo ? d.jugadores / d.maximo : 0;
-    const estado = ocup >= 0.9 ? '🔴' : ocup >= 0.6 ? '🟡' : '🟢';
-    return (
-      `${estado} **${server.nombre}**${notaDifiere(server, d)}\n` +
-      `> 👥 ${barra(d.jugadores, d.maximo, 8)} **${d.jugadores}/${d.maximo}** · 🗺️ \`${d.mapa}\`\n` +
-      `> 🔗 \`${host}:${puerto}\``
-    );
+    return tarjetaServidor(server, host, puerto, instantaneas.get(clave(host, puerto)));
   });
-
-  const totalJugadores = instantaneas.size
-    ? [...instantaneas.values()].reduce((sum, s) => sum + (s.ok ? s.datos.jugadores : 0), 0)
-    : 0;
-  const online = [...instantaneas.values()].filter((s) => s.ok).length;
-
-  const embed = brandEmbed({
-    color: online === 0 ? 0xed4245 : online === config.lista.length ? 0x57f287 : 0xfee75c,
-    title: '🎮 Servidores TriGGer.Arena — en vivo',
-    description: `**${online}/${config.lista.length}** en línea · 👥 **${totalJugadores}** jugando ahora\n\n${lineas.join('\n\n')}`,
-    footer: `TriggerBOT • se actualiza solo cada ${Math.round(INTERVALO_MS / 1000)} s`,
-  });
-
-  return embed;
 }
 
 // Edita el mensaje del panel si existe; si el canal o el mensaje ya no están, no falla.
@@ -173,8 +206,7 @@ async function actualizarPanel(guild, config) {
 
   const mensaje = await canal.messages.fetch(config.mensajePanel).catch(() => null);
   if (!mensaje) return;
-  const embed = construirPanel(guild, config, instantaneas);
-  await mensaje.edit({ embeds: [embed] }).catch(() => {});
+  await mensaje.edit({ embeds: construirPanel(guild, config, instantaneas) }).catch(() => {});
 }
 
-module.exports = { tick, cache, consultar, parsearDestino, construirPanel, notaDifiere, INTERVALO_MS };
+module.exports = { tick, cache, consultar, parsearDestino, construirPanel, tarjetaServidor, notaDifiere, INTERVALO_MS };

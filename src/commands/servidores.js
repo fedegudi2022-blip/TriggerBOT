@@ -2,7 +2,7 @@
 // Consulta A2S en el momento; con `publicar` deja un panel fijo que el monitoreo
 // actualiza solo cada 90 s (Estado/Jugadores/Mapa/IP siempre frescos).
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
-const { brandEmbed, barra } = require('../utils/replies');
+const { brandEmbed } = require('../utils/replies');
 const monitoreo = require('../utils/monitoreo');
 const { getGuildConfig, setGuildConfig } = require('../store');
 
@@ -43,7 +43,7 @@ module.exports = {
       return publicarPanel(interaction);
     }
 
-    // Consulta todos los servers en paralelo (con timeout corto para responder rápido).
+    // Consulta todos los servers en paralelo y arma una tarjeta por server (como la web).
     const resultados = await Promise.all(
       servers.map(async (server) => {
         const [host, puerto] = monitoreo.parsearDestino(server);
@@ -52,33 +52,12 @@ module.exports = {
       })
     );
 
-    const lineas = resultados.map(({ server, host, puerto, resultado }) => {
-      if (!resultado.ok) {
-        return `🔴 **${server.nombre}** — caído\n> 🔗 \`${host}:${puerto}\``;
-      }
-      const d = resultado.datos;
-      const ocup = d.maximo ? d.jugadores / d.maximo : 0;
-      const estado = ocup >= 0.9 ? '🔴' : ocup >= 0.6 ? '🟡' : '🟢';
-      const aviso = monitoreo.notaDifiere(server, d);
-      return (
-        `${estado} **${server.nombre}**${aviso}\n` +
-        `> 👥 ${barra(d.jugadores, d.maximo, 8)} **${d.jugadores}/${d.maximo}** · 🗺️ \`${d.mapa}\`\n` +
-        `> 🔗 \`${host}:${puerto}\``
-      );
+    const tarjetas = resultados.map(({ server, host, puerto, resultado }) => {
+      const snapshot = resultado.ok ? resultado : { ok: false };
+      return monitoreo.tarjetaServidor(server, host, puerto, snapshot);
     });
 
-    const online = resultados.filter((r) => r.resultado.ok).length;
-    const jugadores = resultados.reduce((s, r) => s + (r.resultado.ok ? r.resultado.datos.jugadores : 0), 0);
-
-    const embed = brandEmbed({
-      color: online === 0 ? 0xed4245 : online === servers.length ? 0x57f287 : 0xfee75c,
-      title: '🎮 Servidores TriGGer.Arena — en vivo',
-      description:
-        `**${online}/${servers.length}** en línea · 👥 **${jugadores}** jugando ahora\n\n${lineas.join('\n\n')}`,
-      footer: `TriggerBOT • consultado ahora • ${new Date().toLocaleTimeString('es-AR')}`,
-    });
-
-    return interaction.reply({ embeds: [embed] });
+    return interaction.reply({ embeds: tarjetas.slice(0, 10) });
   },
 };
 
@@ -107,7 +86,7 @@ async function publicarPanel(interaction) {
   }
   if (config.lista?.length) {
     const { construirPanel } = require('../utils/monitoreo');
-    await mensaje.edit({ embeds: [construirPanel(guild, config, instantaneas)] }).catch(() => {});
+    await mensaje.edit({ embeds: construirPanel(guild, config, instantaneas) }).catch(() => {});
   }
 
   return interaction.editReply({
