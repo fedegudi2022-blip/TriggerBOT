@@ -45,6 +45,17 @@ function limiteValido(v) {
   return Number.isInteger(n) && n >= 0 && n <= 99 ? n : null;
 }
 
+// Nombre con contador de usuarios: «base · 3» o «base · 3/5» si tiene límite.
+function nombreConContador(base, cantidad, limite) {
+  const sufijo = limite > 0 ? `${cantidad}/${limite}` : `${cantidad}`;
+  return `${nombreBaseDe(base)} · ${sufijo}`.slice(0, 100);
+}
+
+// Quita el sufijo del contador para recalcular siempre sobre el nombre base.
+function nombreBaseDe(nombre) {
+  return String(nombre || '').replace(/\s·\s\d+(\/\d+)?$/, '').trim();
+}
+
 // Primer humano del canal (orden de ingreso del cache): el nuevo dueño si el actual se va.
 function nuevoDueno(canal) {
   for (const miembro of canal.members.values()) {
@@ -77,6 +88,26 @@ function categoriaDe(guildId) {
   return vozDe(guildId).categoriaId ?? null;
 }
 
+// Nivel de registro de eventos en el canal de logs ('todo' | 'errores' | 'nada'),
+// elegido con /voz logs. Por defecto solo errores: registrar una creación/borrado
+// por cada entrada/salida convertía el canal de logs en spam.
+function nivelEventos(guildId) {
+  return vozDe(guildId).eventos || 'errores';
+}
+
+// Contador de usuarios en el nombre del canal («· 3/5»): prendido por defecto,
+// apagable con /voz contador.
+function contadorActivo(guildId) {
+  return vozDe(guildId).contador !== false;
+}
+
+// Eventos rutinarios (creación, transferencia, borrado): solo se publican con nivel "todo".
+// Los errores (no se pudo crear un canal) se registran siempre: son accionables para el staff.
+function registrarEvento(guild, evento) {
+  if (nivelEventos(guild.id) !== 'todo') return;
+  logEvent(guild, evento);
+}
+
 function registrarTemporal(guildId, canalId, duenoId) {
   setGuildConfig(guildId, (c) => {
     c.voz = c.voz || {};
@@ -89,6 +120,7 @@ function olvidarTemporal(guildId, canalId) {
   setGuildConfig(guildId, (c) => {
     if (c.voz?.temporales?.[canalId]) delete c.voz.temporales[canalId];
   });
+  limpiarColaRenombre(canalId); // ya no hay nada que renombrar si el canal se va
 }
 
 // ---------- Permisos ----------
@@ -223,8 +255,10 @@ async function crearPara(state) {
 
   // Intentamos la categoría elegida y, si falla (permisos del bot o categoría llena),
   // reintentamos con la categoría del hub y, por último, sin categoría.
+  const nombreBase = nombreCanal(config.formato, dueno.displayName);
+  // El dueño aterriza apenas lo movemos: nace con el contador ya en 1 (si está prendido).
   const opcionesBase = {
-    name: nombreCanal(config.formato, dueno.displayName),
+    name: contadorActivo(guild.id) ? nombreConContador(nombreBase, 1, 0) : nombreBase,
     type: ChannelType.GuildVoice,
     permissionOverwrites: [{ id: dueno.id, allow: PERMISOS_DUENO }],
   };
@@ -246,6 +280,7 @@ async function crearPara(state) {
     await avisarFallo(guild, dueno, ultimoError);
     return;
   }
+  limpiarColaRenombre(canal.id); // canal nuevo: sin renombres pendientes de una vida anterior
   if (conFallback) {
     log.warn(`Canal temporal creado fuera de la categoría configurada (último error: ${ultimoError?.message})`);
   }
@@ -254,7 +289,7 @@ async function crearPara(state) {
   await state.setChannel(canal).catch(() => {});
   await enviarPanel(canal, dueno).catch(() => {});
   log.info(`Canal temporal creado para ${dueno.user.tag} en ${guild.name}`);
-  logEvent(guild, {
+  registrarEvento(guild, {
     color: 0x57f287,
     title: '🎧 Canal de voz temporal creado',
     description: `**${dueno.displayName}** entró al canal de creación y se le creó <#${canal.id}>.`,
@@ -268,7 +303,7 @@ async function transferirA(guild, canal, nuevoOwner, { silencioso = false } = {}
   registrarTemporal(guild.id, canal.id, nuevoOwner.id);
   if (anteriorId && anteriorId !== nuevoOwner.id) {
     await canal.permissionOverwrites.delete(anteriorId).catch(() => {});
-    logEvent(guild, {
+    registrarEvento(guild, {
       color: 0xfee75c,
       title: '👑 Canal de voz temporal transferido',
       description: `**${canal.name}** (<#${canal.id}>) pasó de <@${anteriorId}> a <@${nuevoOwner.id}>.`,
@@ -284,6 +319,52 @@ async function transferirA(guild, canal, nuevoOwner, { silencioso = false } = {}
 
 // ---------- Borrado con gracia (se cancela si alguien vuelve a entrar) ----------
 const borradosAgendados = new Map(); // canalId → timeout
+
+// ---------- Contador en el nombre (respeta el límite de renombres de Discord) ----------
+// Discord permite solo 2 renombres por canal cada 10 minutos: la cola junta los
+// cambios y aplica siempre el valor más nuevo apenas se libera el cupo.
+const RENOMBRES_POR_VENTANA = 2;
+const VENTANA_RENOMBRE_MS = 10 * 60 * 1000;
+const colasRenombre = new Map(); // canalId → { sellos: number[], timer }
+
+function limpiarColaRenombre(canalId) {
+  const cola = colasRenombre.get(canalId);
+  if (cola?.timer) clearTimeout(cola.timer);
+  colasRenombre.delete(canalId);
+}
+
+function refrescarContador(guild, canal) {
+  if (!canal || !contadorActivo(guild.id)) return;
+  const deseado = nombreConContador(nombreBaseDe(canal.name), canal.members.size, canal.userLimit);
+  if (canal.name === deseado) return;
+
+  const cola = colasRenombre.get(canal.id) ?? { sellos: [], timer: null };
+  colasRenombre.set(canal.id, cola);
+
+  const intento = () => {
+    const fresco = guild.channels.cache.get(canal.id);
+    if (!fresco) return limpiarColaRenombre(canal.id); // lo borraron mientras esperaba
+    const ahora = Date.now();
+    cola.sellos = cola.sellos.filter((sello) => ahora - sello < VENTANA_RENOMBRE_MS);
+    // Se recalcula con el estado actual del canal, no con el pedido viejo.
+    const objetivo = nombreConContador(nombreBaseDe(fresco.name), fresco.members.size, fresco.userLimit);
+    if (fresco.name === objetivo) return;
+    if (cola.sellos.length >= RENOMBRES_POR_VENTANA) {
+      if (!cola.timer) {
+        const espera = VENTANA_RENOMBRE_MS - (ahora - cola.sellos[0]) + 1_000;
+        cola.timer = setTimeout(() => {
+          cola.timer = null;
+          intento();
+        }, espera);
+        cola.timer.unref?.();
+      }
+      return;
+    }
+    cola.sellos.push(ahora);
+    fresco.setName(objetivo, 'Contador de usuarios del canal temporal').catch(() => {});
+  };
+  intento();
+}
 
 function programarBorrado(guildId, canal) {
   if (borradosAgendados.has(canal.id)) return;
@@ -303,7 +384,7 @@ function programarBorrado(guildId, canal) {
       /* sin permisos o ya borrado */
     }
     log.info(`Canal temporal vacío borrado (${fresco.name})`);
-    logEvent(fresco.guild, {
+    registrarEvento(fresco.guild, {
       color: 0xed4245,
       title: '🗑️ Canal de voz temporal borrado',
       description: `**${fresco.name}** quedó vacío y se borró solo${duenoId ? ` (era de <@${duenoId}>)` : ''}.`,
@@ -347,6 +428,8 @@ async function manejarCambio(oldState, newState) {
     programarBorrado(guild.id, canal);
     return;
   }
+
+  refrescarContador(guild, canal); // entró o salió alguien: el nombre se updatea
 
   // 3) El dueño se fue pero queda gente: el dueño pasa al primer humano.
   const duenoId = duenoDe(guild.id, canalId);
@@ -531,6 +614,7 @@ async function manejarModal(interaction) {
     const nombre = interaction.fields.getTextInputValue('nombre').trim().slice(0, 90);
     if (!nombre) return interaction.reply({ content: 'El nombre no puede quedar vacío.', flags: MessageFlags.Ephemeral });
     await canal.setName(nombre, `Renombrado por ${interaction.user.tag}`).catch(() => {});
+    refrescarContador(guild, canal); // vuelve a colgarle el contador al nombre nuevo
     return interaction.reply({ content: `📝 Canal renombrado a **${nombre}**.`, flags: MessageFlags.Ephemeral });
   }
 
@@ -538,6 +622,7 @@ async function manejarModal(interaction) {
     const limite = limiteValido(interaction.fields.getTextInputValue('limite'));
     if (limite === null) return interaction.reply({ content: 'Límite inválido: usá un número de 0 a 99 (0 = sin límite).', flags: MessageFlags.Ephemeral });
     await canal.setUserLimit(limite, `Límite ajustado por ${interaction.user.tag}`).catch(() => {});
+    refrescarContador(guild, canal); // con límite el contador pasa a mostrarse como «n/límite»
     return interaction.reply({
       content: limite === 0 ? '👥 Límite quitado: canal abierto para todos.' : `👥 Límite fijado en **${limite}** usuarios.`,
       flags: MessageFlags.Ephemeral,
@@ -559,7 +644,7 @@ async function limpiarAlArrancar(client) {
         const duenoId = temporales[canalId];
         olvidarTemporal(guild.id, canalId);
         await canal.delete('Limpieza al arrancar: canal temporal vacío').catch(() => {});
-        logEvent(guild, {
+        registrarEvento(guild, {
           color: 0xed4245,
           title: '🗑️ Canal de voz temporal borrado',
           description: `**${canal.name}** (de <@${duenoId}>) quedó vacío tras un reinicio y se limpió.`,
@@ -573,9 +658,13 @@ module.exports = {
   NOMBRE_HUB,
   PLANTILLA_NOMBRE,
   nombreCanal,
+  nombreConContador,
+  nombreBaseDe,
   vozDe,
   temporalesDe,
   categoriaDe,
+  nivelEventos,
+  contadorActivo,
   limiteValido,
   nuevoDueno,
   esTemporal,
@@ -585,6 +674,7 @@ module.exports = {
   olvidarTemporal,
   moverTemporalesACategoria,
   manejarCambio,
+  refrescarContador,
   manejarComponente,
   manejarSelect,
   manejarModal,

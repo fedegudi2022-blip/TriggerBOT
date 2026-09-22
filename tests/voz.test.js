@@ -149,6 +149,15 @@ describe('helpers puros', () => {
     assert.equal(voz.nombreCanal('{usuario}', ''), 'usuario', 'sin nombre usa el placeholder');
   });
 
+  test('nombreConContador / nombreBaseDe son inversos', () => {
+    assert.equal(voz.nombreConContador('Canal de Ana', 3, 0), 'Canal de Ana · 3');
+    assert.equal(voz.nombreConContador('Canal de Ana', 3, 5), 'Canal de Ana · 3/5');
+    assert.equal(voz.nombreBaseDe('Canal de Ana · 3/5'), 'Canal de Ana');
+    assert.equal(voz.nombreBaseDe('Canal de Ana · 3'), 'Canal de Ana');
+    assert.equal(voz.nombreBaseDe('Canal limpio'), 'Canal limpio', 'sin sufijo queda igual');
+    assert.equal(voz.nombreConContador(voz.nombreBaseDe('X · 2'), 4, 0), 'X · 4');
+  });
+
   test('limiteValido acepta 0-99 y rechaza lo demás', () => {
     assert.equal(voz.limiteValido(5), 5);
     assert.equal(voz.limiteValido('12'), 12);
@@ -232,7 +241,7 @@ describe('manejarCambio — ciclo de vida', () => {
     assert.ok(canalId, 'se creó el canal temporal');
     const canal = g.channels.cache.get(canalId);
     assert.equal(canal.parentId, 'cat-voz', 'se creó en la categoría del staff, no en la del hub');
-    assert.equal(canal.name, '🔊 Canal de Voz de Federico', 'nombre con formato por defecto (con emoji)');
+    assert.equal(voz.nombreBaseDe(canal.name), '🔊 Canal de Voz de Federico', 'nombre con formato por defecto (con emoji)');
   });
 
   test('los registros muertos (canales borrados a mano) no bloquean la creación', async () => {
@@ -393,7 +402,7 @@ describe('registro de eventos de voz (canal de logs)', () => {
     const g = reset();
     const logs = canalVozFake('logs-1', g);
     g.channels.cache.set('logs-1', logs);
-    store.escribir(GUILD_ID, { logs: 'logs-1', voz: { hubId: 'hub-1' } });
+    store.escribir(GUILD_ID, { logs: 'logs-1', voz: { hubId: 'hub-1', eventos: 'todo' } });
 
     const dueno = miembroFake(DUENO_ID, { displayName: 'Federico' });
     const otro = miembroFake(OTRO_ID, { displayName: 'Nacho' });
@@ -421,6 +430,110 @@ describe('registro de eventos de voz (canal de logs)', () => {
     await new Promise((r) => setTimeout(r, 2_600));
     assert.equal(canal.borrado, true, 'canal borrado');
     assert.ok(logs.enviados.some((e) => JSON.stringify(e).includes('borrado')), 'evento de borrado');
+  });
+});
+
+describe('contador de usuarios en el nombre', () => {
+  test('el canal nace con contador en 1 y sube cuando entra gente', async () => {
+    const g = reset();
+    store.escribir(GUILD_ID, { voz: { hubId: 'hub-1' } });
+    const dueno = miembroFake(DUENO_ID, { displayName: 'Federico' });
+    g.members.cache.set(DUENO_ID, dueno);
+    g.channels.cache.set('hub-1', canalVozFake('hub-1', g));
+    await voz.manejarCambio({ guild: g, channelId: null }, stateFake(g, dueno, 'hub-1'));
+
+    const canalId = voz.canalDeDueno(GUILD_ID, DUENO_ID);
+    const canal = g.channels.cache.get(canalId);
+    assert.equal(canal.name, '🔊 Canal de Voz de Federico · 1', 'nace con el contador en 1 (el dueño está por aterrizar)');
+
+    // El dueño aterriza en su canal y entra otro: el contador sube a 2.
+    stateFake(g, dueno, canalId);
+    const otro = miembroFake(OTRO_ID, { displayName: 'Nacho' });
+    stateFake(g, otro, canalId);
+    await voz.manejarCambio({ guild: g, channelId: 'hub-1' }, { guild: g, channelId: canalId, member: otro });
+    await new Promise((r) => setImmediate(r));
+    assert.equal(canal.name, '🔊 Canal de Voz de Federico · 2', 'se actualiza al entrar otro');
+  });
+
+  test('con /voz contador apagado, los nombres quedan sin cantidad', async () => {
+    const g = reset();
+    store.escribir(GUILD_ID, { voz: { hubId: 'hub-1', contador: false } });
+    const dueno = miembroFake(DUENO_ID, { displayName: 'Federico' });
+    g.members.cache.set(DUENO_ID, dueno);
+    g.channels.cache.set('hub-1', canalVozFake('hub-1', g));
+    await voz.manejarCambio({ guild: g, channelId: null }, stateFake(g, dueno, 'hub-1'));
+
+    const canalId = voz.canalDeDueno(GUILD_ID, DUENO_ID);
+    const canal = g.channels.cache.get(canalId);
+    assert.equal(canal.name, '🔊 Canal de Voz de Federico', 'sin sufijo');
+
+    stateFake(g, dueno, canalId);
+    const otro = miembroFake(OTRO_ID);
+    stateFake(g, otro, canalId);
+    await voz.manejarCambio({ guild: g, channelId: 'hub-1' }, { guild: g, channelId: canalId, member: otro });
+    await new Promise((r) => setImmediate(r));
+    assert.equal(canal.name, '🔊 Canal de Voz de Federico', 'sigue sin sufijo');
+  });
+
+  test('respeta el límite de Discord: 2 renombres por 10 min, el resto espera la ventana', async () => {
+    const g = reset();
+    store.escribir(GUILD_ID, { voz: { hubId: 'hub-1' } });
+    const dueno = miembroFake(DUENO_ID, { displayName: 'Federico' });
+    g.members.cache.set(DUENO_ID, dueno);
+    g.channels.cache.set('hub-1', canalVozFake('hub-1', g));
+    await voz.manejarCambio({ guild: g, channelId: null }, stateFake(g, dueno, 'hub-1'));
+    const canalId = voz.canalDeDueno(GUILD_ID, DUENO_ID);
+    const canal = g.channels.cache.get(canalId);
+    stateFake(g, dueno, canalId);
+
+    // Entra gente rápido: solo los 2 primeros renombres son inmediatos (límite de Discord).
+    for (let n = 2; n <= 4; n++) {
+      const alguien = miembroFake(`u-${n}`, { displayName: `u${n}` });
+      stateFake(g, alguien, canalId);
+      await voz.manejarCambio({ guild: g, channelId: canalId }, { guild: g, channelId: canalId, member: alguien });
+      await new Promise((r) => setImmediate(r));
+    }
+    // Nació en ·1, usó los 2 renombres del cupo (·2, ·3) y el ·4 queda esperando la ventana.
+    assert.equal(canal.name, '🔊 Canal de Voz de Federico · 3', 'el excedente se encola, no dispara 429');
+  });
+});
+
+describe('nivel de registros (/voz logs)', () => {
+  test('por defecto solo errores: las rutinas no ensucian el canal de logs', async () => {
+    const g = reset();
+    const logs = canalVozFake('logs-1', g);
+    g.channels.cache.set('logs-1', logs);
+    store.escribir(GUILD_ID, { logs: 'logs-1', voz: { hubId: 'hub-1' } }); // sin eventos: default "errores"
+
+    const dueno = miembroFake(DUENO_ID, { displayName: 'Federico' });
+    g.members.cache.set(DUENO_ID, dueno);
+    g.channels.cache.set('hub-1', canalVozFake('hub-1', g));
+    await voz.manejarCambio({ guild: g, channelId: null }, stateFake(g, dueno, 'hub-1'));
+    await new Promise((r) => setImmediate(r));
+
+    assert.ok(voz.canalDeDueno(GUILD_ID, DUENO_ID), 'el canal se creó igual');
+    assert.equal(logs.enviados.length, 0, 'creación silenciada por defecto');
+    assert.equal(voz.nivelEventos(GUILD_ID), 'errores');
+  });
+
+  test('los fallos se registran siempre, aunque el nivel sea "nada"', async () => {
+    const g = reset();
+    const logs = canalVozFake('logs-1', g);
+    const hub = canalVozFake('hub-1', g);
+    g.channels.cache.set('logs-1', logs);
+    g.channels.cache.set('hub-1', hub);
+    store.escribir(GUILD_ID, { logs: 'logs-1', voz: { hubId: 'hub-1', eventos: 'nada' } });
+    g.channels.create = async () => {
+      throw new Error('Missing Permissions');
+    };
+
+    const dueno = miembroFake(DUENO_ID, { displayName: 'Federico' });
+    g.members.cache.set(DUENO_ID, dueno);
+    await voz.manejarCambio({ guild: g, channelId: null }, stateFake(g, dueno, 'hub-1'));
+    await new Promise((r) => setImmediate(r));
+
+    assert.ok(logs.enviados.some((e) => JSON.stringify(e).includes('Error creando canal temporal')), 'el error igual queda registrado');
+    assert.equal(logs.enviados.length, 1, 'y solo el error');
   });
 });
 

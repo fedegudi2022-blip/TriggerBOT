@@ -24,6 +24,26 @@ module.exports = {
         .setDescription('Elige la categoría donde se crean los canales temporales')
         .addChannelOption((o) => o.setName('categoria').setDescription('Categoría destino (si no, se crea junto al hub)').setRequired(true))
     )
+    .addSubcommand((sc) =>
+      sc
+        .setName('contador')
+        .setDescription('Muestra cuántos hay en cada canal: «🔊 Canal de X · 3/5»')
+        .addBooleanOption((o) =>
+          o.setName('activado').setDescription('Prender o apagar el contador en el nombre del canal').setRequired(true)
+        )
+    )
+    .addSubcommand((sc) =>
+      sc
+        .setName('logs')
+        .setDescription('Qué eventos de voz se registran en el canal de logs')
+        .addStringOption((o) =>
+          o.setName('nivel').setDescription('Cantidad de registros').setRequired(true).addChoices(
+            { name: 'solo errores (recomendado)', value: 'errores' },
+            { name: 'todo — cada creación, transferencia y borrado', value: 'todo' },
+            { name: 'nada — silenciar el registro de voz', value: 'nada' }
+          )
+        )
+    )
     .addSubcommand((sc) => sc.setName('desactivar').setDescription('Apaga el sistema y borra el canal de creación'))
     .addSubcommand((sc) =>
       sc
@@ -115,6 +135,41 @@ module.exports = {
       });
     }
 
+    if (sub === 'contador') {
+      const activado = interaction.options.getBoolean('activado', true);
+      setGuildConfig(interaction.guildId, (c) => {
+        c.voz = c.voz || {};
+        c.voz.contador = activado;
+      });
+      return interaction.reply({
+        embeds: [
+          successEmbed(
+            activado
+              ? '🔢 Contador **prendido**: los canales muestran cuántos hay adentro («· 3», o «· 3/5» con límite).\n Discord limita los renombres a 2 por canal cada 10 min: el bot junta cambios y aplica el valor más nuevo apenas puede.'
+              : '🔢 Contador **apagado**: los nombres vuelven a quedar sin cantidad en el próximo cambio de gente.'
+          ),
+        ],
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+
+    if (sub === 'logs') {
+      const nivel = interaction.options.getString('nivel', true);
+      setGuildConfig(interaction.guildId, (c) => {
+        c.voz = c.voz || {};
+        c.voz.eventos = nivel;
+      });
+      const detalle = {
+        todo: 'Se registra **cada** creación, transferencia y borrado de canales temporales.',
+        errores: 'Solo se registran los **fallos** (no se pudo crear un canal). Los eventos rutinarios quedan en silencio.',
+        nada: 'Sin registros de voz. Si algo falla, igual te avisamos en el chat del canal de creación.',
+      };
+      return interaction.reply({
+        embeds: [successEmbed(`Registros de voz actualizados: **${nivel}**.\n${detalle[nivel]}`)],
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+
     if (sub === 'desactivar') {
       const config = voz.vozDe(interaction.guildId);
       if (!config.hubId) {
@@ -174,7 +229,9 @@ module.exports = {
           `**Estado:** ${hub ? '🟢 Activo' : '🔴 Inactivo'}\n` +
           `**Canal de creación:** ${hub ? hub.name : 'sin configurar'}\n` +
           `**Categoría destino:** ${categoria ? categoria.name : 'la del hub (sin configurar)'}${destino ? (puedeCrear ? ' ✅' : ' ❌') : ''}\n` +
-          `**Formato:** ${config.formato || voz.PLANTILLA_NOMBRE}\n\n` +
+          `**Formato:** ${config.formato || voz.PLANTILLA_NOMBRE}\n` +
+          `**Registros:** ${config.eventos || 'errores (por defecto)'}\n` +
+          `**Contador en el nombre:** ${config.contador === false ? 'apagado' : 'prendido (por defecto)'}\n\n` +
           `**Canales activos (${temporales.length}):**\n${lista || '*ninguno en este momento*'}${avisoPermisos}`,
       });
       return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });

@@ -53,7 +53,7 @@ Los tests corren aislados del `data/` real (usan un directorio temporal) y no to
 | `/status` | Estado del bot: modelos de IA, latencia, tiempo encendido, uso — con botón de refresco | Todos |
 | `/redes` | Redes oficiales de la comunidad (WhatsApp, Steam, Instagram) con botones de link directo | Todos |
 | `/web` | Link del sitio oficial [triggerarena.pro](https://triggerarena.pro/) con botón directo | Todos |
-| `/voz activar/hub/formato/estado` | Staff: activa los **canales de voz temporales** (ver abajo) | Staff (config) |
+| `/voz activar/hub/categoria/formato/contador/logs/estado` | Staff: activa los **canales de voz temporales** (ver abajo) | Staff (config) |
 | `/servidores` | Estado en vivo de los servers CS 1.6 (jugadores, mapa, IP). Staff: `publicar:true` fija un panel que se actualiza solo | Todos |
 | `/ip [servidor]` | IP para conectarte, lista para copiar. Con filtro por nombre muestra mapa y jugadores de ahora | Todos |
 | `/ticket publicar/categoria/logs/mensaje` | Panel de soporte con botón, canales privados por ticket y transcript al cerrar | Staff (config) |
@@ -108,7 +108,7 @@ Se activa con **`/voz activar`**: el bot crea un canal de voz **«➕ Crear cana
 
 > 📍 **Categoría destino:** el staff elige dónde se crean los canales temporales con **`/voz categoria`**. Si se cambia, los canales ya creados **se mueven solos** a la nueva categoría (conservando permisos). Si nunca se configuró, se crean en la misma categoría que el hub.
 >
-> 📋 **Registro:** la creación, transferencia y borrado de canales temporales quedan en el canal de logs de `/config` (o mod-log si no hay logs configurado).
+> 📋 **Registro:** por defecto solo se registran los **fallos** (no se pudo crear un canal) para no llenar el canal de logs de spam. Con **`/voz logs todo`** el staff activa el registro de cada creación, transferencia y borrado; con `nada` se silencia todo el registro de voz. Los eventos van al canal de logs de `/config` (o mod-log si no hay logs configurado).
 
 - **📝 Renombrar** y **👥 límite de usuarios** (0-99) con ventanas emergentes.
 - **🔒 Cerrar / 🔓 abrir** el canal (bloquea la entrada de gente nueva).
@@ -117,6 +117,8 @@ Se activa con **`/voz activar`**: el bot crea un canal de voz **«➕ Crear cana
 - **🗑️ Borrar** el canal cuando quieras.
 
 **Automático:** si el dueño se va pero queda gente, la propiedad pasa al primer humano que quedó; si el canal queda vacío, **se borra solo** (con 2 s de gracia por si el dueño vuelve). Un usuario tiene un solo canal a la vez (si vuelve a entrar al hub, va al suyo). Los canales activos sobreviven reinicios (quedan en la config respaldada en MariaDB) y al arrancar se limpian los que quedaron vacíos. Tope de 25 canales temporales por server (anti-flood).
+
+🔢 **Contador en el nombre:** cada canal muestra cuántos hay adentro —«· 3», o «· 3/5» con límite— y se actualiza solo al entrar o salir gente (se apaga con `/voz contador`). Discord limita los renombres a **2 por canal cada 10 minutos**: el bot junta los cambios y aplica el valor más nuevo apenas se libera el cupo, así que el número puede demorarse un poco en actualizarse.
 
 ### Servidores CS 1.6 (monitoreo y panel en vivo)
 
