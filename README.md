@@ -57,7 +57,8 @@ Los tests corren aislados del `data/` real (usan un directorio temporal) y no to
 | `/servidores` | Estado en vivo de los servers CS 1.6 (jugadores, mapa, IP). Staff: `publicar:true` fija un panel que se actualiza solo | Todos |
 | `/ip [servidor]` | IP para conectarte, lista para copiar. Con filtro por nombre muestra mapa y jugadores de ahora | Todos |
 | `/ticket publicar/categoria/logs/mensaje` | Panel de soporte con botón, canales privados por ticket y transcript al cerrar | Staff (config) |
-| `/help` | Guía completa por categorías | Todos |
+| `/help user` | Guía de comandos para usuarios, por categorías | Todos |
+| `/help staff` | Guía completa (incluye moderación y configuración); respuesta de staff, no visible en canales públicos | Staff |
 | `/userinfo [usuario]` | Ficha de usuario: fechas, roles, permisos, warns | Todos |
 | `/serverinfo` | Ficha del server: dueño, canales, roles, boosts | Todos |
 | `/avatar [usuario]` | Avatar en grande con link de descarga | Todos |

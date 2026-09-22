@@ -1,7 +1,7 @@
 // /web — link oficial de la página TriGGer.Arena con botón directo.
 const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { brandEmbed } = require('../utils/replies');
-const { WEB, DUENO_MENCION } = require('../comunidad');
+const { WEB } = require('../comunidad');
 
 module.exports = {
   data: new SlashCommandBuilder().setName('web').setDescription('Página web oficial de TriGGer.Arena'),
@@ -12,8 +12,7 @@ module.exports = {
       title: '🌐 TriGGer.Arena — Sitio oficial',
       description:
         `Entrá a **${WEB}** para novedades, torneos y todo lo de la comunidad.\n\n` +
-        `Si buscás las redes sociales (WhatsApp, Steam, Instagram), usá \`/redes\`.\n` +
-        `¿Preguntas? Hablá con el dueño ${DUENO_MENCION} o abrí un ticket de soporte.`,
+        `Si buscás las redes sociales (WhatsApp, Steam, Instagram), usá \`/redes\`.\n`,
     });
 
     const fila = new ActionRowBuilder().addComponents(
