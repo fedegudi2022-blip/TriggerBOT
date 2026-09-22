@@ -46,6 +46,9 @@ module.exports = {
     // primera respuesta tras el arranque no paga la demora del listado.
     require('../utils/ia').precalentar();
 
+    // Canales de voz temporales: borra los que quedaron vacíos por un reinicio.
+    require('../utils/voz').limpiarAlArrancar(client).catch(() => {});
+
     // Sincronización de comandos slash en cada servidor donde está el bot.
     // No hace falta correr "npm run register" manualmente: alcanza con reiniciar.
     const body = [...client.commands.values()].map((c) => c.data.toJSON());

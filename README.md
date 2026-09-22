@@ -53,6 +53,7 @@ Los tests corren aislados del `data/` real (usan un directorio temporal) y no to
 | `/status` | Estado del bot: modelos de IA, latencia, tiempo encendido, uso — con botón de refresco | Todos |
 | `/redes` | Redes oficiales de la comunidad (WhatsApp, Steam, Instagram) con botones de link directo | Todos |
 | `/web` | Link del sitio oficial [triggerarena.pro](https://triggerarena.pro/) con botón directo | Todos |
+| `/voz activar/hub/formato/estado` | Staff: activa los **canales de voz temporales** (ver abajo) | Staff (config) |
 | `/servidores` | Estado en vivo de los servers CS 1.6 (jugadores, mapa, IP). Staff: `publicar:true` fija un panel que se actualiza solo | Todos |
 | `/ip [servidor]` | IP para conectarte, lista para copiar. Con filtro por nombre muestra mapa y jugadores de ahora | Todos |
 | `/ticket publicar/categoria/logs/mensaje` | Panel de soporte con botón, canales privados por ticket y transcript al cerrar | Staff (config) |
@@ -100,6 +101,18 @@ Se activa desde `/config → Anti-spam y anti-raid` (apagada por defecto):
 - **Anti-raid**: si entran más de X cuentas en Y segundos (por defecto 8 en 60 s), alerta al staff con la lista de ingresos (marcando cuentas de menos de 7 días 🆕). Opcionalmente puede **actuar sola** (expulsar o banear) sobre cuentas nuevas sin roles.
 
 Todo queda registrado en el mod-log como acción del bot.
+
+### Canales de voz temporales (estilo VoiceMaster)
+
+Se activa con **`/voz activar`**: el bot crea un canal de voz **«➕ Crear canal»**. Cuando alguien entra ahí, recibe **su propio canal temporal** (en la misma categoría, con formato configurable `/voz formato`) y un panel de controles:
+
+- **📝 Renombrar** y **👥 límite de usuarios** (0-99) con ventanas emergentes.
+- **🔒 Cerrar / 🔓 abrir** el canal (bloquea la entrada de gente nueva).
+- **👢 Expulsar** a alguien del canal y **👑 transferir** la propiedad.
+- **✋ Reclamar**: si el dueño se fue, cualquiera adentro puede tomar el canal.
+- **🗑️ Borrar** el canal cuando quieras.
+
+**Automático:** si el dueño se va pero queda gente, la propiedad pasa al primer humano que quedó; si el canal queda vacío, **se borra solo** (con 2 s de gracia por si el dueño vuelve). Un usuario tiene un solo canal a la vez (si vuelve a entrar al hub, va al suyo). Los canales activos sobreviven reinicios (quedan en la config respaldada en MariaDB) y al arrancar se limpian los que quedaron vacíos. Tope de 25 canales temporales por server (anti-flood).
 
 ### Servidores CS 1.6 (monitoreo y panel en vivo)
 

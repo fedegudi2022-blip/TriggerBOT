@@ -188,7 +188,7 @@ function sistemaCompleto(contexto = {}) {
     sistema += ` Te está hablando ${contexto.usuario}${contexto.canal ? ` en el canal #${contexto.canal}` : ''}.`;
   }
   if (contexto.dueñoPresente) {
-    sistema += ` ${DUENO_MENCION} (tu creador y dueño) está en la conversación: tratalo con respeto.`;
+    sistema += ` ${DUENO_MENCION} (tu creador) está en la conversación: tratalo con respeto.`;
   }
   return `${sistema}\n\n${DETECTOR_ACCIONES}`;
 }

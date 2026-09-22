@@ -114,6 +114,7 @@ const pingCmd = require('./commands/ping');
 const statusCmd = require('./commands/status');
 const topCmd = require('./commands/top');
 const { manejarBotonTicket, manejarModalTicket } = require('./utils/tickets');
+const voz = require('./utils/voz');
 client.on('interactionCreate', async (interaction) => {
   try {
     if (interaction.isButton() && interaction.customId.startsWith('ia_accion:')) {
@@ -129,6 +130,12 @@ client.on('interactionCreate', async (interaction) => {
       await topCmd.ejecutar(interaction, Number(interaction.customId.split(':')[2]) || 1);
     } else if (interaction.isButton() && interaction.customId.startsWith('ticket:')) {
       await manejarBotonTicket(interaction);
+    } else if (interaction.isButton() && interaction.customId.startsWith('voz:')) {
+      await voz.manejarComponente(interaction);
+    } else if (interaction.isStringSelectMenu() && interaction.customId.startsWith('voz:sel:')) {
+      await voz.manejarSelect(interaction);
+    } else if (interaction.isModalSubmit() && interaction.customId.startsWith('voz:modal:')) {
+      await voz.manejarModal(interaction);
     } else if (interaction.isModalSubmit() && interaction.customId.startsWith('ticket:')) {
       await manejarModalTicket(interaction);
     } else if (interaction.customId?.startsWith('cfg:')) {

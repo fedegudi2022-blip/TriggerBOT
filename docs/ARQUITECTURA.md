@@ -23,6 +23,7 @@ El bot es JavaScript CommonJS sobre Node 18+, con **tres dependencias de runtime
 | `src/utils/proteccion.js` | Anti-spam y anti-raid automáticos |
 | `src/utils/accionesIA.js` | Acciones de moderación pedidas por IA (confirmación con botones) |
 | `src/utils/tickets.js` | Sistema de tickets con transcript |
+| `src/utils/voz.js` | Canales de voz temporales Join-to-Create (hub, controles, auto-borrado) |
 | `src/utils/modlog.js` | Registro numerado de casos de moderación |
 | `src/utils/log.js` | Logs generales de eventos (mensajes borrados/editados, ingresos, etc.) |
 | `src/utils/replies.js` | Embeds y formato con el estilo visual del bot |

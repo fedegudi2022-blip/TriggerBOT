@@ -14,7 +14,7 @@ function construirGuia(client) {
       },
       {
         name: 'Comunidad',
-        value: '`/redes` · `/web` — redes sociales oficiales (WhatsApp, Steam, Instagram) y el sitio triggerarena.pro, con botones directos.',
+        value: '`/redes` · `/web` — redes sociales oficiales (WhatsApp, Steam, Instagram) y el sitio triggerarena.pro, con botones directos.\n`/voz` (staff activa) — canales de voz temporales: entrás al canal «➕ Crear canal» y tenés tu canal propio con controles.',
       },
       {
         name: 'Servidores CS 1.6',

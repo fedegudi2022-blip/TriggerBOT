@@ -127,7 +127,7 @@ function respuestaInstantanea(texto) {
     /\b(creo|creaste|creador|hizo|hiciste|programo|programaste|desarrollo|desarrollaste|invento|inventaste|configuro|configuraste|fabrico|fabricaste)\b/.test(texto) &&
     /\b(te|quien|quienes|tu|me|vos)\b/.test(texto)
   ) {
-    return `A mí me creó ${DUENO_MENCION}, el dueño del bot y de la comunidad Trigger.Arena 🎉`;
+    return `A mí me creó ${DUENO_MENCION}, el dueño del bot!`;
   }
   // ¿Quién es el dueño del bot/server?
   if (/\b(dueno|duena|owner|creador)\b/.test(texto) && /\b(bot|server|servidor|comunidad|trigger)\b/.test(texto)) {
