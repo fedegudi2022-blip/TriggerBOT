@@ -151,6 +151,123 @@ describe('procesarFila — validaciones y whitelist', () => {
   });
 });
 
+describe('set_config — esquema genérico de configuración', () => {
+  // Cada test arranca con la config del server vacía (los tests comparten el store).
+  function configFresca() {
+    store.escribir('g-web-1', {});
+  }
+
+  test('aplica canales, roles y texto de bienvenida juntos', async () => {
+    configFresca();
+    const res = await puente.procesarFila(
+      {
+        comando: 'set_config',
+        argumentos: {
+          modlog: '333333333333333333',
+          helperRole: '444444444444444444',
+          welcomeMessage: '¡Hola {usuario}!',
+          ticketsCategoria: '555555555555555555',
+        },
+        guild_id: 'g-web-1',
+      },
+      clientFake()
+    );
+    assert.equal(res.ok, true);
+    assert.match(res.detalle, /4 campos?|config actualizada/);
+    const c = store.getGuildConfig('g-web-1');
+    assert.equal(c.modlog, '333333333333333333');
+    assert.equal(c.helperRole, '444444444444444444');
+    assert.equal(c.welcome.message, '¡Hola {usuario}!');
+    assert.equal(c.tickets.categoriaId, '555555555555555555');
+  });
+
+  test('valida rangos de protección y completa los valores por defecto', async () => {
+    configFresca();
+    const res = await puente.procesarFila(
+      {
+        comando: 'set_config',
+        argumentos: { spamMensajes: 7, spamSegundos: 9, raidSegundos: 99999, iaActivada: false },
+        guild_id: 'g-web-1',
+      },
+      clientFake()
+    );
+    assert.equal(res.ok, true);
+    const c = store.getGuildConfig('g-web-1');
+    assert.equal(c.proteccion.spamMensajes, 7);
+    assert.equal(c.proteccion.spamSegundos, 9);
+    assert.equal(c.proteccion.raidSegundos, 60, 'fuera de rango se ignora y queda el default');
+    assert.equal(c.iaActivada, false);
+  });
+
+  test('rechaza snowflakes inválidos y acepta booleans en varios formatos', async () => {
+    configFresca();
+    const res = await puente.procesarFila(
+      { comando: 'set_config', argumentos: { modlog: 'no-soy-id', proteccionActivada: 'true', horaFrases: 20 }, guild_id: 'g-web-1' },
+      clientFake()
+    );
+    assert.equal(res.ok, true);
+    const c = store.getGuildConfig('g-web-1');
+    assert.equal(c.modlog, undefined);
+    assert.equal(c.proteccion.activado, true);
+    assert.equal(c.fraseDelDia.hora, 20);
+  });
+
+  test('los campos desconocidos se ignoran sin romper los válidos', async () => {
+    configFresca();
+    const res = await puente.procesarFila(
+      { comando: 'set_config', argumentos: { campoMalo: 'x', logs: '666666666666666666' }, guild_id: 'g-web-1' },
+      clientFake()
+    );
+    assert.equal(res.ok, true);
+    const c = store.getGuildConfig('g-web-1');
+    assert.equal(c.campoMalo, undefined);
+    assert.equal(c.logs, '666666666666666666');
+  });
+
+  test('frases: agregar y quitar por número', async () => {
+    configFresca();
+    const client = clientFake();
+    const r1 = await puente.procesarFila({ comando: 'agregar_frase', argumentos: { texto: 'Mañana es mejor', autor: 'La web' }, guild_id: 'g-web-1' }, client);
+    assert.equal(r1.ok, true);
+    const r2 = await puente.procesarFila({ comando: 'agregar_frase', argumentos: { texto: '   ' }, guild_id: 'g-web-1' }, client);
+    assert.equal(r2.ok, false);
+
+    const frases = store.getGuildConfig('g-web-1').fraseDelDia.frases;
+    assert.equal(frases[0].texto, 'Mañana es mejor');
+    assert.equal(frases[0].autor, 'La web');
+
+    const r3 = await puente.procesarFila({ comando: 'quitar_frase', argumentos: { numero: 1 }, guild_id: 'g-web-1' }, client);
+    assert.equal(r3.ok, true);
+    assert.equal(store.getGuildConfig('g-web-1').fraseDelDia.frases.length, 0);
+
+    const r4 = await puente.procesarFila({ comando: 'quitar_frase', argumentos: { numero: 5 }, guild_id: 'g-web-1' }, client);
+    assert.equal(r4.ok, false);
+  });
+
+  test('servers CS: agregar, quitar y validación de host', async () => {
+    configFresca();
+    const client = clientFake();
+    const r1 = await puente.procesarFila(
+      { comando: 'agregar_server_cs', argumentos: { nombre: 'PÚBLICO', host: 'cs.ejemplo.com', puerto: 27016, modo: 'KZ' }, guild_id: 'g-web-1' },
+      client
+    );
+    assert.equal(r1.ok, true);
+    const lista = store.getGuildConfig('g-web-1').servidores.lista;
+    assert.equal(lista[0].host, 'cs.ejemplo.com');
+    assert.equal(lista[0].puerto, 27016);
+
+    const r2 = await puente.procesarFila(
+      { comando: 'agregar_server_cs', argumentos: { nombre: 'Malo', host: 'espacio en blanco' }, guild_id: 'g-web-1' },
+      client
+    );
+    assert.equal(r2.ok, false);
+
+    const r3 = await puente.procesarFila({ comando: 'quitar_server_cs', argumentos: { numero: 1 }, guild_id: 'g-web-1' }, client);
+    assert.equal(r3.ok, true);
+    assert.equal(store.getGuildConfig('g-web-1').servidores, undefined, 'la lista vacía limpia la rama');
+  });
+});
+
 describe('estadoBot — forma del estado publicado', () => {
   test('incluye ping, servidores con datos y memoria', () => {
     const estado = puente.estadoBot(clientFake());
@@ -170,5 +287,34 @@ describe('estadoBot — forma del estado publicado', () => {
     assert.equal(estado.online, false);
     assert.equal(estado.pingMs, null);
     assert.equal(estado.servidores, 0);
+  });
+
+  test('expone info del server, canales, roles y estadísticas por guild', () => {
+    const client = clientFake();
+    const guild = client.guilds.cache.get('g-web-1');
+    // Canales y roles de muestra (lo que estadoBot lee del cache de Discord).
+    guild.channels.cache.set('c-1', { id: 'c-1', name: 'general', type: 0 });
+    guild.roles = { cache: new Map([['r-1', { id: 'r-1', name: 'Mod', hexColor: '#ff0000', position: 5 }]]) };
+
+    const estado = puente.estadoBot(client);
+    assert.ok(estado.bot, 'info del propio bot');
+    assert.ok(estado.ia, 'estado de las IAs');
+    assert.ok(estado.baseDatos, 'estado de la base');
+
+    const g = estado.guilds[0];
+    assert.equal(g.id, 'g-web-1');
+    assert.equal(g.nombre, 'Server g-web-1');
+    assert.equal(g.miembros, 42);
+    assert.ok(Array.isArray(g.canales));
+    assert.ok(g.canales.some((c) => c.id === 'c-1' && c.nombre === 'general'));
+    assert.equal(g.roles[0].nombre, 'Mod');
+
+    const stats = estado.estadisticas['g-web-1'];
+    assert.ok(stats, 'bloque de estadísticas por guild');
+    assert.ok(stats.niveles, 'stats de niveles');
+    assert.ok(stats.warns);
+    assert.ok(stats.afk);
+    assert.ok(stats.interacciones);
+    assert.ok(stats.antiSpamConfig, 'config de anti-spam con defaults aplicados');
   });
 });

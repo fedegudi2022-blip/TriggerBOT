@@ -69,6 +69,36 @@ const estado = {
 function anotarFallo(error) {
   estado.ultimoError = error?.message || String(error);
   estado.conectado = false;
+  darPista(error);
+}
+
+// Pistas de diagnóstico: los códigos de error de MySQL/red traducidos a qué
+// revisar. Cada pista se emite una sola vez por arranque para no inundar el log.
+const PISTAS = {
+  ECONNREFUSED:
+    'No hay MySQL escuchando en ese host:puerto. DB_HOST=127.0.0.1 SOLO sirve si el bot corre en la misma máquina que la base. ' +
+    'Si la base está en otro hosting (ej: la web en minehost y el bot en Wispbyte), necesitás el hostname público de la base ' +
+    'y que ese hosting permita conexiones remotas (preguntale al soporte). Probá con: npm run db:test -- <host>',
+  ETIMEDOUT:
+    'El host no responde: un firewall bloquea el puerto 3306. El hosting de la base tiene que permitir conexiones MySQL entrantes desde la IP del bot (panel → MySQL remoto, o soporte).',
+  ENOTFOUND:
+    'El hostname DB_HOST no existe: revisá que esté bien escrito.',
+  ER_HOST_NOT_PRIVILEGED:
+    'El servidor MySQL rechazó la IP del bot: el usuario de la base solo acepta conexiones desde ciertos hosts. En el panel del hosting agregá la IP del bot (o “cualquier host” / %) como host permitido para DB_USER.',
+  ER_ACCESS_DENIED_ERROR:
+    'Usuario o contraseña incorrectos: revisá DB_USER y DB_PASSWORD (son los mismos de la web).',
+  ER_BAD_DB_ERROR:
+    'La base DB_NAME no existe en ese servidor: revisá el nombre (¿trigger-arena-db?).',
+  HANDSHAKE_NO_SSL_SUPPORT:
+    'El servidor no acepta la conexión como se la pedimos: probá de nuevo y si persiste, avisá al soporte del hosting.',
+};
+const pistasEmitidas = new Set();
+function darPista(error) {
+  const clave = error?.code || '';
+  const pista = PISTAS[clave];
+  if (!pista || pistasEmitidas.has(clave)) return;
+  pistasEmitidas.add(clave);
+  log.warn(`Pista [${clave}]: ${pista}`);
 }
 
 // Detecta errores de permisos (falta de GRANT). Mensajes típicos de MySQL/MariaDB.

@@ -87,7 +87,7 @@ Ambas devuelven `null` si todo está bien o un mensaje de error listo para mostr
 - Cada guardado local agenda la subida del almacén afectado con **debounce de 3 s** (`marcarSucio`): una ráfaga de mensajes = una subida.
 - **Restauración guild-por-guild**: para cada fila de la base compara `version` (timestamp de la subida) contra la marca local de *ese* servidor. Base más nueva → restaura y actualiza la marca interna; local igual o más nuevo → se sube. Un servidor ya no pisa los datos restaurados de otro y un host nuevo puede descargar todo.
 - `subirYa()` para avisos importantes (bot expulsado del server) y `guildDelete.js` agenda la limpieza de sus datos en ambos lados con 60 s de gracia (por si fue un reinicio con re-invitación).
-- El puente web (`db/puente.js`) usa la tabla `bot_cmd` como bus de comandos: la web inserta, el bot procesa cada 5 s y marca `procesado_en` + `resultado`.
+- El puente web (`db/puente.js`) usa la tabla `bot_cmd` como bus de comandos: la web inserta, el bot procesa cada 5 s y marca `procesado_en` + `resultado`. El estado completo (bot + servers + estadísticas) se publica cada 5 s en `bot_data` (clave `bot_estado:_global`) y `set_config` permite editar TODA la config desde la web con validación por esquema. Guía del lado web con snippets PHP: [INTEGRACION-WEB.md](INTEGRACION-WEB.md).
 
 ## Apagado controlado (`index.js`)
 

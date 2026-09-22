@@ -15,7 +15,8 @@
 -- ---------------------------------------------------------------------------
 -- Tabla principal: un snapshot JSON por cada "almacén" de datos del bot
 -- (config, warns, niveles, afk, interacciones) para cada servidor.
--- MariaDB 10.6 no tiene tipo JSON real: usamos LONGTEXT con CHECK json_valid.
+-- MariaDB 10.6 no tiene tipo JSON real: los JSON van como LONGTEXT y el bot
+-- los serializa/deserializa (JSON.stringify / JSON.parse en src/db/mariadb.js).
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS bot_data (
   clave VARCHAR(100) NOT NULL PRIMARY KEY,        -- ej: "config:972931405548912690"
@@ -23,7 +24,7 @@ CREATE TABLE IF NOT EXISTS bot_data (
   almacen VARCHAR(32) NOT NULL,                   -- config | warns | niveles | afk | interacciones
   datos LONGTEXT NOT NULL,                        -- el contenido completo de ese almacén (JSON)
   actualizado_en TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  version BIGINT NOT NULL DEFAULT 0,              -- Date.now() de la subida (resuelve conflictos),
+  version BIGINT NOT NULL DEFAULT 0,              -- Date.now() de la subida (resuelve conflictos)
   INDEX bot_data_guild_idx (guild_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -50,7 +51,7 @@ CREATE TABLE IF NOT EXISTS bot_cmd (
   creada_por VARCHAR(64) NULL,                    -- usuario web que lo envió (auditoría)
   creado_en TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   procesado_en TIMESTAMP NULL DEFAULT NULL,       -- el bot lo marca al procesarlo
-  resultado LONGTEXT NULL,                        -- JSON { ok, detalle?, error? },
+  resultado LONGTEXT NULL,                        -- JSON { ok, detalle?, error? }
   INDEX bot_cmd_pendientes_idx (procesado_en, creado_en)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
