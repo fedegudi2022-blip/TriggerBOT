@@ -1,8 +1,8 @@
 // Limpieza de datos al ser expulsado el bot de un servidor.
 // Borra la entrada del guild en los caches, reescribe los archivos locales
-// y elimina las filas correspondientes en Supabase.
+// y elimina las filas correspondientes en la base MariaDB (tablas bot_).
 
-const { eliminar, estado } = require('../db/supabase');
+const { eliminar, estado } = require('../db/mariadb');
 
 async function limpiarGuild(guildId, almacenes) {
   for (const nombre of almacenes) {

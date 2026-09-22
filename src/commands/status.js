@@ -3,7 +3,7 @@
 const { SlashCommandBuilder, MessageFlags, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { estadoIA, getStatsIA } = require('../utils/ia');
 const { brandEmbed, miles, duracion, UMBRALES, nivel } = require('../utils/replies');
-const db = require('../db/supabase');
+const db = require('../db/mariadb');
 
 // Snapshot de CPU al arrancar el módulo, para calcular el uso medio del proceso.
 const inicioCPU = process.cpuUsage();
@@ -36,7 +36,7 @@ function vistaStatus(client, m) {
       { name: '🧠 IA principal (Groq)', value: chipIA(m.ia.groq), inline: true },
       { name: '🧠 Respaldo (Gemini)', value: chipIA(m.ia.gemini), inline: true },
       { name: '💬 Respuestas de IA', value: m.statsIA, inline: false },
-      { name: '🗄️ Base de datos (Supabase)', value: m.textoDB, inline: false },
+      { name: '🗄️ Base de datos (MariaDB)', value: m.textoDB, inline: false },
     ],
     footer: `TriggerBOT v1.0.0 • Uptime del proceso • ${new Date().toLocaleDateString('es-AR')}`,
   });
@@ -79,7 +79,7 @@ async function medir(client) {
   let textoDB;
   if (!db.configurada) textoDB = '⚪ No configurada — guardando solo en `data/` local';
   else if (dbOk && db.estado.permisoEscritura === false)
-    textoDB = '⚠️ Conectada **sin permiso de escritura**: la clave parece ser la anon. Usá la `service_role` en `SUPABASE_KEY`.';
+    textoDB = '⚠️ Conectada **sin permiso de escritura**: revisá los GRANT del usuario `DB_USER` sobre la base.';
   else if (dbOk) {
     const hace = db.estado.ultimaSync ? ` · último hace ${duracion((Date.now() - db.estado.ultimaSync.getTime()) / 1000)}` : '';
     textoDB = `✅ Conectada — **${miles(db.estado.subidasOk)}** respaldos en la nube${hace}`;

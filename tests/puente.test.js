@@ -1,5 +1,5 @@
 // Tests de src/db/puente.js — comandos de la web con validaciones y config real.
-// Sin Supabase configurado: procesarFila()/estadoBot() no tocan la red.
+// Sin base de datos configurada: procesarFila()/estadoBot() no tocan la red.
 
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');

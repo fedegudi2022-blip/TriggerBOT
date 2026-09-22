@@ -1,5 +1,5 @@
 const { Events, ActivityType, REST, Routes } = require('discord.js');
-const { estado } = require('../db/supabase');
+const { estado } = require('../db/mariadb');
 const { restaurar } = require('../db/sync');
 
 module.exports = {
@@ -12,7 +12,7 @@ module.exports = {
     );
     console.log(`[TriggerBOT] Comandos cargados: ${client.commands.size}`);
 
-    // ---------- Base de datos (Supabase): restaurar/respaldar al arrancar ----------
+    // ---------- Base de datos (MariaDB): restaurar/respaldar al arrancar ----------
     if (estado.configurada) {
       try {
         const resumen = await restaurar({
@@ -23,18 +23,18 @@ module.exports = {
           interacciones: require('../utils/interacciones'),
         });
         if (resumen.errores) {
-          console.warn(`[TriggerBOT] Supabase: restauración con errores (${resumen.errores}). El bot sigue con datos locales.`);
+          console.warn(`[TriggerBOT] MariaDB: restauración con errores (${resumen.errores}). El bot sigue con datos locales.`);
         } else {
           console.log(
-            `[TriggerBOT] Supabase conectado: ${resumen.restaurados} restaurado(s) desde la nube, ` +
+            `[TriggerBOT] Base de datos conectada: ${resumen.restaurados} restaurado(s) desde la base, ` +
             `${resumen.nube} respaldo(s) agendado(s).`
           );
         }
       } catch (error) {
-        console.warn(`[TriggerBOT] Supabase: no se pudo completar la restauración (${error.message}). El bot sigue con datos locales.`);
+        console.warn(`[TriggerBOT] MariaDB: no se pudo completar la restauración (${error.message}). El bot sigue con datos locales.`);
       }
     } else {
-      console.log('[TriggerBOT] Supabase no configurado: los datos se guardan solo en data/ local.');
+      console.log('[TriggerBOT] Base de datos no configurada (DB_HOST/DB_NAME/DB_USER): los datos se guardan solo en data/ local.');
     }
 
     client.user.setPresence({

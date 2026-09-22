@@ -1,6 +1,6 @@
 // Roles por nivel: el staff configura en el panel de /config qué rol se otorga
 // automáticamente al alcanzar cada nivel, y el bot lo asigna al subir.
-// Persiste en la config del servidor (data/config.json + Supabase).
+// Persiste en la config del servidor (data/config.json + MariaDB).
 
 const { getGuildConfig, setGuildConfig } = require('../store');
 

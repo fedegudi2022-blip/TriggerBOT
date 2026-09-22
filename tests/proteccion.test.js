@@ -1,5 +1,5 @@
 // Tests de src/utils/proteccion.js — detección de spam/raid y acciones con resultado real.
-// Sin Supabase configurado: la capa de sync queda en no-op y nada toca la red.
+// Sin base de datos configurada: la capa de sync queda en no-op y nada toca la red.
 
 const { test, describe, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');

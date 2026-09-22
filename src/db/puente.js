@@ -1,6 +1,6 @@
-// Puente web ↔ bot vía Supabase.
+// Puente web ↔ bot vía la base de datos de la web (MariaDB, trigger-arena-db).
 //
-// La web (TriGGer.Arena) y el bot comparten la misma base de Supabase. La web
+// La web (TriGGer.Arena) y el bot comparten la MISMA base MariaDB. La web
 // inserta filas en la tabla `bot_cmd` ("publicar anuncio", "cambiar canales",
 // "apagar protección"...) y este módulo las consulta cada 5 segundos, las
 // ejecuta con TODAS las validaciones normales del bot y guarda el resultado.
@@ -8,7 +8,7 @@
 // especial `bot_estado:_global` de `bot_data`, que la web lee para su panel.
 //
 // Ventajas: no hay puertos abiertos, ni URLs expuestas, ni tokens nuevos —
-// la autenticación es la service_role de Supabase que cada lado ya tiene.
+// la autenticación es el usuario MySQL de la base que cada lado ya tiene.
 // Latencia típica: 3-5 segundos (el intervalo del tick), perfecto para un panel.
 //
 // Comandos aceptados (whitelist estricta; todo lo demás se rechaza):
@@ -19,10 +19,10 @@
 //   set_proteccion    → ajusta anti-spam/anti-raid (solo claves y rangos validados)
 //   set_ia            → activa/desactiva el chat con IA
 //
-// Los cambios de config usan store.setGuildConfig(): el sync a Supabase y las
+// Los cambios de config usan store.setGuildConfig(): el sync a la base y las
 // marcas por guild se disparan solos, como cualquier edición desde /config.
 
-const { subir, listarTabla, actualizar, estado } = require('./supabase');
+const { subir, listarTabla, actualizar, estado } = require('./mariadb');
 const { setGuildConfig } = require('../store');
 const crearLogger = require('../logger');
 const log = crearLogger('puente');

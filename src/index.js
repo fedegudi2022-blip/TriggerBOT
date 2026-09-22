@@ -1,5 +1,5 @@
 // TriggerBOT — punto de entrada
-// Bot privado para la comunidad Trigger. Persistencia: JSON local + Supabase como respaldo maestro.
+// Bot privado para la comunidad Trigger. Persistencia: JSON local + MariaDB como respaldo maestro.
 
 require('dotenv').config();
 const { Client, Collection, GatewayIntentBits, Partials, MessageFlags } = require('discord.js');
@@ -175,7 +175,7 @@ client.on('shardReconnecting', () => logDiscord.info('Reconectando con Discord..
 
 // ---------- Apagado controlado (SIGTERM/SIGINT: Wispbyte, Ctrl+C, etc.) ----------
 // Orden: 1) bloquear nuevas señales, 2) volcar a disco los JSON pendientes,
-// 3) esperar subidas a Supabase, 4) cerrar Discord, 5) salir.
+// 3) esperar subidas a la base, 4) cerrar Discord y la BD, 5) salir.
 let apagando = false;
 async function apagadoControlado(señal) {
   if (apagando) return;
@@ -198,15 +198,21 @@ async function apagadoControlado(señal) {
   } catch (error) {
     logApagado.error('Error al cerrar Discord', error);
   }
+  try {
+    const { cerrar } = require('./db/mariadb');
+    await cerrar();
+  } catch (error) {
+    logApagado.error('Error al cerrar la base de datos', error);
+  }
   logApagado.info('Apagado completado. ¡Hasta la próxima!');
   process.exit(0);
 }
 process.on('SIGTERM', () => apagadoControlado('SIGTERM'));
 process.on('SIGINT', () => apagadoControlado('SIGINT'));
 
-// ---------- Puente web ↔ bot (Supabase como bus de comandos) ----------
+// ---------- Puente web ↔ bot (base MariaDB como bus de comandos) ----------
 // La web TriGGer.Arena encola comandos en la tabla bot_cmd y lee el estado
-// que este módulo publica. Requiere SUPABASE_URL + SUPABASE_KEY configuradas.
+// que este módulo publica. Requiere DB_HOST + DB_NAME + DB_USER configuradas.
 const puente = require('./db/puente');
 const { Events } = require('discord.js');
 client.once(Events.ClientReady, () => {

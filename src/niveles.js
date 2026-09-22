@@ -190,7 +190,7 @@ function usuario(guildId, userId) {
 
 // Procesa un mensaje: suma XP con bonus, paga logros nuevos y devuelve lo que cambió.
 // NO escribe a disco en cada mensaje: deja el cambio en memoria (debounce de guardado)
-// y solo agenda subida a Supabase cuando hubo datos nuevos para ese guild.
+// y solo agenda subida a la base de datos cuando hubo datos nuevos para ese guild.
 function procesarMensaje(guildId, userId, fecha = new Date()) {
   const u = usuario(guildId, userId);
   const ahora = fecha.getTime();
@@ -302,7 +302,7 @@ function getGuildConfigSafe(guildId) {
   return getGuildConfig(guildId);
 }
 
-// ---------- Integración con Supabase (respaldo en la nube) ----------
+// ---------- Integración con la base de datos (respaldo en MariaDB) ----------
 // Marca de tiempo del último cambio real POR servidor (la usa db/sync.js).
 function marcasPorGuild() {
   return Object.fromEntries(marcasCambio);

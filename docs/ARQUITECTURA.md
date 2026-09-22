@@ -2,7 +2,7 @@
 
 Guía técnica de cómo funciona cada sistema. Para el uso (comandos, configuración, deploy), ver el [README](../README.md).
 
-El bot es JavaScript CommonJS sobre Node 18+, con **dos dependencias de runtime**: `discord.js` y `dotenv`. Todo lo demás (logger, tests, lint) corre con herramientas nativas o devDependencies.
+El bot es JavaScript CommonJS sobre Node 18+, con **tres dependencias de runtime**: `discord.js`, `dotenv` y `mysql2` (pool MariaDB). Todo lo demás (logger, tests, lint) corre con herramientas nativas o devDependencies.
 
 ## Mapa de módulos
 
@@ -15,7 +15,8 @@ El bot es JavaScript CommonJS sobre Node 18+, con **dos dependencias de runtime*
 | `src/niveles.js` | XP, niveles, logros, rangos (`data/niveles.json`) con escritura con debounce |
 | `src/commands/afk.js` | Estado AFK (`data/afk.json`) |
 | `src/utils/interacciones.js` | Contadores de interacciones (`data/interacciones.json`) |
-| `src/db/supabase.js` | Cliente REST de Supabase (sin SDK): subir/descargar/listar/ping |
+| `src/db/mariadb.js` | Cliente MySQL/MariaDB (pool, sin ORM): subir/descargar/listar/ping + creación de tablas bot_ |
+| `src/db/puente.js` | Bus de comandos web ↔ bot vía la tabla `bot_cmd` |
 | `src/db/sync.js` | Respaldo y restauración guild-por-guild con debounce |
 | `src/logger.js` | Logger estructurado con sanitización de secretos |
 | `src/utils/moderation.js` | Validaciones de jerarquía compartidas |
@@ -31,8 +32,8 @@ El bot es JavaScript CommonJS sobre Node 18+, con **dos dependencias de runtime*
 1. `dotenv` carga `.env` (las variables del panel de Wispbyte no se pisan).
 2. `commandLoader.cargarComandos()` carga **44 comandos**: los 35 archivos de `src/commands/`, los 8 generados por `fabricaInteracciones.js` (/beso, /abrazo…) y `/moneda`. `deploy-commands.js` usa la misma función, así el registro y el runtime nunca difieren.
 3. Se cargan los eventos de `src/events/` (un archivo por evento).
-4. `sync.restaurar()` compara cada servidor con la nube (ver [Respaldo en la nube](#respaldo-en-la-nube-dbsyncjs--dbsupabasejs)) y aplica la copia más nueva guild por guild.
-5. `supabase.ping()` prueba lectura y escritura; si la clave no puede escribir (RLS), avisa con la solución exacta (casi siempre es que se copió la clave anon en vez de la service_role).
+4. `sync.restaurar()` compara cada servidor con la base (ver [Respaldo en la base](#respaldo-en-la-base-dbsyncjs--dbmariadbjs)) y aplica la copia más nueva guild por guild. `mariadb.js` crea las tablas `bot_*` si no existen.
+5. `mariadb.ping()` prueba lectura y escritura; si el usuario no puede escribir (GRANT), avisa con la solución exacta.
 6. `client.login()` con vigilante: si Discord no responde en 45 s (típico bloqueo de IP del nodo), destruye el cliente y reintenta cada 60 s.
 
 ## Jerarquía y permisos (`moderation.js`)
@@ -79,12 +80,14 @@ Ambas devuelven `null` si todo está bien o un mensaje de error listo para mostr
 - **`marcasPorGuild()`**: timestamp del último cambio **por servidor**, actualizado en cada mutación real. Es lo que compara la restauración con la nube (reemplaza al viejo mtime compartido del archivo).
 - Directorio configurable con `TRIGGER_DATA_DIR` (lo usan los tests para correr aislados).
 
-## Respaldo en la nube (`db/sync.js` + `db/supabase.js`)
+## Respaldo en la base (`db/sync.js` + `db/mariadb.js`)
 
-- `supabase.js` habla PostgREST con `fetch` nativo, sin SDK (la librería oficial exige Node 22+ y el host corre Node 19). Detecta errores de RLS y avisa si la clave es la anon.
+- El bot comparte la base MariaDB de la web (trigger-arena-db) pero usa **sus propias tablas con prefijo `bot_`** (`bot_data`, `bot_stats`, `bot_cmd`), que crea solo con `CREATE TABLE IF NOT EXISTS` al primer uso. Nunca consulta ni escribe tablas de la web; las consultas van **parametrizadas** (placeholders `?`) y la tabla/columna se valida contra una whitelist.
+- `mariadb.js` usa `mysql2/promise` con un pool de 5 conexiones, reintentos del driver y detección de errores de permisos (GRANT).
 - Cada guardado local agenda la subida del almacén afectado con **debounce de 3 s** (`marcarSucio`): una ráfaga de mensajes = una subida.
-- **Restauración guild-por-guild**: para cada fila de la nube compara `version` (timestamp de la subida) contra la marca local de *ese* servidor. Nube más nueva → restaura y actualiza la marca interna; local igual o más nuevo → se sube. Un servidor ya no pisa los datos restaurados de otro y un host nuevo puede descargar todo.
+- **Restauración guild-por-guild**: para cada fila de la base compara `version` (timestamp de la subida) contra la marca local de *ese* servidor. Base más nueva → restaura y actualiza la marca interna; local igual o más nuevo → se sube. Un servidor ya no pisa los datos restaurados de otro y un host nuevo puede descargar todo.
 - `subirYa()` para avisos importantes (bot expulsado del server) y `guildDelete.js` agenda la limpieza de sus datos en ambos lados con 60 s de gracia (por si fue un reinicio con re-invitación).
+- El puente web (`db/puente.js`) usa la tabla `bot_cmd` como bus de comandos: la web inserta, el bot procesa cada 5 s y marca `procesado_en` + `resultado`.
 
 ## Apagado controlado (`index.js`)
 
@@ -92,19 +95,19 @@ Ambas devuelven `null` si todo está bien o un mensaje de error listo para mostr
 
 1. Log de inicio del apagado (idempotente: la segunda señal corta directo).
 2. `volcarTodo()`: fuerza el guardado a disco de los almacenes con debounce (niveles sobre todo).
-3. `esperarSubidasPendientes()`: espera hasta 10 s a que las subidas a Supabase con debounce terminen.
-4. `client.destroy()` y `process.exit(0)`.
+3. `esperarSubidasPendientes()`: espera hasta 10 s a que las subidas a la base con debounce terminen.
+4. `client.destroy()`, cierre del pool de MariaDB y `process.exit(0)`.
 
 Sin esto, un reinicio del host perdía hasta 5 s de XP y 3 s de subidas.
 
 ## Logger (`logger.js`)
 
 ```
-[TriggerBOT] [WARN] [supabase] Fallo al subir config:g123 {"clave":"config:g123"}
+[TriggerBOT] [WARN] [mariadb] Fallo al subir config:g123 {"clave":"config:g123"}
 ```
 
 - Niveles `debug|info|warn|error`, mínimo configurable con `LOG_LEVEL` (default `info`).
-- **Sanitización automática**: si `DISCORD_TOKEN`, `SUPABASE_URL` o `SUPABASE_KEY` terminan dentro de un mensaje de error, se reemplazan por `[REDACTADO]`.
+- **Sanitización automática**: si `DISCORD_TOKEN` o `DB_PASSWORD` terminan dentro de un mensaje de error, se reemplazan por `[REDACTADO]`.
 - `log.error('Fallo', error, { guild, usuario })` agrega contexto plano; el stack completo solo sale en `LOG_LEVEL=debug`.
 
 ## Chat con IA (`utils/ia.js`)
@@ -123,7 +126,7 @@ Sin esto, un reinicio del host perdía hasta 5 s de XP y 3 s de subidas.
 
 - Runner **nativo de Node** (`node --test`), cero dependencias. `npm test`.
 - Cada archivo setea `TRIGGER_DATA_DIR` a un directorio temporal → corre aislado del `data/` real.
-- **Fakes, no mocks de librería**: guilds/miembros/interacciones son objetos literales con las propiedades que el código toca; `fetch` se intercepta para simular Supabase (mapa en memoria).
+- **Fakes, no mocks de librería**: guilds/miembros/interacciones son objetos literales con las propiedades que el código toca; el pool de mysql2 se reemplaza en el require-cache para simular la base (mapa en memoria).
 - Cobertura actual:
   - `moderation.test.js` — jerarquía moderador→objetivo y bot→objetivo (el caso "admin con rol bajo").
   - `proteccion.test.js` — detección de spam, ventana, exención de staff, cooldown; acciones con resultado real; raid con auto-acción selectiva.

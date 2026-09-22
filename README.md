@@ -1,6 +1,6 @@
 # TriggerBOT
 
-Bot de Discord privado para la comunidad **Trigger**, hecho en Node.js con discord.js v14. La configuración y el historial de warns se guardan en archivos JSON simples (sin base de datos).
+Bot de Discord privado para la comunidad **Trigger**, hecho en Node.js con discord.js v14. La configuración y el historial de warns se guardan en archivos JSON simples, con respaldo en la base de datos MariaDB de la web (tablas propias `bot_`).
 
 ## Estructura
 
@@ -14,7 +14,8 @@ src/
 ├── warns.js            # Historial de warns en data/warns.json
 ├── niveles.js          # XP, niveles y logros en data/niveles.json (escritura con debounce)
 ├── db/
-│   ├── supabase.js     # Cliente REST de Supabase (sin SDK)
+│   ├── mariadb.js      # Cliente MySQL/MariaDB (pool + tablas bot_ autogestionadas)
+│   ├── puente.js       # Bus de comandos web ↔ bot vía tabla bot_cmd
 │   └── sync.js         # Respaldo/restauración guild-por-guild con debounce
 ├── commands/           # Un archivo por comando slash
 ├── events/             # Un archivo por evento (ready, logs, ...)
@@ -161,26 +162,35 @@ Con `/status` ves qué modelo está usando cada IA.
 
 **Sin clave configurada el bot funciona igual**: usa su repertorio local de respuestas. Si la IA falla o se queda sin cuota, también cae al respaldo automáticamente — nunca se queda mudo.
 
-## Base de datos (Supabase)
+## Base de datos (MariaDB de la web)
 
-Los datos (configuración, warns, niveles, afk, interacciones) se guardan en `data/*.json` **y se respaldan en Supabase** (PostgreSQL en la nube, gratis):
+El bot comparte la base de datos de la web TriGGer.Arena (`trigger-arena-db` en MariaDB). Usa **sus propias tablas con prefijo `bot_`** y nunca toca las tablas de la web:
 
-- Cada cambio local se sube a la nube 3 segundos después (agrupa ráfagas de escrituras).
-- Al arrancar, el bot compara local vs nube y aplica la copia más nueva: si el host borra `data/`, todo se restaura solo desde Supabase.
+| Tabla del bot | Para qué |
+|---|---|
+| `bot_data` | Respaldo maestro: config, warns, niveles, afk e interacciones (un snapshot JSON por servidor y almacén) |
+| `bot_stats` | Estadísticas globales sueltas |
+| `bot_cmd` | Bus de comandos web ↔ bot: la web encola comandos y el bot los ejecuta cada 5 s |
+
+- Cada cambio local se sube a la base 3 segundos después (agrupa ráfagas de escrituras).
+- Al arrancar, el bot compara local vs base y aplica la copia más nueva: si el host borra `data/`, todo se restaura solo desde MariaDB.
+- **Las tablas se crean solas** al primer arranque (`CREATE TABLE IF NOT EXISTS`): no hace falta importar nada a mano. `sql/schema.sql` queda como referencia y para crearlas desde phpMyAdmin si el usuario no tiene permisos de `CREATE`.
 - Cuando el bot es expulsado de un servidor, sus datos se limpian de ambos lados.
 
-**Configuración (5 minutos):**
-1. Creá el proyecto gratis en [supabase.com](https://supabase.com) (sin tarjeta).
-2. **SQL Editor → New query**: pegá el contenido de `sql/schema.sql` y apretá **Run**.
-3. **Project Settings → API**: copiá la **Project URL** y la **service_role key** (¡la service_role, no la anon!).
-4. En Wispbyte (Startup → Variables) o en tu `.env` local:
-   ```
-   SUPABASE_URL=https://xxxx.supabase.co
-   SUPABASE_KEY=eyJ... (service_role)
-   ```
-5. Restart. En el log vas a ver `Supabase conectado: ...` y `/status` muestra el estado de la BD.
+**Configuración:**
+En Wispbyte (Startup → Variables) o en tu `.env` local:
+```
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_NAME=trigger-arena-db
+DB_USER=trigger-user
+DB_PASSWORD=••••••••
+```
+Son las mismas credenciales que usa la web. El usuario necesita permisos de `SELECT/INSERT/UPDATE/DELETE` (+ `CREATE` la primera vez, o importá `sql/schema.sql` desde phpMyAdmin).
 
-Sin `SUPABASE_URL`/`SUPABASE_KEY` el bot funciona igual, solo con archivos locales.
+Restart. En el log vas a ver `Base de datos conectada: ...` y `/status` muestra el estado de la BD.
+
+Sin variables `DB_*` el bot funciona igual, solo con archivos locales. **Seguridad:** el aislamiento con los datos de la web es por usuario de BD y prefijo `bot_`: todas las consultas van parametrizadas y la capa de BD valida tabla/columna contra una whitelist.
 
 ## Setup local
 
@@ -228,10 +238,10 @@ El bot está pensado para **un solo servidor**: la comunidad Trigger.
 
 | Dato | Dónde vive |
 |---|---|
-| Configuración del server (`data/config.json`) | Disco local + respaldo en Supabase |
-| Historial de warns | Disco + Supabase |
-| XP, niveles, logros | Disco + Supabase |
-| Estado AFK y contadores de interacciones | Disco + Supabase |
+| Configuración del server (`data/config.json`) | Disco local + respaldo en MariaDB (`bot_data`) |
+| Historial de warns | Disco + MariaDB (`bot_data`) |
+| XP, niveles, logros | Disco + MariaDB (`bot_data`) |
+| Estado AFK y contadores de interacciones | Disco + MariaDB (`bot_data`) |
 | Transcripts de tickets (.txt) | Canal de logs y DM del usuario; no se persiste en el bot |
 | Logs de mensajes borrados/editados | Canal de logs del server; no se persiste en el bot |
 | Ventanas de anti-spam/anti-raid, cooldowns, memoria de IA | Solo memoria; se pierden al reiniciar (intencional) |
@@ -239,8 +249,8 @@ El bot está pensado para **un solo servidor**: la comunidad Trigger.
 **Servicios externos:**
 
 - **Discord**: inherente al bot.
-- **Supabase** (si está configurado): respaldo de los datos de la tabla de arriba. La clave `SUPABASE_KEY` es **service_role** (acceso total): tratarla como secreto máximo — nunca en logs (el logger la enmascara si un error la arrastra), capturas ni el repo.
+- **MariaDB de la web** (si está configurada): respaldo de los datos de la tabla de arriba, en tablas propias `bot_*`. La contraseña `DB_PASSWORD` es un secreto: nunca en logs (el logger la enmascara si un error la arrastra), capturas ni el repo.
 - **Proveedores de IA** (solo si configurás `GROQ_API_KEY`/`GEMINI_API_KEY`): al mencionar al bot se envía tu mensaje, tu nombre visible y el canal (como contexto), más los últimos 6 turnos de la conversación con vos. No se envían IDs de Discord ni mensajes de otros usuarios. Sin claves configuradas, el chat usa solo respuestas locales y **nada sale del host**.
 - **Reddit / APIs de GIFs**: solo peticiones anónimas de contenido público (memes, GIFs de interacciones).
 
-**Retención:** los JSON locales viven mientras el bot esté en el server; al ser expulsado, sus datos se limpian del disco y de Supabase. Los transcripts de tickets y los logs de moderación quedan en Discord (canal/DM) según la retención de Discord misma.
+**Retención:** los JSON locales viven mientras el bot esté en el server; al ser expulsado, sus datos se limpian del disco y de la base (`bot_data`). Los transcripts de tickets y los logs de moderación quedan en Discord (canal/DM) según la retención de Discord misma.

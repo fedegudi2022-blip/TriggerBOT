@@ -2,9 +2,9 @@ const { Events } = require('discord.js');
 const { subirYa } = require('../db/sync');
 
 // Cuando el bot sale de un servidor (expulsado o borrado), guarda una ficha
-// final en la nube y agenda la limpieza de sus datos locales y de la nube.
+// final en la base y agenda la limpieza de sus datos locales y de la base.
 // La limpieza va con 60 s de delay: si fue un reinicio del host con re-invitación,
-// la restauración del próximo arranque vuelve a traer todo desde Supabase.
+// la restauración del próximo arranque vuelve a traer todo desde la base.
 const ALMACENES = ['config', 'warns', 'niveles', 'afk', 'interacciones'];
 
 module.exports = {

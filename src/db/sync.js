@@ -1,9 +1,10 @@
-// Sincronización con Supabase: respaldo maestro de todos los almacenes de datos.
+// Sincronización con la base MariaDB: respaldo maestro de todos los almacenes de datos.
 //
 // Cómo funciona:
 // - Los 5 almacenes del bot (config, warns, niveles, afk, interacciones) siguen
 //   escribiendo en data/*.json como siempre: la respuesta del bot nunca espera a la red.
-// - Cada guardado dispara (con debounce de 3 s) una subida del almacén afectado a Supabase.
+// - Cada guardado dispara (con debounce de 3 s) una subida del almacén afectado a la
+//   base de datos de la web (trigger-arena-db, tablas bot_).
 // - Al arrancar, se compara cada SERVIDOR con la nube y gana la copia más nueva.
 //
 // Versionado POR guildId+almacén: cada almacén expone marcas de tiempo por servidor
@@ -16,7 +17,7 @@
 // la nube (restauración); si no, se sube el local. relojLocalMasNuevo() además
 // protege contra relojes atrasados del host.
 
-const { subir, estado } = require('./supabase');
+const { subir, estado } = require('./mariadb');
 const crearLogger = require('../logger');
 const log = crearLogger('sync');
 
@@ -114,7 +115,7 @@ async function restaurar(almacenes) {
 
   const filas = [];
   try {
-    const { listar } = require('./supabase');
+    const { listar } = require('./mariadb');
     filas.push(...(await listar(hayLocal && guildIds.size > 0 ? [...guildIds] : null)));
   } catch (error) {
     estado.ultimoError = error.message;
@@ -192,7 +193,7 @@ async function esperarSubidasPendientes() {
     });
   }
   if (pendientes.size > 0) {
-    log.warn(`Apagado: ${pendientes.size} subida(s) a Supabase quedaron sin completar.`);
+    log.warn(`Apagado: ${pendientes.size} subida(s) a la base de datos quedaron sin completar.`);
   }
 }
 

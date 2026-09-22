@@ -60,7 +60,7 @@ function setGuildConfig(guildId, updater) {
 function volcar() {
   /* la config se escribe siempre al momento */ }
 
-// ---------- Integración con Supabase (respaldo en la nube) ----------
+// ---------- Integración con la base de datos (respaldo en MariaDB) ----------
 // Marca del último cambio real por servidor (la usa db/sync.js al restaurar).
 function marcasPorGuild() {
   return Object.fromEntries(marcasCambio);

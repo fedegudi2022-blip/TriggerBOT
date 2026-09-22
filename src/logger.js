@@ -1,13 +1,13 @@
 // Logger estructurado de TriggerBOT.
 //
 // Formato: [TriggerBOT] [NIVEL] [módulo] mensaje {ctx}
-//   [TriggerBOT] [WARN] [supabase] Fallo al subir config:g1 {"guild":"123","intentos":2}
+//   [TriggerBOT] [WARN] [mariadb] Fallo al subir config:g1 {"guild":"123","intentos":2}
 //
 // ¿Por qué no una librería? El bot corre en Wispbyte y los logs se leen del panel:
 // una línea plana con prefijos es lo más legible ahí, y cero dependencias = cero sorpresas.
 //
 // Reglas del proyecto:
-//   - NUNCA loggear secreto alguno (DISCORD_TOKEN, SUPABASE_KEY): logger.sanitizar()
+//   - NUNCA loggear secreto alguno (DISCORD_TOKEN, DB_PASSWORD): logger.sanitizar()
 //     los enmascara si por accidente terminan en un mensaje de error.
 //   - Los errores con contexto van con logger.error(mensaje, error, { guild, usuario, ... }).
 
@@ -18,7 +18,7 @@ const nivelMinimo = NIVELES[String(process.env.LOG_LEVEL || 'info').toLowerCase(
 
 // Secretos que jamás deben aparecer en un log (por si un error los arrastra).
 const SECRETOS = [];
-for (const nombre of ['DISCORD_TOKEN', 'SUPABASE_KEY', 'SUPABASE_URL']) {
+for (const nombre of ['DISCORD_TOKEN', 'DB_PASSWORD']) {
   if (process.env[nombre]) SECRETOS.push(process.env[nombre]);
 }
 
@@ -59,7 +59,7 @@ function emitir(nivel, modulo, args) {
   else console.log(completa);
 }
 
-// Uso: const log = require('./logger')('supabase');
+// Uso: const log = require('./logger')('mariadb');
 //      log.info('Subido', null, { guild: id });
 //      log.error('Fallo al subir', error, { guild: id });
 module.exports = function crearLogger(modulo) {
