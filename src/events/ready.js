@@ -42,6 +42,10 @@ module.exports = {
       status: 'online',
     });
 
+    // Precalienta la IA en background (listado de modelos de Groq/Gemini): la
+    // primera respuesta tras el arranque no paga la demora del listado.
+    require('../utils/ia').precalentar();
+
     // Sincronización de comandos slash en cada servidor donde está el bot.
     // No hace falta correr "npm run register" manualmente: alcanza con reiniciar.
     const body = [...client.commands.values()].map((c) => c.data.toJSON());

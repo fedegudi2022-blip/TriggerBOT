@@ -13,6 +13,10 @@ function construirGuia(client) {
         value: '`/userinfo` · `/serverinfo` · `/avatar` · `/status` · `/ping`\n*`/ping` y `/status` tienen botón de refrescar, sin reescribir el comando.*',
       },
       {
+        name: 'Comunidad',
+        value: '`/redes` · `/web` — redes sociales oficiales (WhatsApp, Steam, Instagram) y el sitio triggerarena.pro, con botones directos.',
+      },
+      {
         name: 'Servidores CS 1.6',
         value: '`/servidores` · `/ip` — estado en vivo, mapa actual e IP para copiar. El staff publica el panel auto-actualizado con `/servidores` → `publicar`.',
       },

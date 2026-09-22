@@ -51,6 +51,8 @@ Los tests corren aislados del `data/` real (usan un directorio temporal) y no to
 |---|---|---|
 | `/ping` | Latencia del bot con indicador de calidad y botón de refresco | Todos |
 | `/status` | Estado del bot: modelos de IA, latencia, tiempo encendido, uso — con botón de refresco | Todos |
+| `/redes` | Redes oficiales de la comunidad (WhatsApp, Steam, Instagram) con botones de link directo | Todos |
+| `/web` | Link del sitio oficial [triggerarena.pro](https://triggerarena.pro/) con botón directo | Todos |
 | `/servidores` | Estado en vivo de los servers CS 1.6 (jugadores, mapa, IP). Staff: `publicar:true` fija un panel que se actualiza solo | Todos |
 | `/ip [servidor]` | IP para conectarte, lista para copiar. Con filtro por nombre muestra mapa y jugadores de ahora | Todos |
 | `/ticket publicar/categoria/logs/mensaje` | Panel de soporte con botón, canales privados por ticket y transcript al cerrar | Staff (config) |
@@ -151,6 +153,12 @@ El bot puede conversar cuando lo mencionás, con memoria de contexto por usuario
 1. **Groq** (principal) — chips LPU: responde en ~0,3-0,8 s, 5-10x más rápido que Gemini.
 2. **Gemini** (respaldo de calidad) — si Groq no tiene clave, falla o se queda sin cuota; se autorrepara si Google retira un modelo.
 3. **Respuestas locales** — si no hay claves o todo falla, usa su repertorio propio. Nunca se queda mudo.
+
+**Optimizado para responder rápido:**
+- **Respuestas instantáneas (0 ms):** preguntas canónicas (quién te creó, cuál es la web, las redes, saludos de identidad) se responden sin llamar a la IA — funcionan siempre, incluso sin claves o con los proveedores caídos.
+- **Enrutado por complejidad:** los mensajes sociales cortos ("hola", "todo bien?", "gracias", "jaja") van al modelo chico `llama-3.1-8b-instant` (~2-3x más rápido) y el `70b` queda para preguntas que sí requieren pensar.
+- **Precalentamiento:** el bot consulta la lista de modelos al arrancar, no en el primer mensaje: la primera respuesta tras un reinicio no se come la demora del listado.
+- Los modelos con **thinking** (razonamiento previo) están excluidos: solo chat directo.
 
 Para activarlo:
 1. Clave gratis de Gemini en [aistudio.google.com/apikey](https://aistudio.google.com/apikey) (cuenta Google, 2 min, sin tarjeta).

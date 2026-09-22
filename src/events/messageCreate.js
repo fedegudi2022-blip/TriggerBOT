@@ -1,7 +1,8 @@
 const { Events } = require('discord.js');
-const { responderCharla, normalizar } = require('../utils/charla');
+const { responderCharla, respuestaInstantanea, normalizar } = require('../utils/charla');
 const { conversar } = require('../utils/ia');
 const { pedirConfirmacion } = require('../utils/accionesIA');
+const { DUENO_ID } = require('../comunidad');
 const { getAFK, quitarAFK } = require('../commands/afk');
 const {
   procesarMensaje,
@@ -163,6 +164,13 @@ async function manejarMencion(message) {
     return message.reply({ embeds: [embed] }).catch(() => {});
   }
 
+  // Respuestas instantáneas (0 ms): identidad, quién creó el bot, links oficiales.
+  const instantanea = respuestaInstantanea(texto);
+  if (instantanea) return message.reply({ content: instantanea }).catch(() => {});
+
+  // Si el mensaje también menciona al dueño, la IA lo sabe por el contexto.
+  const mencionaAlDueno = message.mentions.users.has(DUENO_ID);
+
   // Indicador de "escribiendo" mientras la IA piensa.
   await message.channel.sendTyping().catch(() => {});
 
@@ -171,6 +179,7 @@ async function manejarMencion(message) {
     const respuesta = await conversar(message.author.id, texto || '(el usuario solo te mencionó)', {
       usuario: message.member?.displayName || message.author.username,
       canal: message.channel.name,
+      dueñoPresente: mencionaAlDueno,
     });
 
     if (respuesta?.tipo === 'accion') {

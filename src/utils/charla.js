@@ -1,6 +1,12 @@
 // Charla simple cuando alguien menciona al bot: saludos, cortesías, piropos,
 // insultos, preguntas de moderación y frases de la comunidad Trigger.
 // La guía completa de comandos vive exclusivamente en /help — acá solo hay conversación.
+//
+// Respuestas instantáneas: antes de gastar tiempo/estados de cuenta de la IA,
+// charla.js responde en 0 ms lo que tiene respuesta canónica (quién te creó,
+// links oficiales, saludos). Si nada calza, recién ahí se llama a la IA.
+
+const { DUENO_MENCION, WEB, REDES } = require('../comunidad');
 
 function normalizar(texto) {
   return texto
@@ -112,6 +118,40 @@ function responderPreguntaModeracion(texto) {
   return null;
 }
 
+// ---------- Respuestas instantáneas (0 ms, sin IA) ----------
+// Preguntas canónicas con única respuesta correcta: identidad, creador y links.
+// Devuelve el texto o null si ninguna calza (→ sigue el flujo normal).
+function respuestaInstantanea(texto) {
+  // ¿Quién te creó / hizo / programó? (dueño del bot)
+  if (
+    /\b(creo|creaste|creador|hizo|hiciste|programo|programaste|desarrollo|desarrollaste|invento|inventaste|configuro|configuraste|fabrico|fabricaste)\b/.test(texto) &&
+    /\b(te|quien|quienes|tu|me|vos)\b/.test(texto)
+  ) {
+    return `A mí me creó ${DUENO_MENCION}, el dueño del bot y de la comunidad Trigger.Arena 🎉`;
+  }
+  // ¿Quién es el dueño del bot/server?
+  if (/\b(dueno|duena|owner|creador)\b/.test(texto) && /\b(bot|server|servidor|comunidad|trigger)\b/.test(texto)) {
+    return `El dueño y creador del bot es ${DUENO_MENCION} 👑`;
+  }
+  // ¿Cuál es la web / página? (texto ya normalizado: sin tildes ni mayúsculas)
+  if (/\b(web|pagina|sitio|oficial)\b/.test(texto) && /\b(web|pagina|sitio|cual|dame|link|url)\b/.test(texto)) {
+    return `La web oficial es ${WEB} 🌐 (también podés usar /web)`;
+  }
+  // Redes sociales.
+  if (
+    /\b(redes?|sociales?|whatsapp|instagram|steam|discord)\b/.test(texto) &&
+    /\b(whatsapp|instagram|steam|red(es)?|sociales?|grupos?|links?|union?|unirte)\b/.test(texto)
+  ) {
+    const lista = REDES.map((r) => `• ${r.emoji} **${r.nombre}:** ${r.url}`).join('\n');
+    return `Estas son las redes oficiales de Trigger.Arena:\n${lista}\n(Con /redes las ves siempre a mano)`;
+  }
+  // Frases directas de identidad.
+  if (/\b(quien sos|quien eres|que sos|que eres|presentate)\b/.test(texto)) {
+    return `Soy TriggerBOT 🤖 el bot de la comunidad Trigger.Arena, creado por ${DUENO_MENCION}. Usá /help para ver todo lo que sé hacer.`;
+  }
+  return null;
+}
+
 // Devuelve una respuesta de charla para el texto dado (ya normalizado).
 function responderCharla(texto) {
   if (!texto) return elegir(RESPUESTAS.vacio);
@@ -142,4 +182,4 @@ function responderCharla(texto) {
   return elegir(RESPUESTAS.fallo);
 }
 
-module.exports = { responderCharla, normalizar };
+module.exports = { responderCharla, respuestaInstantanea, normalizar };
