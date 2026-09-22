@@ -26,11 +26,12 @@ module.exports = {
       sub
         .setName('staff')
         .setDescription('Guía completa de staff: moderación, configuración y comandos internos')
-    );
+    )
     // Sin setDefaultMemberPermissions en 'staff': el staff lo define el bot con
     // ManageGuild O los roles admin/mod/helper de /config (misma política que /config).
     // Discord ocultaría el comando a un helper configurado solo por rol, así que la
     // política interna de esStaff() es la única fuente de verdad para ambas opciones.
+  ,
 
   async execute(interaction, client) {
     if (interaction.options.getSubcommand() === 'staff') {
@@ -40,7 +41,8 @@ module.exports = {
           flags: MessageFlags.Ephemeral,
         });
       }
-      return interaction.reply({ embeds: [construirGuiaStaff(client)] });
+      // La guía de staff es efímera: nadie más la ve, ni en canales públicos.
+      return interaction.reply({ embeds: [construirGuiaStaff(client)], flags: MessageFlags.Ephemeral });
     }
 
     return interaction.reply({ embeds: [construirGuia(client)] });
