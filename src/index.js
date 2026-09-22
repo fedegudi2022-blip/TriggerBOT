@@ -21,6 +21,7 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildVoiceStates, // necesario para detectar quién entra a «➕ Crear canal»
   ],
   partials: [Partials.Channel, Partials.Message],
 });
