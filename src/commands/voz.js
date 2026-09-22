@@ -153,6 +153,12 @@ module.exports = {
       const hub = config.hubId ? interaction.guild.channels.cache.get(config.hubId) : null;
       const categoria = config.categoriaId ? interaction.guild.channels.cache.get(config.categoriaId) : null;
       const temporales = Object.entries(voz.temporalesDe(interaction.guildId));
+
+      // Diagnóstico: el bot necesita “Gestionar canales” en la categoría destino (o en el hub).
+      const bot = interaction.guild.members.me;
+      const destino = categoria ?? hub?.parent ?? null;
+      const puedeCrear = destino ? bot?.permissionsIn(destino)?.has(PermissionFlagsBits.ManageChannels) ?? false : true;
+      const avisoPermisos = categoria && !puedeCrear ? '\n⚠️ **El bot no tiene permiso de crear canales en esa categoría** (falta “Gestionar canales” para el rol del bot).' : '';
       const lista = temporales
         .map(([canalId, duenoId]) => {
           const canal = interaction.guild.channels.cache.get(canalId);
@@ -167,9 +173,9 @@ module.exports = {
         description:
           `**Estado:** ${hub ? '🟢 Activo' : '🔴 Inactivo'}\n` +
           `**Canal de creación:** ${hub ? hub.name : 'sin configurar'}\n` +
-          `**Categoría destino:** ${categoria ? categoria.name : 'la del hub (sin configurar)'}\n` +
+          `**Categoría destino:** ${categoria ? categoria.name : 'la del hub (sin configurar)'}${destino ? (puedeCrear ? ' ✅' : ' ❌') : ''}\n` +
           `**Formato:** ${config.formato || voz.PLANTILLA_NOMBRE}\n\n` +
-          `**Canales activos (${temporales.length}):**\n${lista || '*ninguno en este momento*'}`,
+          `**Canales activos (${temporales.length}):**\n${lista || '*ninguno en este momento*'}${avisoPermisos}`,
       });
       return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
     }

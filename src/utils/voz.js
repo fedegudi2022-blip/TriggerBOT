@@ -137,6 +137,43 @@ function enviarPanel(canal, dueno) {
   return canal.send({ embeds: [embed], components: [filaControles1(), filaControles2()] });
 }
 
+// Registros muertos (el canal ya no existe en el server): se sacan de la config.
+function limpiarRegistrosMuertos(guild) {
+  const muertos = Object.keys(temporalesDe(guild.id)).filter((canalId) => !guild.channels.cache.has(canalId));
+  if (!muertos.length) return;
+  setGuildConfig(guild.id, (c) => {
+    for (const canalId of muertos) {
+      if (c.voz?.temporales?.[canalId]) delete c.voz.temporales[canalId];
+    }
+  });
+}
+
+// Si la creación falla, se lo decimos al usuario en el chat del hub (los canales de voz
+// aceptan mensajes) y al staff en los logs, con el motivo exacto.
+async function avisarFallo(guild, dueno, motivo) {
+  const texto = String(motivo?.message || motivo).slice(0, 500);
+  const hub = guild.channels.cache.get(vozDe(guild.id).hubId);
+  if (hub?.send) {
+    await hub
+      .send({
+        embeds: [
+          brandEmbed({
+            color: 0xed4245,
+            title: '⚠️ No se pudo crear tu canal',
+            description: `<@${dueno.id}>, algo falló al crear tu canal de voz:\n\`${texto}\`\nAvisale al staff para que revise los permisos del bot.`,
+          }),
+        ],
+      })
+      .catch(() => {});
+  }
+  logEvent(guild, {
+    color: 0xed4245,
+    title: '⚠️ Error creando canal temporal',
+    description: `No se pudo crear el canal de voz para **${dueno.displayName}** (<@${dueno.id}>).`,
+    fields: [{ name: 'Motivo', value: texto }],
+  });
+}
+
 // Categoría destino: al cambiarla, los canales temporales ya creados se mueven a la nueva.
 // lockPermissions: false conserva los permisos del dueño (no sincroniza con la categoría).
 async function moverTemporalesACategoria(guild, categoriaId) {
@@ -167,8 +204,12 @@ async function crearPara(state) {
     olvidarTemporal(guild.id, existente); // lo borraron a mano: sacar del registro
   }
 
+  // Canales borrados a mano que quedaron registrados: no cuentan para el límite ni bloquean la creación.
+  limpiarRegistrosMuertos(guild);
+
   if (Object.keys(temporalesDe(guild.id)).length >= MAX_CANALES_POR_GUILD) {
     log.warn(`Límite de ${MAX_CANALES_POR_GUILD} canales temporales alcanzado en ${guild.name}`);
+    await avisarFallo(guild, dueno, 'Límite de canales temporales alcanzado (anti-flood). Probá en un rato.');
     return;
   }
 
@@ -180,12 +221,34 @@ async function crearPara(state) {
       ? categoria.id
       : (state.channel?.parentId ?? undefined);
 
-  const canal = await guild.channels.create({
+  // Intentamos la categoría elegida y, si falla (permisos del bot o categoría llena),
+  // reintentamos con la categoría del hub y, por último, sin categoría.
+  const opcionesBase = {
     name: nombreCanal(config.formato, dueno.displayName),
     type: ChannelType.GuildVoice,
-    parent: padre,
     permissionOverwrites: [{ id: dueno.id, allow: PERMISOS_DUENO }],
-  });
+  };
+  const padres = [...new Set([padre, state.channel?.parentId ?? undefined, undefined])];
+  let canal = null;
+  let ultimoError = null;
+  let conFallback = false;
+  for (const candidato of padres) {
+    try {
+      canal = await guild.channels.create({ ...opcionesBase, parent: candidato });
+      break;
+    } catch (error) {
+      ultimoError = error;
+      conFallback = true;
+    }
+  }
+  if (!canal) {
+    log.error(`No se pudo crear el canal temporal para ${dueno.user.tag} en ${guild.name}: ${ultimoError?.message}`);
+    await avisarFallo(guild, dueno, ultimoError);
+    return;
+  }
+  if (conFallback) {
+    log.warn(`Canal temporal creado fuera de la categoría configurada (último error: ${ultimoError?.message})`);
+  }
 
   registrarTemporal(guild.id, canal.id, dueno.id);
   await state.setChannel(canal).catch(() => {});

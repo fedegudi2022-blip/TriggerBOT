@@ -112,10 +112,11 @@ function clientFake() {
 }
 
 // Estado de voz: crea o devuelve el canal con el miembro dentro.
+// Expone state.channel como el VoiceState real de discord.js.
 function stateFake(guild, miembro, canalId) {
-  const state = { guild, member: miembro, channelId: canalId ?? null, setChannel: async (c) => (miembro.voice.channelId = c.id) };
+  let canal = null;
   if (canalId) {
-    let canal = guild.channels.cache.get(canalId);
+    canal = guild.channels.cache.get(canalId);
     if (!canal) {
       canal = canalVozFake(canalId, guild);
       guild.channels.cache.set(canalId, canal);
@@ -123,7 +124,13 @@ function stateFake(guild, miembro, canalId) {
     canal.members.set(miembro.id, miembro);
     miembro.voice.channelId = canalId;
   }
-  return state;
+  return {
+    guild,
+    member: miembro,
+    channelId: canalId ?? null,
+    channel: canal,
+    setChannel: async (c) => (miembro.voice.channelId = c.id),
+  };
 }
 
 // Cada test empieza con config limpia y un guild registrado.
@@ -226,6 +233,66 @@ describe('manejarCambio — ciclo de vida', () => {
     const canal = g.channels.cache.get(canalId);
     assert.equal(canal.parentId, 'cat-voz', 'se creó en la categoría del staff, no en la del hub');
     assert.equal(canal.name, '🔊 Canal de Voz de Federico', 'nombre con formato por defecto (con emoji)');
+  });
+
+  test('los registros muertos (canales borrados a mano) no bloquean la creación', async () => {
+    const g = reset();
+    store.escribir(GUILD_ID, { voz: { hubId: 'hub-1' } });
+    const dueno = miembroFake(DUENO_ID, { displayName: 'Federico' });
+    g.members.cache.set(DUENO_ID, dueno);
+    g.channels.cache.set('hub-1', canalVozFake('hub-1', g));
+    // 25 fantasmas llenarían el límite si no se limpiaran: la creación igual tiene que salir.
+    for (let i = 0; i < 25; i++) voz.registrarTemporal(GUILD_ID, `muerto-${i}`, DUENO_ID);
+
+    await voz.manejarCambio({ guild: g, channelId: null }, stateFake(g, dueno, 'hub-1'));
+
+    const canalId = voz.canalDeDueno(GUILD_ID, DUENO_ID);
+    assert.ok(canalId, 'se creó el canal igual, pese a los fantasmas');
+    assert.equal(Object.keys(voz.temporalesDe(GUILD_ID)).length, 1, 'solo queda el canal nuevo registrado');
+  });
+
+  test('si la categoría configurada falla, reintentará con la del hub', async () => {
+    const g = reset();
+    const categoriaRota = { id: 'cat-rota', name: 'Rota', type: 4 };
+    g.channels.cache.set('cat-rota', categoriaRota);
+    const hub = canalVozFake('hub-1', g);
+    hub.parentId = 'cat-hub';
+    g.channels.cache.set('hub-1', hub);
+    store.escribir(GUILD_ID, { voz: { hubId: 'hub-1', categoriaId: 'cat-rota' } });
+
+    const createOriginal = g.channels.create;
+    g.channels.create = async (opciones) => {
+      if (opciones.parent === 'cat-rota') throw new Error('Missing Permissions');
+      return createOriginal(opciones);
+    };
+
+    const dueno = miembroFake(DUENO_ID, { displayName: 'Federico' });
+    g.members.cache.set(DUENO_ID, dueno);
+    await voz.manejarCambio({ guild: g, channelId: null }, stateFake(g, dueno, 'hub-1'));
+
+    const canalId = voz.canalDeDueno(GUILD_ID, DUENO_ID);
+    const canal = g.channels.cache.get(canalId);
+    assert.ok(canal, 'igual se creó el canal');
+    assert.equal(canal.parentId, 'cat-hub', 'usó la categoría del hub como fallback');
+  });
+
+  test('si no puede crear en ningún lado, avisa en el chat del hub y no registra nada', async () => {
+    const g = reset();
+    const hub = canalVozFake('hub-1', g);
+    g.channels.cache.set('hub-1', hub);
+    store.escribir(GUILD_ID, { voz: { hubId: 'hub-1' } });
+
+    g.channels.create = async () => {
+      throw new Error('Missing Permissions');
+    };
+
+    const dueno = miembroFake(DUENO_ID, { displayName: 'Federico' });
+    g.members.cache.set(DUENO_ID, dueno);
+    await voz.manejarCambio({ guild: g, channelId: null }, stateFake(g, dueno, 'hub-1'));
+
+    assert.equal(voz.canalDeDueno(GUILD_ID, DUENO_ID), null, 'nada registrado');
+    assert.ok(hub.enviados.some((e) => JSON.stringify(e).includes('No se pudo crear tu canal')), 'aviso en el chat del hub');
+    assert.ok(hub.enviados.some((e) => JSON.stringify(e).includes('Missing Permissions')), 'incluye el motivo real');
   });
 
   test('si ya tiene canal propio, lo manda al suyo (no crea otro)', async () => {
