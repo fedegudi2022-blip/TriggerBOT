@@ -59,6 +59,11 @@ function canalVozFake(id, guild) {
         canal.overwritesEliminados.push(id);
       },
     },
+    setParentLlamadas: [],
+    setParent: async (parentId, opciones) => {
+      canal.parentId = parentId;
+      canal.setParentLlamadas.push({ parentId, opciones });
+    },
     setName: async (nuevo) => {
       canal.name = nuevo;
     },
@@ -81,6 +86,7 @@ function guildFake() {
         const id = `creado-${mapa.size + 1}`;
         const canal = canalVozFake(id, guild);
         canal.name = opciones.name;
+        canal.parentId = opciones.parent; // como discord.js: refleja el parent dado
         mapa.set(id, canal);
         return canal;
       },
@@ -130,7 +136,7 @@ function reset() {
 
 describe('helpers puros', () => {
   test('nombreCanal reemplaza {usuario} y recorta a 90', () => {
-    assert.equal(voz.nombreCanal('🔊 Canal de {usuario}', 'Federico'), '🔊 Canal de Federico');
+    assert.equal(voz.nombreCanal('Canal de Voz de {usuario}', 'Federico'), 'Canal de Voz de Federico');
     assert.equal(voz.nombreCanal(null, 'Ana').includes('Ana'), true, 'usa la plantilla por defecto');
     assert.ok(voz.nombreCanal('x'.repeat(200), 'u').length <= 90, 'recorta a 90');
     assert.equal(voz.nombreCanal('{usuario}', ''), 'usuario', 'sin nombre usa el placeholder');
@@ -200,6 +206,28 @@ describe('manejarCambio — ciclo de vida', () => {
     assert.ok(canal.enviados.length >= 1, 'se publicó el panel de controles');
   });
 
+  test('respeta la categoría configurada por el staff (no la del hub)', async () => {
+    const g = reset();
+    const categoriaVoz = { id: 'cat-voz', name: 'Voz', type: 4 }; // 4 = GuildCategory
+    const otraCategoria = { id: 'cat-otra', name: 'Otra', type: 4 };
+    g.channels.cache.set('cat-voz', categoriaVoz);
+    g.channels.cache.set('cat-otra', otraCategoria);
+    const hub = canalVozFake('hub-1', g);
+    hub.parentId = 'cat-otra';
+    g.channels.cache.set('hub-1', hub);
+    store.escribir(GUILD_ID, { voz: { hubId: 'hub-1', categoriaId: 'cat-voz' } });
+
+    const dueno = miembroFake(DUENO_ID, { displayName: 'Federico' });
+    g.members.cache.set(DUENO_ID, dueno);
+    await voz.manejarCambio({ guild: g, channelId: null }, stateFake(g, dueno, 'hub-1'));
+
+    const canalId = voz.canalDeDueno(GUILD_ID, DUENO_ID);
+    assert.ok(canalId, 'se creó el canal temporal');
+    const canal = g.channels.cache.get(canalId);
+    assert.equal(canal.parentId, 'cat-voz', 'se creó en la categoría del staff, no en la del hub');
+    assert.equal(canal.name, '🔊 Canal de Voz de Federico', 'nombre con formato por defecto (con emoji)');
+  });
+
   test('si ya tiene canal propio, lo manda al suyo (no crea otro)', async () => {
     const g = reset();
     store.escribir(GUILD_ID, { voz: { hubId: 'hub-1' } });
@@ -264,6 +292,68 @@ describe('manejarCambio — ciclo de vida', () => {
 
     // Nadie humano: no transfiere (espera el borrado por vacío).
     assert.equal(voz.duenoDe(GUILD_ID, 'tmp-3'), DUENO_ID);
+  });
+});
+
+describe('moverTemporalesACategoria', () => {
+  test('mueve los canales registrados y conserva sus permisos (lockPermissions: false)', async () => {
+    const g = reset();
+    const c1 = canalVozFake('t-1', g);
+    const c2 = canalVozFake('t-2', g);
+    g.channels.cache.set('t-1', c1);
+    g.channels.cache.set('t-2', c2);
+    voz.registrarTemporal(GUILD_ID, 't-1', DUENO_ID);
+    voz.registrarTemporal(GUILD_ID, 't-2', OTRO_ID);
+
+    const movidos = await voz.moverTemporalesACategoria(g, 'cat-nueva');
+
+    assert.equal(movidos.length, 2, 'movió los dos canales registrados');
+    assert.equal(c1.parentId, 'cat-nueva');
+    assert.equal(c2.parentId, 'cat-nueva');
+    assert.equal(c1.setParentLlamadas[0].opciones.lockPermissions, false, 'no sincroniza permisos con la categoría');
+  });
+
+  test('ignora los canales que ya no existen', async () => {
+    reset();
+    voz.registrarTemporal(GUILD_ID, 'fantasma', DUENO_ID);
+    const movidos = await voz.moverTemporalesACategoria(guilds.get(GUILD_ID), 'cat-nueva');
+    assert.equal(movidos.length, 0);
+  });
+});
+
+describe('registro de eventos de voz (canal de logs)', () => {
+  test('creación, transferencia y borrado quedan registrados', async () => {
+    const g = reset();
+    const logs = canalVozFake('logs-1', g);
+    g.channels.cache.set('logs-1', logs);
+    store.escribir(GUILD_ID, { logs: 'logs-1', voz: { hubId: 'hub-1' } });
+
+    const dueno = miembroFake(DUENO_ID, { displayName: 'Federico' });
+    const otro = miembroFake(OTRO_ID, { displayName: 'Nacho' });
+    g.members.cache.set(DUENO_ID, dueno);
+    g.members.cache.set(OTRO_ID, otro);
+    g.channels.cache.set('hub-1', canalVozFake('hub-1', g));
+
+    // 1) Entró al hub → evento de creación.
+    await voz.manejarCambio({ guild: g, channelId: null }, stateFake(g, dueno, 'hub-1'));
+    await new Promise((r) => setImmediate(r)); // logEvent manda sin await
+    assert.ok(logs.enviados.some((e) => JSON.stringify(e).includes('creado')), 'evento de creación');
+
+    // 2) El dueño se va y queda otro → evento de transferencia.
+    const canalId = voz.canalDeDueno(GUILD_ID, DUENO_ID);
+    stateFake(g, otro, canalId);
+    const canal = g.channels.cache.get(canalId);
+    canal.members.delete(DUENO_ID);
+    await voz.manejarCambio({ guild: g, channelId: canalId }, { guild: g, channelId: canalId, member: dueno });
+    await new Promise((r) => setImmediate(r));
+    assert.ok(logs.enviados.some((e) => JSON.stringify(e).includes('transferido')), 'evento de transferencia');
+
+    // 3) Queda vacío → borrado automático con evento.
+    canal.members.delete(OTRO_ID);
+    await voz.manejarCambio({ guild: g, channelId: canalId }, { guild: g, channelId: null, member: otro });
+    await new Promise((r) => setTimeout(r, 2_600));
+    assert.equal(canal.borrado, true, 'canal borrado');
+    assert.ok(logs.enviados.some((e) => JSON.stringify(e).includes('borrado')), 'evento de borrado');
   });
 });
 

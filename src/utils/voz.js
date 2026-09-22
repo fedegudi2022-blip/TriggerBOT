@@ -24,11 +24,12 @@ const {
 } = require('discord.js');
 const { getGuildConfig, setGuildConfig } = require('../store');
 const { brandEmbed } = require('./replies');
+const { logEvent } = require('./log');
 const crearLogger = require('../logger');
 const log = crearLogger('voz');
 
 const NOMBRE_HUB = '➕ Crear canal';
-const PLANTILLA_NOMBRE = '🔊 Canal de {usuario}';
+const PLANTILLA_NOMBRE = '🔊 Canal de Voz de {usuario}';
 const MAX_CANALES_POR_GUILD = 25; // techo anti-flood (alguien entrando/saliendo en bucle)
 const DELAY_BORRADO_MS = 2_000; // gracia por si se fue y vuelve enseguida
 
@@ -70,6 +71,10 @@ function canalDeDueno(guildId, duenoId) {
     if (dueno === duenoId) return canalId;
   }
   return null;
+}
+// Categoría donde el staff quiere los canales temporales (config configurable con /voz categoria).
+function categoriaDe(guildId) {
+  return vozDe(guildId).categoriaId ?? null;
 }
 
 function registrarTemporal(guildId, canalId, duenoId) {
@@ -132,6 +137,19 @@ function enviarPanel(canal, dueno) {
   return canal.send({ embeds: [embed], components: [filaControles1(), filaControles2()] });
 }
 
+// Categoría destino: al cambiarla, los canales temporales ya creados se mueven a la nueva.
+// lockPermissions: false conserva los permisos del dueño (no sincroniza con la categoría).
+async function moverTemporalesACategoria(guild, categoriaId) {
+  const movidos = [];
+  for (const canalId of Object.keys(temporalesDe(guild.id))) {
+    const canal = guild.channels.cache.get(canalId);
+    if (!canal) continue;
+    await canal.setParent(categoriaId, { lockPermissions: false }).catch(() => {});
+    movidos.push(canal);
+  }
+  return movidos;
+}
+
 // ---------- Creación al entrar al hub ----------
 async function crearPara(state) {
   const guild = state.guild;
@@ -155,9 +173,12 @@ async function crearPara(state) {
   }
 
   const config = vozDe(guild.id);
+  // La categoría la elige el staff con /voz categoria; si no hay (o no existe), hereda la del hub.
   const categoria = config.categoriaId ? guild.channels.cache.get(config.categoriaId) : null;
   const padre =
-    categoria?.type === ChannelType.GuildCategory ? categoria.id : (state.channel?.parentId ?? undefined);
+    categoria?.type === ChannelType.GuildCategory
+      ? categoria.id
+      : (state.channel?.parentId ?? undefined);
 
   const canal = await guild.channels.create({
     name: nombreCanal(config.formato, dueno.displayName),
@@ -170,6 +191,12 @@ async function crearPara(state) {
   await state.setChannel(canal).catch(() => {});
   await enviarPanel(canal, dueno).catch(() => {});
   log.info(`Canal temporal creado para ${dueno.user.tag} en ${guild.name}`);
+  logEvent(guild, {
+    color: 0x57f287,
+    title: '🎧 Canal de voz temporal creado',
+    description: `**${dueno.displayName}** entró al canal de creación y se le creó <#${canal.id}>.`,
+    fields: padre ? [{ name: 'Categoría', value: `<#${padre}>` }] : [],
+  });
 }
 
 // ---------- Transferencia de dueño ----------
@@ -178,6 +205,11 @@ async function transferirA(guild, canal, nuevoOwner, { silencioso = false } = {}
   registrarTemporal(guild.id, canal.id, nuevoOwner.id);
   if (anteriorId && anteriorId !== nuevoOwner.id) {
     await canal.permissionOverwrites.delete(anteriorId).catch(() => {});
+    logEvent(guild, {
+      color: 0xfee75c,
+      title: '👑 Canal de voz temporal transferido',
+      description: `**${canal.name}** (<#${canal.id}>) pasó de <@${anteriorId}> a <@${nuevoOwner.id}>.`,
+    });
   }
   await canal.permissionOverwrites.edit(nuevoOwner.id, { [PermissionFlagsBits.ManageChannels]: true, [PermissionFlagsBits.MoveMembers]: true, [PermissionFlagsBits.MuteMembers]: true }).catch(() => {});
   if (!silencioso) {
@@ -200,6 +232,7 @@ function programarBorrado(guildId, canal) {
       return;
     }
     if (fresco.members.size > 0) return; // alguien volvió: no se borra
+    const duenoId = duenoDe(guildId, canal.id);
     olvidarTemporal(guildId, canal.id);
     try {
       await fresco.delete('Canal de voz temporal vacío');
@@ -207,6 +240,11 @@ function programarBorrado(guildId, canal) {
       /* sin permisos o ya borrado */
     }
     log.info(`Canal temporal vacío borrado (${fresco.name})`);
+    logEvent(fresco.guild, {
+      color: 0xed4245,
+      title: '🗑️ Canal de voz temporal borrado',
+      description: `**${fresco.name}** quedó vacío y se borró solo${duenoId ? ` (era de <@${duenoId}>)` : ''}.`,
+    });
   }, DELAY_BORRADO_MS);
   t.unref?.();
   borradosAgendados.set(canal.id, t);
@@ -372,6 +410,11 @@ async function manejarComponente(interaction) {
       olvidarTemporal(guild.id, canal.id);
       await interaction.reply({ content: '🗑️ Cerrando tu canal...', flags: MessageFlags.Ephemeral }).catch(() => {});
       await canal.delete('Dueño cerró su canal temporal').catch(() => {});
+      logEvent(guild, {
+        color: 0xed4245,
+        title: '🗑️ Canal de voz temporal borrado',
+        description: `**${canal.name}** (de <@${duenoId}>) fue cerrado por <@${interaction.user.id}>.`,
+      });
       return;
 
     default:
@@ -450,8 +493,14 @@ async function limpiarAlArrancar(client) {
         continue;
       }
       if (canal.members.size === 0) {
+        const duenoId = temporales[canalId];
         olvidarTemporal(guild.id, canalId);
         await canal.delete('Limpieza al arrancar: canal temporal vacío').catch(() => {});
+        logEvent(guild, {
+          color: 0xed4245,
+          title: '🗑️ Canal de voz temporal borrado',
+          description: `**${canal.name}** (de <@${duenoId}>) quedó vacío tras un reinicio y se limpió.`,
+        });
       }
     }
   }
@@ -461,6 +510,9 @@ module.exports = {
   NOMBRE_HUB,
   PLANTILLA_NOMBRE,
   nombreCanal,
+  vozDe,
+  temporalesDe,
+  categoriaDe,
   limiteValido,
   nuevoDueno,
   esTemporal,
@@ -468,6 +520,7 @@ module.exports = {
   canalDeDueno,
   registrarTemporal,
   olvidarTemporal,
+  moverTemporalesACategoria,
   manejarCambio,
   manejarComponente,
   manejarSelect,

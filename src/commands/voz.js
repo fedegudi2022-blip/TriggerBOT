@@ -18,6 +18,12 @@ module.exports = {
         .setDescription('Usa un canal de voz existente como canal de creación')
         .addChannelOption((o) => o.setName('canal').setDescription('Canal de voz que actúa como hub').setRequired(true))
     )
+    .addSubcommand((sc) =>
+      sc
+        .setName('categoria')
+        .setDescription('Elige la categoría donde se crean los canales temporales')
+        .addChannelOption((o) => o.setName('categoria').setDescription('Categoría destino (si no, se crea junto al hub)').setRequired(true))
+    )
     .addSubcommand((sc) => sc.setName('desactivar').setDescription('Apaga el sistema y borra el canal de creación'))
     .addSubcommand((sc) =>
       sc
@@ -55,8 +61,9 @@ module.exports = {
       return interaction.editReply({
         embeds: [
           successEmbed(
-            `Canal **${voz.NOMBRE_HUB}** creado.\nCuando alguien entre, se le crea **su propio canal de voz** con panel de controles ` +
-              '(renombrar, límite, cerrar, expulsar, transferir). Se borra solo cuando queda vacío.'
+            `Canal **${voz.NOMBRE_HUB}** creado en esta categoría.\nCuando alguien entre, se le crea **su propio canal de voz** con panel de controles ` +
+              '(renombrar, límite, cerrar, expulsar, transferir). Se borra solo cuando queda vacío.\n' +
+              '📍 Elegí la categoría donde se crean con `/voz categoria`.'
           ),
         ],
       });
@@ -72,8 +79,39 @@ module.exports = {
         c.voz.hubId = canal.id;
       });
       return interaction.reply({
-        embeds: [successEmbed(`**${canal.name}** ahora es el canal de creación: al entrar, cada usuario recibe su canal propio.`)],
+        embeds: [
+          successEmbed(
+            `**${canal.name}** ahora es el canal de creación: al entrar, cada usuario recibe su canal propio.` +
+              '\n📍 Los canales se crean en la categoría elegida con `/voz categoria`.'
+          ),
+        ],
         flags: MessageFlags.Ephemeral,
+      });
+    }
+
+    if (sub === 'categoria') {
+      const categoria = interaction.options.getChannel('categoria', true);
+      if (categoria.type !== ChannelType.GuildCategory) {
+        return interaction.reply({
+          embeds: [errorEmbed('Tenés que elegir una **categoría** (la cabecera que agrupa canales), no un canal de voz o texto.')],
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+      setGuildConfig(interaction.guildId, (c) => {
+        c.voz = c.voz || {};
+        c.voz.categoriaId = categoria.id;
+      });
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      const movidos = await voz.moverTemporalesACategoria(interaction.guild, categoria.id);
+      return interaction.editReply({
+        embeds: [
+          successEmbed(
+            `Categoría configurada: **${categoria.name}**.\nLos canales temporales de los usuarios se crean ahí.` +
+              (movidos.length
+                ? `\n📦 ${movidos.length} canal(es) ya existente(s) se movieron a la nueva categoría (conservando sus permisos).`
+                : '')
+          ),
+        ],
       });
     }
 
@@ -103,7 +141,7 @@ module.exports = {
           successEmbed(
             plantilla
               ? `Formato actualizado: **${voz.nombreCanal(plantilla, 'Federico')}**`
-              : 'Volvimos al formato por defecto: **🔊 Canal de {usuario}**.'
+              : `Volvimos al formato por defecto: **${voz.PLANTILLA_NOMBRE}**.`
           ),
         ],
         flags: MessageFlags.Ephemeral,
@@ -113,6 +151,7 @@ module.exports = {
     if (sub === 'estado') {
       const config = voz.vozDe(interaction.guildId);
       const hub = config.hubId ? interaction.guild.channels.cache.get(config.hubId) : null;
+      const categoria = config.categoriaId ? interaction.guild.channels.cache.get(config.categoriaId) : null;
       const temporales = Object.entries(voz.temporalesDe(interaction.guildId));
       const lista = temporales
         .map(([canalId, duenoId]) => {
@@ -128,6 +167,7 @@ module.exports = {
         description:
           `**Estado:** ${hub ? '🟢 Activo' : '🔴 Inactivo'}\n` +
           `**Canal de creación:** ${hub ? hub.name : 'sin configurar'}\n` +
+          `**Categoría destino:** ${categoria ? categoria.name : 'la del hub (sin configurar)'}\n` +
           `**Formato:** ${config.formato || voz.PLANTILLA_NOMBRE}\n\n` +
           `**Canales activos (${temporales.length}):**\n${lista || '*ninguno en este momento*'}`,
       });

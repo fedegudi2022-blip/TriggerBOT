@@ -104,7 +104,11 @@ Todo queda registrado en el mod-log como acción del bot.
 
 ### Canales de voz temporales (estilo VoiceMaster)
 
-Se activa con **`/voz activar`**: el bot crea un canal de voz **«➕ Crear canal»**. Cuando alguien entra ahí, recibe **su propio canal temporal** (en la misma categoría, con formato configurable `/voz formato`) y un panel de controles:
+Se activa con **`/voz activar`**: el bot crea un canal de voz **«➕ Crear canal»**. Cuando alguien entra ahí, recibe **su propio canal temporal** —por defecto **«🔊 Canal de Voz de {usuario}»** (formato configurable con `/voz formato`)— y un panel de controles:
+
+> 📍 **Categoría destino:** el staff elige dónde se crean los canales temporales con **`/voz categoria`**. Si se cambia, los canales ya creados **se mueven solos** a la nueva categoría (conservando permisos). Si nunca se configuró, se crean en la misma categoría que el hub.
+>
+> 📋 **Registro:** la creación, transferencia y borrado de canales temporales quedan en el canal de logs de `/config` (o mod-log si no hay logs configurado).
 
 - **📝 Renombrar** y **👥 límite de usuarios** (0-99) con ventanas emergentes.
 - **🔒 Cerrar / 🔓 abrir** el canal (bloquea la entrada de gente nueva).
