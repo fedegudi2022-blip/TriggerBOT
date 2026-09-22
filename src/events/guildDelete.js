@@ -1,5 +1,5 @@
 const { Events } = require('discord.js');
-const { subirYa, marcarSucio } = require('../db/sync');
+const { subirYa } = require('../db/sync');
 
 // Cuando el bot sale de un servidor (expulsado o borrado), guarda una ficha
 // final en la nube y agenda la limpieza de sus datos locales y de la nube.

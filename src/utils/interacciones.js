@@ -5,7 +5,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { marcarSucio } = require('../db/sync');
 
-const DATA_DIR = path.join(__dirname, '..', '..', 'data');
+// Directorio de datos configurable (TRIGGER_DATA_DIR) para tests y despliegues.
+const DATA_DIR = process.env.TRIGGER_DATA_DIR || path.join(__dirname, '..', '..', 'data');
 const FILE = path.join(DATA_DIR, 'interacciones.json');
 
 let cache = {};
@@ -23,10 +24,12 @@ try {
   console.error('[TriggerBOT] No se pudo leer data/interacciones.json:', error.message);
   cache = {};
 }
-{
+
+// Al arrancar: si el archivo existía, cada guild hereda su mtime como marca base.
+(function inicializarMarcas() {
   const mtime = fs.existsSync(FILE) ? fs.statSync(FILE).mtimeMs : 0;
   for (const guildId of Object.keys(cache)) marcasCambio.set(guildId, mtime);
-}
+})();
 
 function guardar() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });

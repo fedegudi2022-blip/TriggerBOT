@@ -10,6 +10,8 @@
 
 const URL_BASE = (process.env.SUPABASE_URL || '').replace(/\/+$/, '');
 const KEY = process.env.SUPABASE_KEY || '';
+const crearLogger = require('../logger');
+const log = crearLogger('supabase');
 
 const configurada = Boolean(URL_BASE && KEY);
 const TIMEOUT_MS = 10_000;
@@ -38,8 +40,8 @@ let avisoPermisoEmitido = false;
 function advertirPermiso() {
   estado.permisoEscritura = false;
   if (avisoPermisoEmitido) return;
-  avisoPermisoEmitido = true;  console.error(
-    '[TriggerBOT] Supabase: la clave configurada NO tiene permiso de escritura (Row Level Security).\n' +
+  avisoPermisoEmitido = true;  log.error(
+    'Supabase: la clave configurada NO tiene permiso de escritura (Row Level Security).\n' +
     '  Casi seguro se copió la clave ANON/publicable en SUPABASE_KEY. Solución (1 min):\n' +
     '  1. Supabase → Project Settings → API Keys.\n' +
     '  2. Copiá la clave SECRETA de servicio: "service_role" (JWT eyJ...) o "sb_secret_..." en paneles nuevos (NO la anon / sb_publishable_...).\n' +
@@ -106,7 +108,7 @@ async function subir(clave, guildId, almacen, datos) {
     estado.subidasFallidas += 1;
     if (ES_ERROR_PERMISO.test(error.message)) advertirPermiso();
     anotarFallo(error);
-    console.error('[TriggerBOT] Supabase: fallo al subir', clave, error.message);
+    log.error('Fallo al subir', error, { clave });
     return false;
   }
 }
@@ -122,7 +124,7 @@ async function descargar(clave) {
     return filas?.[0] ?? null;
   } catch (error) {
     anotarFallo(error);
-    console.error('[TriggerBOT] Supabase: fallo al descargar', clave, error.message);
+    log.error('Fallo al descargar', error, { clave });
     return null;
   }
 }
@@ -150,7 +152,7 @@ async function eliminar(clave) {
   } catch (error) {
     if (ES_ERROR_PERMISO.test(error.message)) advertirPermiso();
     anotarFallo(error);
-    console.error('[TriggerBOT] Supabase: fallo al eliminar', clave, error.message);
+    log.error('Fallo al eliminar', error, { clave });
     return false;
   }
 }

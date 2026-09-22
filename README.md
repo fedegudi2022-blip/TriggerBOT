@@ -6,20 +6,42 @@ Bot de Discord privado para la comunidad **Trigger**, hecho en Node.js con disco
 
 ```
 src/
-├── index.js            # Punto de entrada: carga comandos y eventos automáticamente
-├── deploy-commands.js  # Registra los comandos slash en Discord
+├── index.js            # Punto de entrada: carga comandos/eventos, sesión con reintentos y apagado controlado
+├── commandLoader.js    # Carga ÚNICA de comandos (la usan el runtime y deploy-commands)
+├── deploy-commands.js  # Registra los comandos slash en Discord (npm run register)
+├── logger.js           # Logger estructurado con sanitización de secretos
 ├── store.js            # Config por servidor en data/config.json
 ├── warns.js            # Historial de warns en data/warns.json
+├── niveles.js          # XP, niveles y logros en data/niveles.json (escritura con debounce)
+├── db/
+│   ├── supabase.js     # Cliente REST de Supabase (sin SDK)
+│   └── sync.js         # Respaldo/restauración guild-por-guild con debounce
 ├── commands/           # Un archivo por comando slash
 ├── events/             # Un archivo por evento (ready, logs, ...)
 └── utils/
+    ├── moderation.js   # Validaciones de jerarquía compartidas (comandos + IA + protección)
+    ├── proteccion.js   # Anti-spam y anti-raid automáticos
+    ├── accionesIA.js   # Acciones de moderación pedidas por IA (confirmación del staff)
+    ├── tickets.js      # Sistema de tickets con transcript
     ├── modlog.js       # Registro de acciones de moderación (mod-log)
     ├── log.js          # Registro de eventos generales (logs)
-    ├── moderation.js   # Chequeos de jerarquía y avisos por DM
     └── replies.js      # Embeds con el estilo visual unificado del bot
+tests/                  # Tests con el runner nativo de Node (npm test)
+docs/ARQUITECTURA.md    # Documentación técnica de cada sistema
 ```
 
 > `data/` se crea solo y está en `.gitignore`: cada entorno (local/Wispbyte) tiene su propia configuración.
+
+## Desarrollo
+
+```bash
+npm test        # tests (runner nativo de Node, sin dependencias)
+npm run lint    # ESLint: errores reales, no estilo
+npm run format  # Prettier
+npm run check   # lint + tests: el mínimo antes de subir cambios
+```
+
+Los tests corren aislados del `data/` real (usan un directorio temporal) y no tocan la red. Cómo funciona cada sistema por dentro: [docs/ARQUITECTURA.md](docs/ARQUITECTURA.md).
 
 ## Comandos
 
@@ -198,6 +220,27 @@ Sin `SUPABASE_URL`/`SUPABASE_KEY` el bot funciona igual, solo con archivos local
 
 **Importante:** nunca subir el `.env` a GitHub (ya está en `.gitignore`). Poner el token como variable en el panel de Wispbyte.
 
-## Privacidad
+## Privacidad y datos
 
-El bot está pensado para **un solo servidor**: la comunidad Trigger. Solo guarda configuración y warns en archivos JSON locales; no manda datos a ningún servicio externo.
+El bot está pensado para **un solo servidor**: la comunidad Trigger.
+
+**Qué guarda y dónde:**
+
+| Dato | Dónde vive |
+|---|---|
+| Configuración del server (`data/config.json`) | Disco local + respaldo en Supabase |
+| Historial de warns | Disco + Supabase |
+| XP, niveles, logros | Disco + Supabase |
+| Estado AFK y contadores de interacciones | Disco + Supabase |
+| Transcripts de tickets (.txt) | Canal de logs y DM del usuario; no se persiste en el bot |
+| Logs de mensajes borrados/editados | Canal de logs del server; no se persiste en el bot |
+| Ventanas de anti-spam/anti-raid, cooldowns, memoria de IA | Solo memoria; se pierden al reiniciar (intencional) |
+
+**Servicios externos:**
+
+- **Discord**: inherente al bot.
+- **Supabase** (si está configurado): respaldo de los datos de la tabla de arriba. La clave `SUPABASE_KEY` es **service_role** (acceso total): tratarla como secreto máximo — nunca en logs (el logger la enmascara si un error la arrastra), capturas ni el repo.
+- **Proveedores de IA** (solo si configurás `GROQ_API_KEY`/`GEMINI_API_KEY`): al mencionar al bot se envía tu mensaje, tu nombre visible y el canal (como contexto), más los últimos 6 turnos de la conversación con vos. No se envían IDs de Discord ni mensajes de otros usuarios. Sin claves configuradas, el chat usa solo respuestas locales y **nada sale del host**.
+- **Reddit / APIs de GIFs**: solo peticiones anónimas de contenido público (memes, GIFs de interacciones).
+
+**Retención:** los JSON locales viven mientras el bot esté en el server; al ser expulsado, sus datos se limpian del disco y de Supabase. Los transcripts de tickets y los logs de moderación quedan en Discord (canal/DM) según la retención de Discord misma.

@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const { UMBRALES, rolesConfigurados, definirRol } = require('../utils/rolesNivel');
 const { brandEmbed, successEmbed } = require('../utils/replies');
 

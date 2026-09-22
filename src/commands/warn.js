@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
-const { getWarns, addWarn } = require('../warns');
+const { addWarn } = require('../warns');
 const { logAction } = require('../utils/modlog');
 const { logEvent } = require('../utils/log');
 const { successEmbed, errorEmbed } = require('../utils/replies');

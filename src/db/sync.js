@@ -16,7 +16,9 @@
 // la nube (restauración); si no, se sube el local. relojLocalMasNuevo() además
 // protege contra relojes atrasados del host.
 
-const { subir, descargar, estado } = require('./supabase');
+const { subir, estado } = require('./supabase');
+const crearLogger = require('../logger');
+const log = crearLogger('sync');
 
 const DEBOUNCE_MS = 3_000;
 const pendientes = new Map(); // clave → timeout
@@ -57,7 +59,7 @@ function marcarSucio(guildId, almacen, obtenerDatos) {
         await subir(clave, guildId, almacen, datos);
       } catch (error) {
         estado.ultimoError = error.message;
-        console.error('[TriggerBOT] Supabase: error inesperado al subir', clave, error.message);
+        log.error('Error inesperado al subir', error, { clave });
       }
     }, DEBOUNCE_MS)
   );
@@ -73,7 +75,7 @@ async function subirYa(guildId, almacen, obtenerDatos) {
     await subir(clave, guildId, almacen, obtenerDatos());
   } catch (error) {
     estado.ultimoError = error.message;
-    console.error('[TriggerBOT] Supabase: error inesperado en subida inmediata', clave, error.message);
+    log.error('Error inesperado en subida inmediata', error, { clave });
   }
 }
 
@@ -116,7 +118,7 @@ async function restaurar(almacenes) {
     filas.push(...(await listar(hayLocal && guildIds.size > 0 ? [...guildIds] : null)));
   } catch (error) {
     estado.ultimoError = error.message;
-    console.error('[TriggerBOT] Supabase: no se pudo leer la nube al arrancar:', error.message);
+    log.error('No se pudo leer la nube al arrancar', error);
     resumen.errores += 1;
     return resumen;
   }
@@ -141,7 +143,7 @@ async function restaurar(almacenes) {
         resumen.restaurados += 1;
         tocar(fila.guild_id, fila.almacen, fechaNube); // sync interno: nube ya reflejada localmente
       } catch (error) {
-        console.error('[TriggerBOT] Supabase: fallo al restaurar', fila.clave, error.message);
+        log.error('Fallo al restaurar', error, { clave: fila.clave });
         resumen.errores += 1;
         continue;
       }
@@ -185,10 +187,12 @@ function volcarTodo() {
 async function esperarSubidasPendientes() {
   const inicio = Date.now();
   while (pendientes.size > 0 && Date.now() - inicio < 10_000) {
-    await new Promise((r) => setTimeout(r, 100));
+    await new Promise((r) => {
+      setTimeout(r, 100);
+    });
   }
   if (pendientes.size > 0) {
-    console.warn(`[TriggerBOT] Apagado: ${pendientes.size} subida(s) a Supabase quedaron sin completar.`);
+    log.warn(`Apagado: ${pendientes.size} subida(s) a Supabase quedaron sin completar.`);
   }
 }
 

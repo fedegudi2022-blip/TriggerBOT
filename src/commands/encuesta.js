@@ -21,7 +21,7 @@ module.exports = {
     const tema = interaction.options.getString('tema', true);
     const opcionesTexto = interaction.options.getString('opciones');
 
-    let opciones = opcionesTexto
+    const opciones = opcionesTexto
       ? opcionesTexto.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 6)
       : ['Sí', 'No'];
 

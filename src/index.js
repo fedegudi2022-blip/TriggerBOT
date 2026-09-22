@@ -4,6 +4,17 @@
 require('dotenv').config();
 const { Client, Collection, GatewayIntentBits, Partials, MessageFlags } = require('discord.js');
 
+// ---------- Logger estructurado (nivel, módulo y contexto en cada línea) ----------
+const crearLogger = require('./logger');
+const log = crearLogger('bot');
+const logMonitoreo = crearLogger('monitoreo');
+const logFrase = crearLogger('frase');
+const logComponentes = crearLogger('componentes');
+const logComandos = crearLogger('comandos');
+const logDiscord = crearLogger('discord');
+const logApagado = crearLogger('apagado');
+const logSesion = crearLogger('sesion');
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -38,11 +49,11 @@ for (const file of fs.readdirSync(eventsPath).filter((f) => f.endsWith('.js'))) 
 // ---------- Monitoreo de servidores CS 1.6: alertas de caída y panel en vivo ----------
 const { tick: tickServidores, INTERVALO_MS: INTERVALO_SERVIDORES } = require('./utils/monitoreo');
 setInterval(() => {
-  tickServidores(client).catch((error) => console.error('[TriggerBOT] Error en monitoreo de servidores:', error.message));
+  tickServidores(client).catch((error) => logMonitoreo.error('Error en monitoreo de servidores', error));
 }, INTERVALO_SERVIDORES).unref();
 // Primer tick tras 15 s de arrancar (deja que Discord termine de conectar).
 setTimeout(() => {
-  tickServidores(client).catch((error) => console.error('[TriggerBOT] Error en monitoreo de servidores:', error.message));
+  tickServidores(client).catch((error) => logMonitoreo.error('Error en monitoreo de servidores', error));
 }, 15_000).unref();
 
 // ---------- Frase del día: publicación diaria a la hora configurada ----------
@@ -91,7 +102,7 @@ setInterval(async () => {
         .catch(() => {});
     }
   } catch (error) {
-    console.error('[TriggerBOT] Error en la frase del día:', error.message);
+    logFrase.error('Error en la frase del día', error);
   }
 }, 60 * 1000).unref();
 
@@ -124,7 +135,7 @@ client.on('interactionCreate', async (interaction) => {
       await manejarComponente(interaction);
     }
   } catch (error) {
-    console.error('[TriggerBOT] Error en componente interactivo:', error);
+    logComponentes.error('Error en componente interactivo', error);
     const payload = { content: 'Ocurrió un error con el panel.', flags: MessageFlags.Ephemeral };
     if (interaction.replied || interaction.deferred) {
       await interaction.followUp(payload).catch(() => {});
@@ -144,7 +155,7 @@ client.on('interactionCreate', async (interaction) => {
   try {
     await command.execute(interaction, client);
   } catch (error) {
-    console.error(`Error en /${interaction.commandName}:`, error);
+    logComandos.error(`Error en /${interaction.commandName}`, error, { comando: interaction.commandName });
     const payload = { content: '❌ Ocurrió un error al ejecutar el comando.', flags: MessageFlags.Ephemeral };
     if (interaction.replied || interaction.deferred) {
       await interaction.followUp(payload).catch(() => {});
@@ -155,12 +166,12 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 // ---------- Errores globales (evita caídas por promesas rechazadas) ----------
-process.on('unhandledRejection', (error) => console.error('[TriggerBOT] Promesa rechazada no manejada:', error));
+process.on('unhandledRejection', (error) => log.error('Promesa rechazada no manejada', error));
 
 // ---------- Registro de eventos de conexión ----------
-client.on('error', (error) => console.error(`[TriggerBOT] Error en la conexión con Discord: ${error.message}`));
-client.on('shardDisconnect', (event) => console.warn(`[TriggerBOT] Conexión perdida con Discord. Reintentando automáticamente... ${event?.message ?? ''}`));
-client.on('shardReconnecting', () => console.log('[TriggerBOT] Reconectando con Discord...'));
+client.on('error', (error) => logDiscord.error('Error en la conexión con Discord', error));
+client.on('shardDisconnect', (event) => logDiscord.warn(`Conexión perdida con Discord. Reintentando automáticamente... ${event?.message ?? ''}`));
+client.on('shardReconnecting', () => logDiscord.info('Reconectando con Discord...'));
 
 // ---------- Apagado controlado (SIGTERM/SIGINT: Wispbyte, Ctrl+C, etc.) ----------
 // Orden: 1) bloquear nuevas señales, 2) volcar a disco los JSON pendientes,
@@ -169,20 +180,20 @@ let apagando = false;
 async function apagadoControlado(señal) {
   if (apagando) return;
   apagando = true;
-  console.log(`[TriggerBOT] Recibí ${señal}: iniciando apagado controlado...`);
+  logApagado.info(`Recibí ${señal}: iniciando apagado controlado...`);
   try {
     const { volcarTodo, esperarSubidasPendientes } = require('./db/sync');
     volcarTodo();
     await esperarSubidasPendientes();
   } catch (error) {
-    console.error('[TriggerBOT] Error al volcar datos en el apagado:', error.message);
+    logApagado.error('Error al volcar datos en el apagado', error);
   }
   try {
     await client.destroy();
   } catch (error) {
-    console.error('[TriggerBOT] Error al cerrar Discord:', error.message);
+    logApagado.error('Error al cerrar Discord', error);
   }
-  console.log('[TriggerBOT] Apagado completado. ¡Hasta la próxima!');
+  logApagado.info('Apagado completado. ¡Hasta la próxima!');
   process.exit(0);
 }
 process.on('SIGTERM', () => apagadoControlado('SIGTERM'));
@@ -198,8 +209,8 @@ function iniciarSesion() {
   // Si Discord no responde en 45 s (típico de un bloqueo de IP del nodo), se reintenta.
   const vigilante = setTimeout(() => {
     if (respondio) return;
-    console.warn(
-      `[TriggerBOT] Sin respuesta de Discord tras 45 s (intento ${intentos}). ` +
+    logSesion.warn(
+      `Sin respuesta de Discord tras 45 s (intento ${intentos}). ` +
       'Causa probable: bloqueo temporal de la IP del nodo. Nuevo intento en 60 s.'
     );
     client.destroy().catch(() => {});
@@ -217,19 +228,19 @@ function iniciarSesion() {
       respondio = true;
       const mensaje = String(error?.message || error);
       if (/token/i.test(mensaje)) {
-        console.error(
-          '[TriggerBOT] ERROR CRÍTICO: token inválido o no definido. ' +
+        logSesion.error(
+          'ERROR CRÍTICO: token inválido o no definido. ' +
           'Verifique la variable DISCORD_TOKEN en el panel (Startup → Variables) y reinicie el servidor.'
         );
         process.exit(1);
       }
-      console.warn(
-        `[TriggerBOT] Fallo de conexión con Discord (intento ${intentos}): ${mensaje}. Nuevo intento en 60 s.`
+      logSesion.warn(
+        `Fallo de conexión con Discord (intento ${intentos}): ${mensaje}. Nuevo intento en 60 s.`
       );
       client.destroy().catch(() => {});
       setTimeout(iniciarSesion, 60_000);
     });
 }
 
-console.log('[TriggerBOT] Inicializando TriggerBOT v1.0.0...');
+log.info('Inicializando TriggerBOT v1.0');
 iniciarSesion();

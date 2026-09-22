@@ -11,15 +11,6 @@ const PERMISOS_INTERESANTES = [
   ['Gestionar mensajes', PermissionFlagsBits.ManageMessages],
 ];
 
-// Emoji según la antigüedad de la cuenta (convierte la fecha en algo interpretable).
-function insigniaAntiguedad(dias) {
-  if (dias >= 1825) return '🏛️ Cuenta legendaria (5+ años)';
-  if (dias >= 1095) return '💎 Cuenta veterana (3+ años)';
-  if (dias >= 365) return '⭐ Cuenta con historial (1+ año)';
-  if (dias >= 90) return '🌱 Cuenta asentada (3+ meses)';
-  return '🥚 Cuenta reciente';
-}
-
 // Antigüedad legible: "3 a 2 m" · "5 m 12 d" · "12 d".
 function antiguedad(ts) {
   const dias = Math.floor((Date.now() - ts) / 86400000);

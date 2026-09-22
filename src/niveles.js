@@ -14,7 +14,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { marcarSucio, tocar } = require('./db/sync');
 
-const DATA_DIR = path.join(__dirname, '..', 'data');
+// Directorio de datos configurable (TRIGGER_DATA_DIR) para tests y despliegues.
+const DATA_DIR = process.env.TRIGGER_DATA_DIR || path.join(__dirname, '..', 'data');
 const FILE = path.join(DATA_DIR, 'niveles.json');
 
 // Debounce de escritura: el event loop no se bloquea en cada mensaje.
@@ -30,6 +31,12 @@ const marcasCambio = new Map();
 function tocarMarca(guildId) {
   const previa = marcasCambio.get(guildId) ?? 0;
   marcasCambio.set(guildId, Math.max(previa, Date.now()));
+}
+
+// Al arrancar: si el archivo existía, cada guild hereda su mtime como marca base.
+function inicializarMarcas() {
+  const mtime = fs.existsSync(FILE) ? fs.statSync(FILE).mtimeMs : 0;
+  for (const guildId of Object.keys(cache)) marcasCambio.set(guildId, mtime);
 }
 
 function load() {
@@ -313,10 +320,7 @@ function escribir(guildId, datos) {
 }
 
 load();
-{
-  const mtime = fs.existsSync(FILE) ? fs.statSync(FILE).mtimeMs : 0;
-  for (const guildId of Object.keys(cache)) marcasCambio.set(guildId, mtime);
-}
+inicializarMarcas();
 
 module.exports = {
   procesarMensaje,

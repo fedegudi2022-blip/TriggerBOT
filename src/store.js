@@ -6,7 +6,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { marcarSucio } = require('./db/sync');
 
-const DATA_DIR = path.join(__dirname, '..', 'data');
+// Directorio de datos configurable (TRIGGER_DATA_DIR) para tests y despliegues.
+const DATA_DIR = process.env.TRIGGER_DATA_DIR || path.join(__dirname, '..', 'data');
 const FILE = path.join(DATA_DIR, 'config.json');
 
 let cache = {};
@@ -35,7 +36,6 @@ function load() {
     cache = {};
   }
 }
-
 function save() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
   const tmp = FILE + '.tmp';

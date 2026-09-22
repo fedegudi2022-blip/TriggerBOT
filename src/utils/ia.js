@@ -243,7 +243,9 @@ async function llamarGemini(contenidos, sistema) {
       if (i === candidatos.length - 1) throw error;
       // Saturación o error interno: breve espera antes del próximo intento.
       if (/HTTP (429|500|503)/.test(error.message)) {
-        await new Promise((r) => setTimeout(r, 800 * (i + 1)));
+        await new Promise((r) => {
+          setTimeout(r, 800 * (i + 1));
+        });
       }
     }
   }

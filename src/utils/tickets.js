@@ -204,7 +204,9 @@ async function cerrarTicket(interaction, cerradoPor) {
     description: `Por ${cerradoPor} · transcript enviado a logs y al DM del usuario.`,
   });
 
-  await new Promise((r) => setTimeout(r, 30_000));
+  await new Promise((r) => {
+    setTimeout(r, 30_000);
+  });
   await canal.delete(`Ticket cerrado por ${cerradoPor.tag}`).catch(() => {});
 }
 
