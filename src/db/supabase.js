@@ -129,6 +129,21 @@ async function descargar(clave) {
   }
 }
 
+// Consulta genérica para tablas del bot (usado por el puente web para leer
+// bot_cmd). Tabla limitada a la whitelist para no exponer cualquier tabla.
+async function listarTabla(tabla, opciones = {}) {
+  if (!configurada) return [];
+  if (!/^(bot_data|bot_stats|bot_cmd)$/.test(tabla)) throw new Error(`Tabla no permitida: ${tabla}`);
+  const params = new URLSearchParams();
+  params.set('select', opciones.select || '*');
+  for (const [col, valor] of Object.entries(opciones.filtros || {})) params.append(col, valor);
+  if (opciones.orden) params.set('order', opciones.orden);
+  if (opciones.limite) params.set('limit', String(opciones.limite));
+  const filas = await pedir(`${URL_BASE}/rest/v1/${tabla}?${params.toString()}`);
+  estado.conectado = true;
+  return filas ?? [];
+}
+
 // Lista filas de bot_data. Si `guildIds` es un array no vacío, filtra por esos
 // servidores; si es null trae todo. Lanza el error (el que llama decide).
 async function listar(guildIds = null) {
@@ -153,6 +168,29 @@ async function eliminar(clave) {
     if (ES_ERROR_PERMISO.test(error.message)) advertirPermiso();
     anotarFallo(error);
     log.error('Fallo al eliminar', error, { clave });
+    return false;
+  }
+}
+
+// Actualiza campos de una fila de una tabla (usado por el puente web para
+// marcar comandos como procesados con su resultado). Devuelve true si fue OK.
+async function actualizar(tabla, filtros, campos) {
+  if (!configurada) return false;
+  try {
+    const query = Object.entries(filtros)
+      .map(([col, valor]) => `${col}=eq.${encodeURIComponent(String(valor))}`)
+      .join('&');
+    await pedir(`${URL_BASE}/rest/v1/${tabla}?${query}`, {
+      method: 'PATCH',
+      headers: { Prefer: 'return=minimal' },
+      body: JSON.stringify({ ...campos, actualizado_en: new Date().toISOString() }),
+    });
+    estado.conectado = true;
+    return true;
+  } catch (error) {
+    if (ES_ERROR_PERMISO.test(error.message)) advertirPermiso();
+    anotarFallo(error);
+    log.error('Fallo al actualizar', error, { tabla });
     return false;
   }
 }
@@ -185,4 +223,4 @@ async function ping() {
   return true;
 }
 
-module.exports = { estado, configurada, subir, descargar, listar, eliminar, ping };
+module.exports = { estado, configurada, subir, descargar, listar, listarTabla, eliminar, actualizar, ping };

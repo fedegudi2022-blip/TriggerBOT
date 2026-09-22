@@ -182,6 +182,11 @@ async function apagadoControlado(señal) {
   apagando = true;
   logApagado.info(`Recibí ${señal}: iniciando apagado controlado...`);
   try {
+    puente.detener();
+  } catch {
+    /* el puente quizá nunca arrancó */
+  }
+  try {
     const { volcarTodo, esperarSubidasPendientes } = require('./db/sync');
     volcarTodo();
     await esperarSubidasPendientes();
@@ -198,6 +203,15 @@ async function apagadoControlado(señal) {
 }
 process.on('SIGTERM', () => apagadoControlado('SIGTERM'));
 process.on('SIGINT', () => apagadoControlado('SIGINT'));
+
+// ---------- Puente web ↔ bot (Supabase como bus de comandos) ----------
+// La web TriGGer.Arena encola comandos en la tabla bot_cmd y lee el estado
+// que este módulo publica. Requiere SUPABASE_URL + SUPABASE_KEY configuradas.
+const puente = require('./db/puente');
+const { Events } = require('discord.js');
+client.once(Events.ClientReady, () => {
+  puente.iniciar(client);
+});
 
 // ---------- Inicio de sesión con reintentos automáticos ----------
 let intentos = 0;

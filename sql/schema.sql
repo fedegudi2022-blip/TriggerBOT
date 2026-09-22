@@ -31,6 +31,25 @@ create table if not exists public.bot_stats (
 );
 
 -- ---------------------------------------------------------------------------
+-- Puente web ↔ bot: la web (TriGGer.Arena) inserta comandos acá y el bot los
+-- procesa cada 5 s, guarda el resultado y publica su estado en bot_data
+-- (clave "bot_estado:_global"). La autenticación de ambos lados es la
+-- service_role de Supabase; RLS bloquea la clave pública (anon).
+-- ---------------------------------------------------------------------------
+create table if not exists public.bot_cmd (
+  id            bigserial primary key,
+  comando       text not null,              -- ver src/db/puente.js (whitelist)
+  guild_id      text,                       -- servidor destino (null = global)
+  argumentos    jsonb not null default '{}'::jsonb,
+  creada_por    text,                       -- usuario web que lo envió (auditoría)
+  creado_en     timestamptz not null default now(),
+  procesado_en  timestamptz,                -- el bot lo marca al procesarlo
+  resultado     jsonb                       -- { ok, detalle?, error? }
+);
+
+create index if not exists bot_cmd_pendientes_idx on public.bot_cmd (creado_en) where procesado_en is null;
+
+-- ---------------------------------------------------------------------------
 -- Seguridad con Row Level Security (RLS):
 -- El bot usa la "service role key" (clave de servicio), que bypasea RLS.
 -- Las políticas abajo bloquean el acceso con la clave pública (anon):
