@@ -193,6 +193,30 @@ describe('conocimiento — contenido real distribuido', () => {
     }
   });
 
+  test('una pregunta de cultura general NO da coincidencia en el título (no se inyecta)', () => {
+    // 'cuántos' aparece en títulos de la base ("Cuántos XP necesito…"): es una palabra
+    // del armado de la pregunta, así que no puede contar como tema cargado. Sin esta
+    // distinción, la base de la comunidad viajaba en preguntas como la edad de Messi.
+    for (const pregunta of ['messi cuantos anios tiene', 'cuantos habitantes tiene japon', 'quien invento el telefono']) {
+      const encontrados = conocimiento.buscar(pregunta, real);
+      assert.equal(
+        encontrados.some((s) => s.enTitulo),
+        false,
+        `"${pregunta}" no debería dar coincidencia con contenido (trajo: ${encontrados.map((s) => s.titulo).join(' | ')})`
+      );
+    }
+  });
+
+  test('una pregunta de la comunidad sí da coincidencia en el título', () => {
+    for (const pregunta of ['cuanto xp necesito para el nivel 10', 'como abro un ticket', 'puedo poner publicidad?']) {
+      const encontrados = conocimiento.buscar(pregunta, real);
+      assert.ok(
+        encontrados.some((s) => s.enTitulo),
+        `"${pregunta}" debería dar coincidencia con contenido (trajo: ${encontrados.map((s) => s.titulo).join(' | ')})`
+      );
+    }
+  });
+
   test('lo que las normas no cubren se deriva al staff (no se inventa un permiso)', () => {
     const [tema] = conocimiento.buscar('se puede usar el micro?', real);
     assert.match(tema.titulo, /no están contemplados/i);

@@ -11,8 +11,22 @@ además los comandos de moderación y configuración.
 Charlar en general, dudas de la comunidad (servidores CS 1.6, cómo entrar, links
 oficiales), dudas de funcionamiento (niveles, XP, logros, racha, sanciones, tickets)
 y datos en vivo del servidor como tu nivel y XP actuales, tu puesto en el ranking o
-el estado de los servidores. Si algo no lo tengo cargado, te lo digo y te derivo al
-staff: prefiero no inventar antes que darte un dato falso.
+el estado de los servidores.
+
+También respondo preguntas que no tienen nada que ver con el server: deportes,
+historia, famosos, ciencia, tecnología, geografía, efemérides, y prácticamente
+cualquier cosa que quieras saber. Para eso, si no me alcanza con lo que sé, busco en
+internet (Wikipedia y DuckDuckGo) y te contesto con el dato; si el dato puede cambiar
+(precios, resultados, noticias), esa búsqueda la hago siempre antes de responder, así
+que podés pedirme directamente "buscá…".
+
+Cuando una respuesta sale de una búsqueda, te dejo las **fuentes** al final del
+mensaje: si el dato importa, podés abrir el link y verificarlo vos mismo.
+
+Lo único donde no invento nada es en los datos del server: si preguntás algo de la
+comunidad (reglas, sanciones, horarios, configuraciones) que no tengo cargado, te lo
+digo y te derivo al staff. Internet no sabe las reglas de Trigger.Arena; la base de
+la comunidad sí.
 
 ## Pedidos de moderación por chat
 El staff puede pedir en lenguaje natural cosas como "@TriggerBOT muteá a fulano por
@@ -34,7 +48,8 @@ cuenta sin confirmación del staff. Si necesitás algo de eso, ticket de soporte
   `/pellizco`, `/chocar`, `/guino`
 - De staff: `/warn`, `/warnings`, `/quitarnota`, `/timeout`, `/mute`, `/unmute`,
   `/kick`, `/ban`, `/unban`, `/softban`, `/clear`, `/lockdown`, `/slowmode`,
-  `/config`, `/rolnivel`, `/ticket`, `/embed`, `/plantillas`, `/frases`
+  `/config`, `/rolnivel`, `/ticket`, `/embed`, `/plantillas`, `/frases`, `/diag`,
+  `/buscar`
 
 ## Canales de voz temporales
 En el canal de voz «➕ Crear canal» entrás y el bot te crea tu propio canal de voz

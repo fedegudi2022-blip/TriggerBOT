@@ -25,6 +25,8 @@ src/
     ├── accionesIA.js   # Acciones de moderación pedidas por IA (confirmación del staff)
     ├── contexto.js     # Datos en vivo para el prompt de la IA (nivel, servidores CS, comandos)
     ├── conocimiento.js # Buscador (BM25) de la base de conocimiento en docs/conocimiento
+    ├── web.js          # Búsqueda web sin claves (Wikipedia + DuckDuckGo + dólar y clima)
+    ├── presupuesto.js  # Presupuesto diario de IA (tope de respuestas por día)
     ├── tickets.js      # Sistema de tickets con transcript
     ├── modlog.js       # Registro de acciones de moderación (mod-log)
     ├── log.js          # Registro de eventos generales (logs)
@@ -67,6 +69,8 @@ Los comandos además se validan con un **smoke test de registro** (`tests/regist
 | `/servidores` | Estado en vivo de los servers CS 1.6 (jugadores, mapa, IP). Staff: `publicar:true` fija un panel que se actualiza solo | Todos |
 | `/ip [servidor]` | IP para conectarte, lista para copiar. Con filtro por nombre muestra mapa y jugadores de ahora | Todos |
 | `/ticket publicar/categoria/logs/mensaje` | Panel de soporte con botón, canales privados por ticket y transcript al cerrar | Staff (config) |
+| `/diag` | Diagnóstico operativo: qué está roto y qué hacer, incluida la salida a internet del host | Staff |
+| `/buscar consulta` | Búsqueda web a mano: resultados crudos con su fuente, y cómo clasificaría el bot esa pregunta | Staff |
 | `/help user` | Guía de comandos para usuarios, por categorías | Todos |
 | `/help staff` | Guía completa (incluye moderación y configuración); respuesta de staff, no visible en canales públicos | Staff |
 | Guía de comandos: `/help user` y `/help staff` | Se arma sola desde los comandos cargados (nunca queda desactualizada) | Todos / Staff |
@@ -187,14 +191,34 @@ El bot puede conversar cuando lo mencionás, con memoria de contexto por usuario
 - el **catálogo real de comandos** (sale de los comandos cargados: nunca se desincroniza), y
 - los fragmentos más parecidos de la **base de conocimiento** (`docs/conocimiento/*.md`).
 
-Si la respuesta no está en esos datos, el bot **lo dice y te deriva al staff** en vez de inventar. Para enseñarle algo nuevo (reglas, FAQ, horarios), editá o agregá un `.md` en `docs/conocimiento/` siguiendo el [README de esa carpeta](docs/conocimiento/README.md): se recarga solo en menos de un minuto, sin reiniciar. Las 12 normativas de la comunidad ya están cargadas en `docs/conocimiento/reglas.md`: si el staff las cambia, se edita ese archivo (o se agrega uno nuevo) y el bot responde la versión actualizada.
+Si la pregunta es **de la comunidad** y no está en esos datos, el bot **lo dice y te deriva al staff** en vez de inventar: es la única forma de que no invente una regla o una sanción. Para enseñarle algo nuevo (reglas, FAQ, horarios), editá o agregá un `.md` en `docs/conocimiento/` siguiendo el [README de esa carpeta](docs/conocimiento/README.md): se recarga solo en menos de un minuto, sin reiniciar. Las 12 normativas de la comunidad ya están cargadas en `docs/conocimiento/reglas.md`: si el staff las cambia, se edita ese archivo (o se agrega uno nuevo) y el bot responde la versión actualizada.
+
+**Preguntas del mundo real (`utils/web.js`):** la precisión estricta vale para los datos del server, no para todo. Preguntas de cultura general ("¿cuántos años tiene Messi?", "¿quién fue San Martín?", "¿a cuánto está el dólar?") se responden con el conocimiento del modelo y, cuando hace falta, con una **búsqueda web real** — sin claves de API:
+
+- **Fuentes:** resumen de **Wikipedia en español** (y en inglés si en español no hay nada), **DuckDuckGo Instant Answer** y, como extra, el HTML público de DuckDuckGo Lite (DDG suele bloquear clientes automatizados, así que aporta cuando quiere y si viene vacío no pasa nada).
+- **Datos vivos que ningún modelo tiene al día:** cotización del **dólar y el euro** (API pública de Bluelytics) y **clima** de una ciudad (Open-Meteo, con geocodificación). Se consultan solos cuando la pregunta es de ese tema, siempre antes de responder, y en el clima hace falta que la ciudad esté clara: si no, no se responde nada en vez de dar el clima de otra ciudad.
+- **Investiga en rondas:** si la primera ronda no trae nada, reintenta con la Wikipedia en inglés y, si tampoco, con la **consulta reducida a sus palabras con contenido** ("¿cuántos años tiene Messi?" → `anos messi`). Cada ronda solo cuesta cuando la anterior vino vacía, y dos pedidos simultáneos de la misma consulta salen a internet una sola vez.
+- **La base de la comunidad no viaja en preguntas generales:** el bot clasifica la consulta (comunidad / general / charla) y, si es de cultura general, **no le inyecta al prompt las secciones de `docs/conocimiento`** — solo las usa si la coincidencia tocó el *título* de una sección (señal de que el tema está cargado de verdad). Así una pregunta por la edad de Messi no arrastra las reglas del server.
+- **Cuándo busca:** nunca en charla social; nunca para datos de la comunidad (ahí manda la base del server); sí para preguntas de cultura general, y **antes de responder** si el usuario lo pide ("buscame…") o si el dato cambia con el tiempo (precios, resultados, noticias, clima).
+- **Rescate:** si la IA contesta que no tiene la información en una pregunta de cultura general, el bot busca en la web y **le hace contestar de nuevo** con los resultados a la vista. Es exactamente el caso "@Trigger messi cuántos años tiene" que antes terminaba en "eso no lo tengo cargado".
+- **Sin claves de IA** (o con todos los proveedores caídos) las preguntas generales igual se responden: se devuelve el dato de la búsqueda citando la fuente.
+- **Cita las fuentes:** cuando la respuesta sale de una búsqueda, el mensaje cierra con `🔎 Fuentes:` y los links (hasta 3, sin repetir). Si el modelo ya nombró el link, no se duplica.
+- **Caché de respuestas:** las preguntas de cultura general repetidas se contestan de una caché por usuario (10 minutos) sin gastar cuota; las de la comunidad **nunca** se cachean, porque dependen de datos vivos (tu nivel, los jugadores, la config del server).
+- **Costos acotados:** caché por consulta (10 min), tope de 20 búsquedas por minuto, cooldown por usuario y timeouts de 3,5 s por fuente y 6 s totales: una fuente lenta o caída no deja al bot mudo. Lo usado se ve en `/status` como `Web: N`.
+
+**Presupuesto diario (`utils/presupuesto.js`):** los planes gratuitos tienen cuota diaria, y el cooldown de 3 s por mención no alcanza: una ráfaga de menciones se comía la cuota y dejaba al bot sin IA el resto del día. Ahora hay un **tope de respuestas por día** (`IA_LIMITE_DIARIO`, 300 por defecto): al agotarse, el bot deja de llamar al modelo —y de buscar en internet— hasta la medianoche (hora de Argentina) y contesta con su repertorio local, mientras la vigilancia avisa al staff **una vez por jornada**. El contador se respalda en `bot_stats` y se restaura al arrancar, así un reinicio no regala cupo. `/status` y `/diag` muestran `usadas/límite` y cuántas respuestas salieron de la caché.
 
 **Acciones de moderación por chat:** si un usuario le pide `@TriggerBOT banear a @fulano por flodeo`, la IA interpreta el pedido y muestra un embed con botones. **Solo el staff** (permisos de moderación o roles de `/config staff`) puede apretar **Ejecutar**; la acción queda registrada en el mod-log. Hay cooldown de 20 s por usuario para evitar abusos y las solicitudes expiran a los 5 minutos.
 
-**Cadena de respaldo automática (optimizada por velocidad):**
+**Cadena de respaldo automática (optimizada por velocidad):** los proveedores viven en una **tabla** (`PROVEEDORES` en `utils/ia.js`): sumar uno nuevo es agregar su clave, sin escribir código.
 1. **Groq** (principal) — chips LPU: responde en ~0,3-0,8 s, 5-10x más rápido que Gemini. Modelos del plan gratuito: `openai/gpt-oss-120b` (calidad) y `openai/gpt-oss-20b` (1000 tps, el más rápido).
-2. **Gemini** (respaldo de calidad) — si Groq no tiene clave, falla o se queda sin cuota; si Google retira un modelo, el bot lo descarta solo.
-3. **Respuestas locales** — si no hay claves o todo falla, usa su repertorio propio. Nunca se queda mudo.
+2. **Cerebras** — inferencia en silicio propio: el más rápido de la lista y un respaldo ideal cuando Groq se queda sin cuota.
+3. **Gemini** (respaldo de calidad) — si los anteriores no tienen clave, fallan o se quedan sin cuota; si Google retira un modelo, el bot lo descarta solo.
+4. **OpenRouter** — un endpoint con modelos de varios laboratorios, **solo los gratuitos** (los que terminan en `:free`): la clave nunca gasta en un modelo de pago.
+5. **Mistral** — su plan gratuito como último respaldo antes del repertorio local.
+6. **Respuestas locales** — si no hay claves o todo falla, usa su repertorio propio. Nunca se queda mudo.
+
+Cada proveedor entra solo si tiene clave: sin `CEREBRAS_API_KEY`, por ejemplo, el bot ni lo intenta ni lo muestra en `/status`. Si uno se cae (clave inválida, cuota agotada o un modelo retirado), se aparta por un rato —según el error— y el mensaje siguiente sale por el que siga, sin que el usuario espere nada.
 
 **Optimizado para responder rápido:**
 - **Respuestas instantáneas (0 ms):** preguntas canónicas (quién te creó, cuál es la web, las redes, saludos de identidad) se responden sin llamar a la IA — funcionan siempre, incluso sin claves o con los proveedores caídos.
@@ -207,13 +231,14 @@ Si la respuesta no está en esos datos, el bot **lo dice y te deriva al staff** 
 - **Precalentamiento:** el bot consulta la lista de modelos al arrancar, no en el primer mensaje: la primera respuesta tras un reinicio no se come la demora del listado. Si el listado falla, no lo reintenta en cada mensaje (antes costaba hasta 5 s por respuesta).
 - Los modelos con **thinking** (razonamiento previo) están excluidos: solo chat directo.
 
-Para activarlo:
-1. Clave gratis de Gemini en [aistudio.google.com/apikey](https://aistudio.google.com/apikey) (cuenta Google, 2 min, sin tarjeta).
-2. (Recomendado) Clave gratis de Groq en [console.groq.com/keys](https://console.groq.com/keys) como respaldo.
-3. Agregá `GEMINI_API_KEY` y `GROQ_API_KEY` en el panel de Wispbyte (Startup → Variables) o en tu `.env` local.
-4. (Opcional) `GEMINI_MODEL` / `GROQ_MODEL` para fijar modelos — por defecto el bot detecta solo los mejores disponibles.
+Para activarlo alcanza **una** clave (más claves = más respaldo):
+1. Clave gratis de Groq en [console.groq.com/keys](https://console.groq.com/keys) (la principal).
+2. Clave gratis de Gemini en [aistudio.google.com/apikey](https://aistudio.google.com/apikey) (cuenta Google, 2 min, sin tarjeta).
+3. Agregá `GROQ_API_KEY` y `GEMINI_API_KEY` en el panel de Wispbyte (Startup → Variables) o en tu `.env` local.
+4. (Opcionales, más respaldo) `CEREBRAS_API_KEY` ([cloud.cerebras.ai](https://cloud.cerebras.ai)), `OPENROUTER_API_KEY` ([openrouter.ai/keys](https://openrouter.ai/keys), solo modelos `:free`) y `MISTRAL_API_KEY` ([console.mistral.ai](https://console.mistral.ai)).
+5. (Opcional) `GEMINI_MODEL` / `GROQ_MODEL` para fijar modelos — por defecto el bot detecta solo los mejores disponibles.
 
-Con `/status` ves qué modelo usa cada IA, su **latencia real** (mediana y peor 5 %), los errores acumulados, si algún proveedor está en pausa y qué modelos quedaron descartados.
+Con `/status` ves qué modelo usa cada IA, su **latencia real** (mediana y peor 5 %), los errores acumulados, si algún proveedor está en pausa y qué modelos quedaron descartados. `/diag` muestra lo mismo con el detalle para decidir.
 
 **Sin clave configurada el bot funciona igual**: usa su repertorio local de respuestas. Si la IA falla o se queda sin cuota, también cae al respaldo automáticamente — nunca se queda mudo.
 
@@ -306,7 +331,7 @@ El bot está pensado para **un solo servidor**: la comunidad Trigger.
 
 - **Discord**: inherente al bot.
 - **MariaDB de la web** (si está configurada): respaldo de los datos de la tabla de arriba, en tablas propias `bot_*`. La contraseña `DB_PASSWORD` es un secreto: nunca en logs (el logger la enmascara si un error la arrastra), capturas ni el repo.
-- **Proveedores de IA** (solo si configurás `GROQ_API_KEY`/`GEMINI_API_KEY`): al mencionar al bot se envía tu mensaje, tu nombre visible, el canal, tus datos públicos del sistema de niveles (nivel, XP, puesto, racha) y el estado público de los servidores CS (desde su propia pregunta), más los últimos 6 turnos de la conversación con vos. No se envían IDs de Discord ni mensajes de otros usuarios. Sin claves configuradas, el chat usa solo respuestas locales y **nada sale del host**.
+- **Proveedores de IA** (solo si configurás alguna clave de IA, ver la cadena arriba): al mencionar al bot se envía tu mensaje, tu nombre visible, el canal, tus datos públicos del sistema de niveles (nivel, XP, puesto, racha) y el estado público de los servidores CS (desde su propia pregunta), más los últimos 6 turnos de la conversación con vos. No se envían IDs de Discord ni mensajes de otros usuarios. Sin claves configuradas, el chat usa solo respuestas locales y **nada sale del host**.
 - **Reddit / APIs de GIFs**: solo peticiones anónimas de contenido público (memes, GIFs de interacciones).
 
 **Retención:** los JSON locales viven mientras el bot esté en el server; al ser expulsado, sus datos se limpian del disco y de la base (`bot_data`). Los transcripts de tickets y los logs de moderación quedan en Discord (canal/DM) según la retención de Discord misma.

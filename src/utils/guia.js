@@ -30,6 +30,7 @@ const SOLO_STAFF = new Set([
   'plantillas',
   'frases',
   'diag',
+  'buscar',
 ]);
 
 // ---------- Categorías públicas ----------
@@ -79,6 +80,11 @@ const CATEGORIAS_STAFF = [
     comandos: ['config', 'rolnivel', 'ticket', 'voz', 'frases'],
     intro: '`/config` abre el panel interactivo con todas las secciones del servidor.',
     nota: '`/diag` revisa todo el bot y dice qué está roto y qué hacer: si algo se degrada, el bot también avisa solo en el canal de avisos.',
+  },
+  {
+    nombre: 'Diagnóstico y búsqueda',
+    comandos: ['diag', 'buscar'],
+    intro: '`/diag` revisa los sistemas (incluida la salida a internet).`/buscar` muestra qué encuentra la IA en la web, con fuentes.',
   },
   {
     nombre: 'Mensajes y utilidades internas',

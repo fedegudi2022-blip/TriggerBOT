@@ -52,6 +52,16 @@ const STOPWORDS = new Set([
   'aparece', 'aparecen', 'buscar', 'busco', 'listado', 'listar', 'mirar', 'veo', 'ver',
 ]);
 
+// Palabras del ARMADO de la pregunta (interrogativos y comodines que todavía quedan en
+// el índice: 'como' sí aporta al ranking —"Cómo pido ayuda"—, pero no dice de qué habla
+// la pregunta). Una coincidencia solo con estas palabras no alcanza para considerar que
+// el tema está cargado (ver `enTitulo`): sin esto, "cómo se calcula el PBI" encontraba
+// "Cómo entro a un servidor" y le metía al prompt una sección de la comunidad que no
+// tenía nada que ver.
+const PALABRAS_BLANDAS = new Set([
+  'adonde', 'che', 'como', 'cuanta', 'cuantas', 'cuanto', 'cuantos',
+]);
+
 function normalizar(texto) {
   return String(texto || '')
     .toLowerCase()
@@ -128,6 +138,7 @@ function construirIndice(secciones) {
   const postings = new Map(); // término → Map(índice de sección → frecuencia)
   const largos = [];
   const palabras = []; // índice de sección → Set de palabras reales (sin claves de raíz)
+  const tituloClaves = []; // índice de sección → Set de claves del título
 
   secciones.forEach((seccion, i) => {
     // El título pesa el doble: "Cómo entro a un servidor" debe ganarle a un párrafo
@@ -139,6 +150,10 @@ function construirIndice(secciones) {
     }
     largos[i] = lista.length || 1;
     palabras[i] = new Set(lista);
+    // Las claves del título aparte: una coincidencia en el título es la señal fuerte de
+    // que el tema está realmente cargado (lo usa utils/ia.js para decidir si inyecta la
+    // base de la comunidad en una pregunta que parece de cultura general).
+    tituloClaves[i] = new Set(tokenizar(seccion.titulo).flatMap(claves));
     for (const [clave, tf] of conteo) {
       if (!postings.has(clave)) postings.set(clave, new Map());
       postings.get(clave).set(i, tf);
@@ -146,7 +161,7 @@ function construirIndice(secciones) {
   });
 
   const promedio = largos.length ? largos.reduce((a, b) => a + b, 0) / largos.length : 1;
-  return { secciones, postings, largos, palabras, promedio };
+  return { secciones, postings, largos, palabras, tituloClaves, promedio };
 }
 
 function puntuar(consulta, indice) {
@@ -155,6 +170,7 @@ function puntuar(consulta, indice) {
   if (!terminos.length || !total) return [];
 
   const puntajes = new Array(total).fill(0);
+  const coincidencias = Array.from({ length: total }, () => []);
   for (const termino of terminos) {
     // Un término puede pegar por su forma exacta y por su raíz: se juntan los
     // documentos de ambas claves sin contar dos veces al mismo.
@@ -173,6 +189,7 @@ function puntuar(consulta, indice) {
       // le gana al "pone" de "pone un modo lento" cuando preguntan por publicidad.
       const peso = indice.palabras[i]?.has(termino) ? 1 : 0.4;
       puntajes[i] += peso * idf * ((tf * (K1 + 1)) / (tf + K1 * norm));
+      coincidencias[i].push(termino);
     }
   }
 
@@ -186,7 +203,17 @@ function puntuar(consulta, indice) {
   }
 
   return indice.secciones
-    .map((s, i) => ({ ...s, puntaje: puntajes[i] }))
+    .map((s, i) => ({
+      ...s,
+      puntaje: puntajes[i],
+      coincidencias: coincidencias[i],
+      // ¿La coincidencia tocó alguna palabra CON CONTENIDO del título de la sección? Es
+      // la señal fuerte de que el tema está de verdad cargado: una sección que solo
+      // coincide por "cómo" o "cuántos" no dice nada del tema de la pregunta.
+      enTitulo: coincidencias[i].some(
+        (t) => !PALABRAS_BLANDAS.has(t) && claves(t).some((k) => indice.tituloClaves[i]?.has(k))
+      ),
+    }))
     .filter((s) => s.puntaje > 0)
     .sort((a, b) => b.puntaje - a.puntaje)
     .map((s) => ({ ...s }));
@@ -231,6 +258,8 @@ function buscar(consulta, { limite = LIMITE_POR_DEFECTO, minimo = MINIMO_POR_DEF
       titulo: s.titulo,
       texto: s.texto.length > MAX_TROZO ? `${s.texto.slice(0, MAX_TROZO).trimEnd()}…` : s.texto,
       puntaje: Number(s.puntaje.toFixed(2)),
+      coincidencias: s.coincidencias,
+      enTitulo: s.enTitulo,
     }));
 }
 
@@ -273,6 +302,7 @@ module.exports = {
   estadisticas,
   tokenizar,
   normalizar,
+  PALABRAS_BLANDAS,
   DIR_POR_DEFECTO,
   DIRECTORIO_POR_DEFECTO: DIR_POR_DEFECTO,
   MINIMO_POR_DEFECTO,

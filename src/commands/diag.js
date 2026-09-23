@@ -30,9 +30,35 @@ async function resumenSistemas(client, guild) {
       const bajas = p.modelosCaidos.length ? ` · ${p.modelosCaidos.length} modelo(s) descartado(s)` : '';
       return `${nombre}: \`${p.modelo}\`${latencia}${bajas}`;
     };
-    campos.push({ name: '🧠 IA', value: `${linea('Groq', estado.groq)}\n${linea('Gemini', estado.gemini)}`, inline: false });
+    const presupuesto = require('../utils/presupuesto').estadoDe(guild.id);
+    const uso = `Presupuesto de hoy: **${presupuesto.usadas}/${presupuesto.limite}**${presupuesto.agotado ? ' — agotado, responde sin IA hasta mañana' : ''}`;
+    // Una línea por proveedor de la cadena (utils/ia.js), en orden: agregar uno nuevo
+    // no requiere tocar este comando.
+    const lineas = Object.entries(estado).map(([id, p]) => linea(ia.nombreProveedor(id), p));
+    campos.push({ name: '🧠 IA', value: `${lineas.join('\n')}\n${uso}`, inline: false });
   } catch (error) {
     campos.push({ name: '🧠 IA', value: `❌ No se pudo consultar: ${error.message}`, inline: false });
+  }
+
+  // ---------- Búsqueda web ----------
+  // Muestra la prueba que corrió la vigilancia (no dispara otra): es la forma de saber
+  // si el host tiene salida a internet sin creerle a un "debería andar".
+  try {
+    const web = require('../utils/web');
+    const prueba = web.estadoVerificacion();
+    const stats = web.estadisticas();
+    const detalle = !prueba
+      ? 'Sin probar todavía.'
+      : prueba.ok
+        ? `✅ Respondió en **${prueba.ms} ms** (${prueba.resultados} resultado(s)).`
+        : `❌ Sin respuesta: ${prueba.motivo || 'falló la consulta'}.`;
+    campos.push({
+      name: '🔎 Búsqueda web',
+      value: `${detalle}\nConsultas en caché: **${stats.enCache}** · fuentes activas: **${stats.fuentes}** (Wikipedia + DuckDuckGo + especializadas)`,
+      inline: false,
+    });
+  } catch {
+    /* sin módulo de búsqueda */
   }
 
   // ---------- Base de datos ----------
@@ -111,8 +137,10 @@ async function resumenSistemas(client, guild) {
   return campos;
 }
 
-async function vistaDiag(client, guild, { ping = true } = {}) {
-  const { problemas, chequeos } = await revisar(client, { ping });
+// `web` arranca en false a propósito: solo /diag (que lo pide el staff) sale a internet.
+// La vigilancia automática llama a `revisar()` sin ese flag y no golpea la red cada ciclo.
+async function vistaDiag(client, guild, { ping = true, web = false } = {}) {
+  const { problemas, chequeos } = await revisar(client, { ping, web });
   const errores = problemas.filter((p) => p.nivel === 'error');
   const avisos = problemas.filter((p) => p.nivel !== 'error');
 
@@ -123,9 +151,7 @@ async function vistaDiag(client, guild, { ping = true } = {}) {
       : '✅ Diagnóstico — todo en orden';
 
   const detalle = problemas.length
-    ? problemas
-        .map((p) => `${p.nivel === 'error' ? '🔴' : '🟡'} **${p.titulo}**\n${p.detalle}\n> ${p.accion}`)
-        .join('\n\n')
+    ? problemas.map((p) => `${p.nivel === 'error' ? '🔴' : '🟡'} **${p.titulo}**\n${p.detalle}\n> ${p.accion}`).join('\n\n')
     : `Revisé **${chequeos.length} sistema(s)** y no encontré nada roto:\n${chequeos.map((c) => `• ${c}`).join('\n')}\n\nLos avisos automáticos van al canal configurado en \`/config → Avisos al staff\`.`;
 
   const embed = brandEmbed({
@@ -154,12 +180,13 @@ module.exports = {
 
   async execute(interaction, client) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-    return interaction.editReply(await vistaDiag(client, interaction.guild));
+    return interaction.editReply(await vistaDiag(client, interaction.guild, { web: true }));
   },
 
-  // Botón 🔄: vuelve a correr los chequeos y edita el mismo mensaje.
+  // Botón 🔄: vuelve a correr los chequeos (incluida la prueba de internet) y edita el
+  // mismo mensaje.
   async boton(interaction, client) {
     await interaction.deferUpdate();
-    await interaction.editReply(await vistaDiag(client, interaction.guild)).catch(() => {});
+    await interaction.editReply(await vistaDiag(client, interaction.guild, { web: true })).catch(() => {});
   },
 };

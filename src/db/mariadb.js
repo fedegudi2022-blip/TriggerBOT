@@ -353,6 +353,42 @@ async function actualizar(tabla, filtros, campos) {
   }
 }
 
+// ---------- Estadísticas sueltas (bot_stats) ----------
+// Guarda/lee una clave de bot_stats en una sola llamada. Existe porque `actualizar`
+// hace UPDATE (y una fila que todavía no existe no se crea nunca): el presupuesto de IA
+// necesita escribir su contador desde cero en cuanto arranca (utils/presupuesto.js).
+async function guardarStat(clave, valor) {
+  if (!configurada) return false;
+  try {
+    await asegurarTablas();
+    await ejecutar(
+      `INSERT INTO bot_stats (clave, valor) VALUES (?, ?)
+       ON DUPLICATE KEY UPDATE valor = VALUES(valor)`,
+      [String(clave).slice(0, 100), aJson(valor)]
+    );
+    estado.conectado = true;
+    return true;
+  } catch (error) {
+    if (ES_ERROR_PERMISO.test(error?.message || '')) advertirPermiso();
+    anotarFallo(error);
+    log.error('Fallo al guardar stat', error, { clave });
+    return false;
+  }
+}
+
+async function leerStat(clave) {
+  if (!configurada) return null;
+  try {
+    const filas = await consultar('SELECT valor FROM bot_stats WHERE clave = ? LIMIT 1', [String(clave)]);
+    estado.conectado = true;
+    return deJson(filas?.[0]?.valor);
+  } catch (error) {
+    anotarFallo(error);
+    log.error('Fallo al leer stat', error, { clave });
+    return null;
+  }
+}
+
 // Ping real a la base (lo usan el arranque y /status).
 // Además de leer, hace una prueba de escritura (sube y borra un ping):
 // si la lectura va pero la escritura da error de permisos, el usuario es de solo lectura.
@@ -399,4 +435,17 @@ async function cerrar() {
   }
 }
 
-module.exports = { estado, configurada, subir, descargar, listar, listarTabla, eliminar, actualizar, ping, cerrar };
+module.exports = {
+  estado,
+  configurada,
+  subir,
+  descargar,
+  listar,
+  listarTabla,
+  eliminar,
+  actualizar,
+  guardarStat,
+  leerStat,
+  ping,
+  cerrar,
+};

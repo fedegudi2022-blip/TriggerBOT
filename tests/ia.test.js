@@ -3,7 +3,7 @@
 // de respuesta, el troceo de mensajes largos, el reintento por truncado, la cadena
 // Groq → Gemini → repertorio local y la detección de acciones de moderación.
 
-const { test, describe, after } = require('node:test');
+const { test, describe, after, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -16,6 +16,8 @@ process.env.GEMINI_API_KEY = 'clave-de-prueba';
 const ia = require('../src/utils/ia');
 const contexto = require('../src/utils/contexto');
 const conocimiento = require('../src/utils/conocimiento');
+const busqueda = require('../src/utils/web');
+const presupuesto = require('../src/utils/presupuesto');
 const niveles = require('../src/niveles');
 const store = require('../src/store');
 const monitoreo = require('../src/utils/monitoreo');
@@ -23,6 +25,16 @@ const monitoreo = require('../src/utils/monitoreo');
 const { trocearMensaje, perfilDe, sistemaCompleto, conversar, esMensajeSimple } = ia;
 
 after(() => fs.rmSync(process.env.TRIGGER_DATA_DIR, { recursive: true, force: true }));
+
+// Estos tests no salen a internet: la búsqueda web arranca con un fetch que dice "no
+// hay nada" y cada test que la necesita lo reemplaza por un fake propio. El camino de
+// búsqueda tiene sus propios tests (tests/web.test.js).
+const SIN_RED = async () => ({ ok: false, status: 503, json: async () => ({}), text: async () => '' });
+
+beforeEach(() => {
+  busqueda.reiniciar();
+  busqueda.usarFetch(SIN_RED);
+});
 
 const GUILD_ID = 'g-ia-1';
 
@@ -159,11 +171,7 @@ describe('trocearMensaje — respuestas largas', () => {
 
     assert.ok(trozos.length >= 2, 'debería partirse');
     for (const t of trozos) assert.ok(t.length <= 2000, `trozo de ${t.length}`);
-    assert.equal(
-      trozos.join('').replace(/\s+/g, ''),
-      texto.replace(/\s+/g, ''),
-      'no se puede perder contenido en el corte'
-    );
+    assert.equal(trozos.join('').replace(/\s+/g, ''), texto.replace(/\s+/g, ''), 'no se puede perder contenido en el corte');
   });
 
   test('corta en el límite cuando no hay dónde cortar (palabra gigante)', () => {
@@ -332,8 +340,7 @@ describe('conversar — cadena de proveedores', () => {
 
   test('respuesta cortada por tokens: reintenta con más margen', async () => {
     instalarFetch({
-      chat: (cuerpo, n) =>
-        n === 1 ? { texto: 'Respuesta a medias', finish: 'length' } : { texto: 'Respuesta completa', finish: 'stop' },
+      chat: (cuerpo, n) => (n === 1 ? { texto: 'Respuesta a medias', finish: 'length' } : { texto: 'Respuesta completa', finish: 'stop' }),
     });
 
     const respuesta = await conversar('u-truncado', '¿me explicás el sistema de logros completo?', { usuario: 'Fede' });
@@ -389,18 +396,233 @@ describe('base de conocimiento integrada en el prompt', () => {
     assert.match(sistema, /sin autorización previa del staff/i);
   });
 
-  test('sin coincidencias el prompt lo dice (el bot no debe inventar)', async () => {
-    instalarFetch({ chat: () => ({ texto: 'No tengo esa info.' }) });
+  test('sin coincidencias el prompt lo dice (el bot no debe inventar)', () => {
+    const sistema = sistemaCompleto({
+      perfil: 'consulta',
+      vivo: '',
+      conocimiento: '',
+      conocimientoVacio: '',
+    });
+    assert.match(sistema, /no encontré nada cargado sobre este tema/i);
+  });
+
+  test('una pregunta que no es de la comunidad no arrastra la base del server', async () => {
+    instalarFetch({ chat: () => ({ texto: 'Depende de la pizzería.' }) });
     await conversar('u-sin-info', 'cuanto cuesta la pizza de muzzarella', { usuario: 'Fede' });
 
     const sistema = generacionesDe('groq')[0].cuerpo.messages[0].content;
-    assert.match(sistema, /no encontré nada cargado sobre este tema/i);
+    assert.match(sistema, /la base del servidor no aplica/i, 'el prompt lo aclara');
+    assert.doesNotMatch(sistema, /^### /m, 'ni una sección de la comunidad en el prompt');
+    assert.doesNotMatch(sistema, /no encontré nada cargado sobre este tema/i);
   });
 
   test('la base real tiene contenido (si no, la IA respondería a ciegas)', () => {
     const stats = conocimiento.estadisticas(conocimiento.DIRECTORIO_POR_DEFECTO);
     assert.ok(stats.secciones > 0, 'docs/conocimiento debe estar cargada');
     assert.ok(stats.archivos.length >= 5);
+  });
+});
+
+// ---------- Conocimiento general + búsqueda web ----------
+//
+// El caso que originó todo esto: "@Trigger messi cuantos años tiene" terminaba en
+// "eso no lo tengo cargado, abrí un ticket". Las reglas de precisión valen para los
+// datos del server; para el resto el bot responde con lo que sabe y, si no sabe,
+// busca en la web (utils/web.js) y contesta igual.
+describe('conocimiento general y búsqueda web', () => {
+  const WIKI = {
+    query: {
+      pages: {
+        1: {
+          index: 1,
+          title: 'Lionel Messi',
+          extract: 'Lionel Andrés Messi Cuccittini (Rosario, 24 de junio de 1987) es un futbolista argentino.',
+          fullurl: 'https://es.wikipedia.org/wiki/Lionel_Messi',
+        },
+      },
+    },
+  };
+
+  // Wikipedia responde; las otras fuentes quedan caídas (lo normal cuando una de las
+  // dos anda: el módulo se queda con lo que llegue).
+  function conWikipedia() {
+    busqueda.reiniciar();
+    busqueda.usarFetch(async (url) =>
+      String(url).includes('wikipedia.org') ? { ok: true, status: 200, json: async () => WIKI, text: async () => '' } : SIN_RED()
+    );
+  }
+
+  test('el prompt separa los datos de la comunidad del conocimiento general', () => {
+    const sistema = sistemaCompleto({ perfil: 'consulta', vivo: '', conocimiento: '' });
+    assert.match(sistema, /CONOCIMIENTO GENERAL/);
+    assert.match(sistema, /una pregunta de cultura general/);
+    assert.match(sistema, /INFORMACIÓN DEL SERVIDOR/);
+  });
+
+  test('los resultados de búsqueda web entran al prompt como fuente principal', () => {
+    const sistema = sistemaCompleto({
+      perfil: 'consulta',
+      vivo: '',
+      conocimiento: '',
+      web: '- [Wikipedia] Lionel Messi: nació el 24 de junio de 1987.',
+    });
+    assert.match(sistema, /--- RESULTADOS DE BÚSQUEDA WEB/);
+    assert.match(sistema, /24 de junio de 1987/);
+    assert.match(sistema, /INFORMACIÓN DEL SERVIDOR/);
+  });
+
+  test('rescate: si la IA dice que no sabe, busca y contesta con lo que encontró', async () => {
+    instalarFetch({
+      chat: (cuerpo, n) =>
+        n === 1
+          ? { texto: 'Eso no lo tengo cargado. Podés usar /help o abrir un ticket de soporte.' }
+          : { texto: 'Nació el 24 de junio de 1987, así que tiene 39 años.' },
+    });
+    conWikipedia();
+    const webAntes = ia.getStatsIA().web;
+
+    const respuesta = await conversar('u-web-rescate', 'messi cuantos anios tiene', { usuario: 'Fede' });
+    assert.equal(respuesta.tipo, 'chat');
+    assert.match(respuesta.texto, /39 años/);
+
+    const generaciones = generacionesDe('groq');
+    assert.equal(generaciones.length, 2, 'hay un segundo intento con los resultados de la búsqueda');
+    assert.doesNotMatch(
+      generaciones[0].cuerpo.messages[0].content,
+      /--- RESULTADOS DE BÚSQUEDA WEB/,
+      'la primera respuesta se intenta sin búsqueda: no se busca de gusto'
+    );
+    assert.match(generaciones[1].cuerpo.messages[0].content, /--- RESULTADOS DE BÚSQUEDA WEB/);
+    assert.match(generaciones[1].cuerpo.messages[0].content, /24 de junio de 1987/);
+    assert.ok(ia.getStatsIA().web > webAntes, 'la búsqueda usada queda contada para /status');
+  });
+
+  test('pedido explícito: se busca antes de responder, en un solo intento de IA', async () => {
+    instalarFetch({ chat: () => ({ texto: 'San Martín fue un militar argentino.' }) });
+    conWikipedia();
+
+    const respuesta = await conversar('u-web-forzada', 'buscame quien fue san martin', { usuario: 'Fede' });
+    assert.match(respuesta.texto, /^San Martín fue un militar argentino\./);
+    assert.match(respuesta.texto, /🔎 Fuentes: \[Wikipedia\]\(https:\/\/es\.wikipedia\.org\/wiki\/Lionel_Messi\)/, 'cita la fuente');
+
+    const generaciones = generacionesDe('groq');
+    assert.equal(generaciones.length, 1);
+    assert.match(generaciones[0].cuerpo.messages[0].content, /--- RESULTADOS DE BÚSQUEDA WEB/);
+    assert.match(generaciones[0].cuerpo.messages[0].content, /Lionel Messi/);
+  });
+
+  test('no repite el pie de fuentes si el modelo ya citó el link', () => {
+    const { conFuentes } = ia._internos;
+    const resultados = [{ fuente: 'Wikipedia', titulo: 'Messi', texto: 'x', url: 'https://es.wikipedia.org/wiki/Lionel_Messi' }];
+
+    assert.match(conFuentes('Nació en 1987.', resultados), /🔎 Fuentes: \[Wikipedia\]/);
+    assert.equal(
+      conFuentes('Nació en 1987 (https://es.wikipedia.org/wiki/Lionel_Messi).', resultados),
+      'Nació en 1987 (https://es.wikipedia.org/wiki/Lionel_Messi).',
+      'si el link ya está en el texto, no se agrega nada'
+    );
+    assert.equal(conFuentes('Nació en 1987.', []), 'Nació en 1987.');
+  });
+
+  test('una pregunta de la comunidad nunca dispara la búsqueda web', async () => {
+    instalarFetch({ chat: () => ({ texto: 'No tengo esa info.' }) });
+    conWikipedia();
+    const webAntes = ia.getStatsIA().web;
+
+    const respuesta = await conversar('u-web-comunidad', 'que reglas tiene el server', { usuario: 'Fede' });
+    assert.equal(respuesta.texto, 'No tengo esa info.');
+    assert.equal(generacionesDe('groq').length, 1, 'sin segundo intento: internet no sabe las reglas del server');
+    assert.equal(ia.getStatsIA().web, webAntes);
+  });
+});
+
+// ---------- Caché de respuestas y presupuesto diario ----------
+// Las dos existen por el mismo motivo: no gastar cuota de IA al pedo. La caché, cuando
+// alguien repite la misma pregunta; el presupuesto, cuando el día ya gastó demasiado.
+describe('caché de respuestas y presupuesto de IA', () => {
+  const GUILD = 'g-ia-cache';
+
+  function contextoGuild(miembroId) {
+    return { usuario: 'Fede', canal: 'general', guild: guildFake(GUILD), miembro: miembroFake(miembroId), client: clientFake() };
+  }
+
+  test('una pregunta general repetida se sirve de la caché (sin gastar otra llamada)', async () => {
+    instalarFetch({ chat: () => ({ texto: 'Messi nació en 1987.' }) });
+    ia._internos.cacheRespuestas.clear();
+    const antes = ia.getStatsIA().cache;
+
+    const primera = await conversar('u-cache', 'quien es lionel messi', contextoGuild('100000000000000020'));
+    const segunda = await conversar('u-cache', 'quien es lionel messi', contextoGuild('100000000000000020'));
+
+    assert.equal(primera.texto, 'Messi nació en 1987.');
+    assert.equal(segunda.texto, primera.texto);
+    assert.equal(generacionesDe('groq').length, 1, 'la segunda sale de la caché: una sola llamada al modelo');
+    assert.equal(ia.getStatsIA().cache, antes + 1);
+  });
+
+  test('la caché es por usuario: la respuesta no se le sirve a otro', async () => {
+    instalarFetch({ chat: () => ({ texto: 'Respuesta personalizada.' }) });
+    ia._internos.cacheRespuestas.clear();
+
+    await conversar('u-cache-a', 'quien es lionel messi', contextoGuild('100000000000000021'));
+    await conversar('u-cache-b', 'quien es lionel messi', contextoGuild('100000000000000022'));
+
+    assert.equal(generacionesDe('groq').length, 2, 'cada usuario paga su propia respuesta');
+  });
+
+  test('las respuestas de la comunidad NO se cachean (dependen de datos vivos)', async () => {
+    instalarFetch({ chat: () => ({ texto: 'Depende de la config del server.' }) });
+    ia._internos.cacheRespuestas.clear();
+
+    await conversar('u-cache-comunidad', 'que reglas tiene el server', contextoGuild('100000000000000023'));
+    await conversar('u-cache-comunidad', 'que reglas tiene el server', contextoGuild('100000000000000023'));
+
+    assert.equal(generacionesDe('groq').length, 2, 'pregunta de la comunidad = se vuelve a responder');
+  });
+
+  test('agotado el presupuesto del día, el bot responde sin IA (y lo cuenta)', async () => {
+    const limiteAntes = process.env.IA_LIMITE_DIARIO;
+    process.env.IA_LIMITE_DIARIO = '1';
+    presupuesto.reiniciar(GUILD);
+    const sinCupoAntes = ia.getStatsIA().sinCupo;
+
+    try {
+      instalarFetch({ chat: () => ({ texto: 'respuesta de IA' }) });
+      const primera = await conversar('u-cupo-1', 'quien gano el mundial 2022', contextoGuild('100000000000000024'));
+      assert.equal(primera.texto, 'respuesta de IA', 'la primera entra en el presupuesto');
+      assert.equal(presupuesto.estadoDe(GUILD).usadas, 1);
+
+      // Segunda pregunta del día: sin IA → null, y el bot cae a su repertorio local.
+      const segunda = await conversar('u-cupo-2', 'cual es la capital de australia', contextoGuild('100000000000000025'));
+      assert.equal(segunda, null);
+      assert.ok(ia.getStatsIA().sinCupo > sinCupoAntes);
+      assert.equal(presupuesto.estadoDe(GUILD).agotado, true);
+      assert.equal(generacionesDe('groq').length, 1, 'no se gastó ninguna llamada con el cupo agotado');
+    } finally {
+      if (limiteAntes === undefined) delete process.env.IA_LIMITE_DIARIO;
+      else process.env.IA_LIMITE_DIARIO = limiteAntes;
+      presupuesto.reiniciar(GUILD);
+    }
+  });
+
+  test('la caché no gasta presupuesto (se contesta sin IA)', async () => {
+    const limiteAntes = process.env.IA_LIMITE_DIARIO;
+    process.env.IA_LIMITE_DIARIO = '2';
+    presupuesto.reiniciar(GUILD);
+    ia._internos.cacheRespuestas.clear();
+
+    try {
+      instalarFetch({ chat: () => ({ texto: 'Dato general.' }) });
+      await conversar('u-cupo-cache', 'quien fue san martin', contextoGuild('100000000000000026'));
+      await conversar('u-cupo-cache', 'quien fue san martin', contextoGuild('100000000000000026'));
+
+      assert.equal(presupuesto.estadoDe(GUILD).usadas, 1, 'la segunda no consumió cupo');
+      assert.equal(generacionesDe('groq').length, 1);
+    } finally {
+      if (limiteAntes === undefined) delete process.env.IA_LIMITE_DIARIO;
+      else process.env.IA_LIMITE_DIARIO = limiteAntes;
+      presupuesto.reiniciar(GUILD);
+    }
   });
 });
 
@@ -414,10 +636,7 @@ describe('base de conocimiento integrada en el prompt', () => {
 describe('salud del motor de IA (modelos caídos, pausas y carrera)', () => {
   const { modelosCaidos, proveedoresPausados, verificarModelos } = ia._internos;
 
-  const LISTA_GROQ = [
-    { id: 'openai/gpt-oss-120b' },
-    { id: 'openai/gpt-oss-20b' },
-  ];
+  const LISTA_GROQ = [{ id: 'openai/gpt-oss-120b' }, { id: 'openai/gpt-oss-20b' }];
 
   function resetSalud() {
     modelosCaidos.clear();
@@ -523,12 +742,15 @@ describe('salud del motor de IA (modelos caídos, pausas y carrera)', () => {
     const transcurrido = Date.now() - inicio;
 
     assert.equal(respuesta.texto, 'de gemini');
+    assert.ok(transcurrido < 2_600, `no se espera al proveedor lento (tardó ${transcurrido} ms; Groq tardaba 3000 ms)`);
     assert.ok(
-      transcurrido < 2_600,
-      `no se espera al proveedor lento (tardó ${transcurrido} ms; Groq tardaba 3000 ms)`
+      pedidos.some((p) => p.proveedor === 'groq'),
+      'el principal igual arranca primero'
     );
-    assert.ok(pedidos.some((p) => p.proveedor === 'groq'), 'el principal igual arranca primero');
-    assert.ok(pedidos.some((p) => p.proveedor === 'gemini'), 'y el respaldo sale en paralelo');
+    assert.ok(
+      pedidos.some((p) => p.proveedor === 'gemini'),
+      'y el respaldo sale en paralelo'
+    );
   });
 
   test('si el principal contesta rápido, el respaldo ni se llama', async () => {
@@ -588,5 +810,166 @@ describe('salud del motor de IA (modelos caídos, pausas y carrera)', () => {
     await ia._internos.verificarModelos();
     const estado = await ia.estadoIA();
     assert.equal(estado.groq.modelo, 'openai/gpt-oss-120b');
+  });
+});
+
+// La cadena de proveedores es una tabla (utils/ia.js): cada proveedor compatible con la
+// API de OpenAI se suma con su clave, sin código nuevo. Estos tests prueban que la tabla
+// funciona de verdad: respaldo, orden de modelos y filtros propios de cada uno.
+describe('proveedores alternativos (Cerebras, OpenRouter, Mistral)', () => {
+  const { modelosCaidos, proveedoresPausados, listados } = ia._internos;
+
+  const PATRONES = [
+    ['groq.com', 'groq'],
+    ['cerebras.ai', 'cerebras'],
+    ['openrouter.ai', 'openrouter'],
+    ['mistral.ai', 'mistral'],
+  ];
+
+  function limpiar() {
+    modelosCaidos.clear();
+    proveedoresPausados.clear();
+    listados.clear();
+  }
+
+  // Pone claves y devuelve cómo restaurar el entorno (los tests no deben filtrarse).
+  function conClaves(claves) {
+    const previas = Object.entries(claves).map(([variable, valor]) => [variable, process.env[variable], valor]);
+    for (const [variable, , valor] of previas) process.env[variable] = valor;
+    return () => {
+      for (const [variable, anterior] of previas) {
+        if (anterior === undefined) delete process.env[variable];
+        else process.env[variable] = anterior;
+      }
+    };
+  }
+
+  // Todas las APIs compatibles comparten forma: /models → data, /chat/completions →
+  // choices[0].message.content. Un solo mock alcanza para todas.
+  function fetchCompatibles({ modelos = {}, chat = {} } = {}) {
+    const pedidos = [];
+    global.fetch = async (url, opciones = {}) => {
+      const u = String(url);
+      const cuerpo = opciones.body ? JSON.parse(opciones.body) : null;
+      if (u.includes('generativelanguage')) {
+        return u.includes('generateContent')
+          ? json({ candidates: [{ content: { parts: [{ text: 'de gemini' }] }, finishReason: 'STOP' }] })
+          : json({ models: [{ name: 'models/gemini-3.6-flash', supportedGenerationMethods: ['generateContent'] }] });
+      }
+      const proveedor = PATRONES.find(([frag]) => u.includes(frag))?.[1] ?? 'otro';
+      if (u.endsWith('/models')) {
+        pedidos.push({ proveedor, tipo: 'listado' });
+        return json({ data: (modelos[proveedor] ?? [`modelo-de-${proveedor}`]).map((id) => ({ id })) });
+      }
+      pedidos.push({ proveedor, tipo: 'chat', modelo: cuerpo?.model, autorizacion: opciones.headers?.Authorization });
+      const respuesta = chat[proveedor];
+      if (typeof respuesta === 'function') return respuesta(cuerpo.model);
+      return json({ choices: [{ message: { content: respuesta ?? `de ${proveedor}` }, finish_reason: 'stop' }] });
+    };
+    return pedidos;
+  }
+
+  test('sin clave el proveedor no existe para el bot: no se llama ni aparece en /status', async () => {
+    limpiar();
+    const pedidos = fetchCompatibles();
+
+    assert.deepEqual(ia.proveedoresConfigurados(), ['groq', 'gemini'], 'solo los que tienen clave');
+    const estado = await ia.estadoIA();
+    assert.equal(estado.cerebras, undefined, 'un proveedor sin clave no ensucia el diagnóstico');
+
+    await conversar('u-sin-clave', 'que reglas tiene el server', { usuario: 'Fede' });
+    assert.equal(pedidos.filter((p) => p.proveedor === 'cerebras').length, 0);
+  });
+
+  test('con clave, Cerebras responde cuando Groq está en pausa', async () => {
+    limpiar();
+    const restaurar = conClaves({ CEREBRAS_API_KEY: 'clave' });
+    try {
+      proveedoresPausados.set('groq', { hasta: Date.now() + 60_000, motivo: 'cuota agotada' });
+      const pedidos = fetchCompatibles();
+
+      const respuesta = await conversar('u-cerebras', 'que reglas tiene el server', { usuario: 'Fede' });
+
+      assert.equal(respuesta.texto, 'de cerebras', 'el respaldo contesta igual que cualquier otro');
+      const chat = pedidos.filter((p) => p.tipo === 'chat');
+      assert.equal(chat[0].proveedor, 'cerebras', 'la cadena arranca por el que sigue en la tabla');
+      assert.match(chat[0].autorizacion, /^Bearer clave$/, 'usa su propia clave');
+      assert.equal(ia.getStatsIA().cerebras, 1, 'el uso queda contado por proveedor');
+    } finally {
+      restaurar();
+    }
+  });
+
+  test('Cerebras: un modelo retirado se descarta y se pasa al siguiente', async () => {
+    limpiar();
+    const restaurar = conClaves({ CEREBRAS_API_KEY: 'clave' });
+    try {
+      // Groq y Gemini en pausa: el mensaje lo tiene que resolver Cerebras solo.
+      proveedoresPausados.set('groq', { hasta: Date.now() + 60_000, motivo: 'cuota agotada' });
+      proveedoresPausados.set('gemini', { hasta: Date.now() + 60_000, motivo: 'cuota agotada' });
+      const pedidos = fetchCompatibles({
+        modelos: { cerebras: ['llama-3.3-70b', 'llama3.1-8b'] },
+        chat: {
+          cerebras: (modelo) =>
+            modelo === 'llama-3.3-70b'
+              ? json({ error: { message: 'model not found' } }, 404)
+              : json({ choices: [{ message: { content: 'de cerebras' }, finish_reason: 'stop' }] }),
+        },
+      });
+
+      const respuesta = await conversar('u-cerebras-caido', 'que reglas tiene el server', { usuario: 'Fede' });
+
+      assert.equal(respuesta.texto, 'de cerebras');
+      assert.deepEqual(
+        pedidos.filter((p) => p.tipo === 'chat').map((p) => p.modelo),
+        ['llama-3.3-70b', 'llama3.1-8b'],
+        'el retirado se prueba una vez y el mensaje igual se responde'
+      );
+      assert.ok(ia.saludIA().cerebras.modelosCaidos.includes('llama-3.3-70b'), 'cada proveedor lleva su propio registro de modelos caídos');
+    } finally {
+      restaurar();
+    }
+  });
+
+  test('OpenRouter: la clave nunca gasta en un modelo de pago (solo los :free)', async () => {
+    limpiar();
+    const restaurar = conClaves({ OPENROUTER_API_KEY: 'clave' });
+    try {
+      fetchCompatibles({
+        modelos: {
+          openrouter: ['openai/gpt-4o', 'meta-llama/llama-3.3-70b-instruct:free', 'anthropic/claude-sonnet-4'],
+        },
+      });
+
+      await ia._internos.listarModelosDe('openrouter');
+      assert.deepEqual(
+        ia._internos.candidatosDe('openrouter'),
+        ['meta-llama/llama-3.3-70b-instruct:free'],
+        'los de pago quedan fuera aunque estén en el catálogo'
+      );
+      assert.ok(ia.PROVEEDORES.openrouter.cabeceras['HTTP-Referer'], 'se identifica con la comunidad, como pide OpenRouter');
+    } finally {
+      restaurar();
+    }
+  });
+
+  test('Mistral: sumar un proveedor es una clave más, sin tocar el motor', async () => {
+    limpiar();
+    const restaurar = conClaves({ MISTRAL_API_KEY: 'clave' });
+    try {
+      proveedoresPausados.set('groq', { hasta: Date.now() + 60_000, motivo: 'cuota agotada' });
+      proveedoresPausados.set('gemini', { hasta: Date.now() + 60_000, motivo: 'cuota agotada' });
+      const pedidos = fetchCompatibles({ chat: { mistral: 'de mistral' } });
+
+      const respuesta = await conversar('u-mistral', 'que reglas tiene el server', { usuario: 'Fede' });
+
+      assert.equal(respuesta.texto, 'de mistral');
+      assert.equal(pedidos.filter((p) => p.tipo === 'chat')[0].proveedor, 'mistral');
+      const estado = await ia.estadoIA();
+      assert.equal(estado.mistral.configurada, true);
+      assert.ok(estado.mistral.modelo, '/status lo muestra con su modelo elegido');
+    } finally {
+      restaurar();
+    }
   });
 });

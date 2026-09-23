@@ -37,23 +37,27 @@ function problema(id, nivel, titulo, detalle, accion, guildId = null) {
 function revisarIA() {
   const problemas = [];
   let salud;
+  let moduloIA;
   try {
-    salud = require('./ia').saludIA();
+    moduloIA = require('./ia');
+    salud = moduloIA.saludIA();
   } catch (error) {
-    return [problema('ia-modulo', 'error', 'La capa de IA no cargó', error.message, 'Revisá los logs del arranque: `utils/ia.js` no se pudo inicializar.')];
+    return [
+      problema('ia-modulo', 'error', 'La capa de IA no cargó', error.message, 'Revisá los logs del arranque: `utils/ia.js` no se pudo inicializar.'),
+    ];
   }
 
-  const hayGroq = Boolean(process.env.GROQ_API_KEY);
-  const hayGemini = Boolean(process.env.GEMINI_API_KEY);
+  // Se revisan TODOS los proveedores con clave (utils/ia.js), no solo Groq y Gemini:
+  // la cadena crece agregando entradas a la tabla, y la vigilancia las cubre sola.
+  const configurados = moduloIA.proveedoresConfigurados();
 
   // Sin ninguna clave no es un problema: es una configuración válida (repertorio local).
-  if (!hayGroq && !hayGemini) return problemas;
+  if (!configurados.length) return problemas;
 
-  for (const [nombre, clave, saludProv] of [
-    ['Groq', hayGroq, salud.groq],
-    ['Gemini', hayGemini, salud.gemini],
-  ]) {
-    if (!clave) continue;
+  for (const id of configurados) {
+    const nombre = moduloIA.nombreProveedor(id);
+    const saludProv = salud[id];
+    if (!saludProv) continue;
 
     if (saludProv.enPausa) {
       const minutos = Math.max(1, Math.round(saludProv.vuelveEnMs / 60_000));
@@ -63,9 +67,7 @@ function revisarIA() {
           'error',
           `${nombre} en pausa`,
           `El bot lo está salteando porque ${saludProv.motivoPausa}. Vuelve a intentarlo en ~${minutos} min.`,
-          nombre === 'Groq'
-            ? 'Revisá la clave y el plan en console.groq.com: los modelos gratuitos cambiaron de nombre más de una vez.'
-            : 'Revisá la clave en aistudio.google.com/apikey y la cuota del proyecto.'
+          `Revisá la clave y el plan en ${moduloIA.panelDe(id)}: los modelos gratuitos cambian de nombre más de una vez.`
         )
       );
     } else if (saludProv.modelosCaidos.length && saludProv.p50 === null) {
@@ -114,9 +116,71 @@ function revisarConocimiento(directorio) {
       ];
     }
   } catch (error) {
-    return [problema('conocimiento-error', 'error', 'La base de conocimiento falló', error.message, 'Revisá los logs: el buscador de conocimiento no se pudo leer.')];
+    return [
+      problema(
+        'conocimiento-error',
+        'error',
+        'La base de conocimiento falló',
+        error.message,
+        'Revisá los logs: el buscador de conocimiento no se pudo leer.'
+      ),
+    ];
   }
   return [];
+}
+
+// Presupuesto diario de IA (utils/presupuesto.js): si se agotó, el bot dejó de usar la
+// IA hasta mañana y contesta con su repertorio local. El id lleva el día para que el
+// aviso se repita una vez por jornada y no en cada ciclo de vigilancia.
+function revisarPresupuesto(guild) {
+  if (!guild) return [];
+  try {
+    const presupuesto = require('./presupuesto');
+    const estado = presupuesto.estadoDe(guild.id);
+    if (!estado.agotado) return [];
+    return [
+      problema(
+        `ia-presupuesto-${guild.id}-${estado.dia}`,
+        'error',
+        'Se agotó el presupuesto diario de IA',
+        `El bot ya gastó las **${miles(estado.limite)}** respuestas de hoy: hasta mañana contesta con su repertorio local, sin IA.`,
+        'Subí `IA_LIMITE_DIARIO` (variable de entorno del hosting) si necesitás más margen, o esperá el corte de medianoche.',
+        guild.id
+      ),
+    ];
+  } catch {
+    return [];
+  }
+}
+
+// Búsqueda web: que el host pueda salir a internet. Es lo único que puede apagar en
+// silencio todo el sistema de respuestas generales (utils/web.js), así que /diag lo
+// prueba de verdad (una consulta mínima a Wikipedia) en vez de asumirlo.
+async function revisarWeb() {
+  try {
+    const web = require('./web');
+    const prueba = await web.verificar();
+    if (prueba.ok) return [];
+    return [
+      problema(
+        'web-sin-salida',
+        'aviso',
+        'La búsqueda web no responde',
+        `La prueba contra Wikipedia falló en ${prueba.ms} ms${prueba.motivo ? ` (${prueba.motivo})` : ''}.`,
+        'Puede ser la salida a internet del hosting o una caída del servicio. Sin esto el bot contesta de memoria (y no puede verificar datos que cambian).'
+      ),
+    ];
+  } catch (error) {
+    return [
+      problema(
+        'web-error',
+        'aviso',
+        'La búsqueda web falló',
+        error.message,
+        'Revisá los logs: el módulo `utils/web.js` no pudo consultar ninguna fuente.'
+      ),
+    ];
+  }
 }
 
 // Archivos que no se pudieron cargar (los registra src/commandLoader.js y index.js).
@@ -128,7 +192,10 @@ function revisarCarga(client) {
       'carga-fallos',
       'error',
       `${fallos.length} archivo(s) no se pudieron cargar`,
-      fallos.map((f) => `\`${f.archivo}\`: ${f.motivo}`).join('\n').slice(0, 900),
+      fallos
+        .map((f) => `\`${f.archivo}\`: ${f.motivo}`)
+        .join('\n')
+        .slice(0, 900),
       'El bot arrancó sin eso. Revisá el commit con `npm run check` y corregí el módulo.'
     ),
   ];
@@ -246,16 +313,18 @@ function revisarVoz(guild) {
   if (!guild) return [];
   try {
     const voz = require('./voz');
-    return voz.diagnosticoVoz(guild).map((p) =>
-      problema(
-        `voz-${guild.id}-${slug(p.texto)}`,
-        p.nivel === 'error' ? 'error' : 'aviso',
-        'Canales de voz temporales',
-        p.texto,
-        'Abrí `/voz estado` para el detalle completo.',
-        guild.id
-      )
-    );
+    return voz
+      .diagnosticoVoz(guild)
+      .map((p) =>
+        problema(
+          `voz-${guild.id}-${slug(p.texto)}`,
+          p.nivel === 'error' ? 'error' : 'aviso',
+          'Canales de voz temporales',
+          p.texto,
+          'Abrí `/voz estado` para el detalle completo.',
+          guild.id
+        )
+      );
   } catch (error) {
     log.warn(`No pude diagnosticar voz en ${guild.id}: ${error.message}`);
     return [];
@@ -320,29 +389,34 @@ function revisarServidores(guild) {
 
 // Devuelve { problemas, chequeos } — problemas: lista para mostrar/avisar;
 // chequeos: cuántos se corrieron, para que /diag pueda decir "revisé N sistemas".
-async function revisar(client, { ping = false } = {}) {
+async function revisar(client, { ping = false, web = false } = {}) {
   const problemas = [];
   const chequeos = [];
 
-  const correr = (nombre, fn) => {
+  // `await`: varios chequeos son asíncronos (base de datos, búsqueda web). Sin esto, el
+  // resultado se perdía en el camino y /diag decía "todo en orden" con la base caída.
+  const correr = async (nombre, fn) => {
     chequeos.push(nombre);
     try {
-      const salida = fn();
+      const salida = await fn();
       if (Array.isArray(salida)) problemas.push(...salida);
     } catch (error) {
       log.error(`Falló el chequeo «${nombre}»`, error);
     }
   };
 
-  correr('IA', () => revisarIA());
-  correr('Conocimiento', () => revisarConocimiento());
-  correr('Carga de archivos', () => revisarCarga(client));
-  correr('Base de datos', () => revisarBaseDeDatos({ ping }));
-  correr('Pendientes', () => revisarPendientes());
+  await correr('IA', () => revisarIA());
+  await correr('Conocimiento', () => revisarConocimiento());
+  await correr('Carga de archivos', () => revisarCarga(client));
+  await correr('Base de datos', () => revisarBaseDeDatos({ ping }));
+  await correr('Pendientes', () => revisarPendientes());
+  // Solo cuando lo pide /diag: la vigilancia automática no sale a internet cada 5 min.
+  if (web) await correr('Búsqueda web', () => revisarWeb());
 
   for (const guild of client?.guilds?.cache?.values() ?? []) {
-    correr(`Voz (${guild.name})`, () => revisarVoz(guild));
-    correr(`Servidores (${guild.name})`, () => revisarServidores(guild));
+    await correr(`Voz (${guild.name})`, () => revisarVoz(guild));
+    await correr(`Servidores (${guild.name})`, () => revisarServidores(guild));
+    await correr(`Presupuesto de IA (${guild.name})`, () => revisarPresupuesto(guild));
   }
 
   // Los errores primero: es el orden en el que hay que leerlos.
@@ -371,7 +445,10 @@ function embedProblemas(problemas) {
   return brandEmbed({
     color: hayError ? COLORS.error : COLORS.warn,
     title: hayError ? '🚨 Problema detectado' : '⚠️ Aviso de funcionamiento',
-    description: problemas.map((p) => `**${p.titulo}**\n${p.detalle}\n> ${p.accion}`).join('\n\n').slice(0, 4000),
+    description: problemas
+      .map((p) => `**${p.titulo}**\n${p.detalle}\n> ${p.accion}`)
+      .join('\n\n')
+      .slice(0, 4000),
     footer: 'TriggerBOT • vigilancia automática · /diag para el detalle',
   });
 }
@@ -476,5 +553,7 @@ module.exports = {
   revisarPendientes,
   revisarServidores,
   revisarVoz,
+  revisarWeb,
+  revisarPresupuesto,
   UMBRAL_IA_LENTA_MS,
 };

@@ -21,7 +21,7 @@ const FRESCURA_CS_MS = 5 * 60 * 1000; // un dato de servidor CS más viejo que e
 // Comandos que necesitan permisos: se marcan para que la IA avise que son de staff.
 const COMANDOS_STAFF = new Set([
   'ban', 'unban', 'softban', 'kick', 'warn', 'warnings', 'quitarnota', 'timeout', 'mute', 'unmute',
-  'clear', 'lockdown', 'slowmode', 'config', 'rolnivel', 'voz', 'ticket', 'embed', 'plantillas', 'frases',
+  'clear', 'lockdown', 'slowmode', 'config', 'rolnivel', 'voz', 'ticket', 'embed', 'plantillas', 'frases', 'buscar',
 ]);
 
 // ---------- Catálogo real de comandos (fuente: client.commands) ----------

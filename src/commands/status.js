@@ -2,6 +2,7 @@
 // CPU, IAs, BD) y se edita el mismo mensaje, sin reescribir el comando.
 const { SlashCommandBuilder, MessageFlags, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { estadoIA, getStatsIA } = require('../utils/ia');
+const presupuesto = require('../utils/presupuesto');
 const { brandEmbed, miles, duracion, UMBRALES, nivel, COLORS } = require('../utils/replies');
 const db = require('../db/mariadb');
 
@@ -67,7 +68,7 @@ function vistaStatus(client, m) {
 }
 
 // Mide todo el estado (rendimiento, IAs y BD). Devuelve los valores crudos para vistaStatus.
-async function medir(client) {
+async function medir(client, guild = null) {
   const ia = await estadoIA();
   const stats = getStatsIA();
   const dbOk = db.configurada ? await db.ping() : false;
@@ -86,12 +87,25 @@ async function medir(client) {
   const cpu = ((delta.user + delta.system) / 1000 / transcurrido) * 100; // % medio desde el arranque
 
   // ---------- IA ----------
-  const iaOk = ia.groq.configurada || ia.gemini.configurada;
-  const totalRespuestas = stats.groq + stats.gemini + stats.local;
-  const statsIA =
-    totalRespuestas === 0
-      ? 'Sin conversaciones todavía'
-      : `Groq: **${miles(stats.groq)}** · Gemini: **${miles(stats.gemini)}** · Local: **${miles(stats.local)}**`;
+  // Los contadores son dinámicos: cada proveedor de la cadena (utils/ia.js) se nombra
+  // solo, así agregar uno nuevo no obliga a tocar este comando.
+  const CONTEOS_FIJOS = new Set(['local', 'web', 'cache', 'sinCupo']);
+  const iaOk = Object.values(ia).some((p) => p.configurada);
+  const totalRespuestas = Object.entries(stats).reduce((total, [k, v]) => (CONTEOS_FIJOS.has(k) ? total : total + v), stats.local);
+  // Cada contador se nombra solo cuando se usó: en el uso normal agregan ruido.
+  const partes = Object.entries(stats)
+    .filter(([nombre]) => !CONTEOS_FIJOS.has(nombre))
+    .map(([nombre, valor]) => `${ia.nombreProveedor(nombre)}: **${miles(valor)}**`);
+  partes.push(`Local: **${miles(stats.local)}**`);
+  if (stats.web) partes.push(`Web: **${miles(stats.web)}**`);
+  if (stats.cache) partes.push(`Caché: **${miles(stats.cache)}**`);
+  if (stats.sinCupo) partes.push(`⚠️ sin presupuesto: **${miles(stats.sinCupo)}**`);
+
+  // Presupuesto diario de IA: es el dato que dice si mañana queda margen o si hoy el
+  // bot ya está contestando sin IA (utils/presupuesto.js).
+  const uso = presupuesto.estadoDe(guild?.id);
+  partes.push(`\nPresupuesto de IA hoy: **${miles(uso.usadas)}/${miles(uso.limite)}**${uso.agotado ? ' — agotado' : ''}`);
+  const statsIA = totalRespuestas === 0 ? `Sin conversaciones todavía\n${partes.at(-1)}` : partes.join(' · ');
 
   // ---------- Base de datos ----------
   let textoDB;
@@ -107,7 +121,8 @@ async function medir(client) {
   // configurada falla. La IA cuenta como degradada si el principal está en pausa o
   // si su mediana de respuesta se estira más de lo razonable.
   const iaLenta = ia.groq.configurada && ia.groq.p50 != null && ia.groq.p50 > 2500;
-  const degradado = (api !== null && api > UMBRALES.ping.ok) || !iaOk || ia.groq.enPausa || iaLenta;
+  const enPausa = Object.values(ia).some((p) => p.configurada && p.enPausa);
+  const degradado = (api !== null && api > UMBRALES.ping.ok) || !iaOk || enPausa || iaLenta;
   const color = db.configurada && !dbOk ? COLORS.error : degradado ? COLORS.warn : COLORS.success;
   const estadoGeneral = db.configurada && !dbOk ? 'Degradado' : degradado ? 'Funcionando con avisos' : 'Todo en orden';
 
@@ -115,13 +130,11 @@ async function medir(client) {
 }
 
 module.exports = {
-  data: new SlashCommandBuilder()
-    .setName('status')
-    .setDescription('Muestra el estado del bot: IAs, latencia y servicios'),
+  data: new SlashCommandBuilder().setName('status').setDescription('Muestra el estado del bot: IAs, latencia y servicios'),
 
   async execute(interaction, client) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-    const m = await medir(client);
+    const m = await medir(client, interaction.guild);
     return interaction.editReply(vistaStatus(client, m));
   },
 
@@ -129,7 +142,7 @@ module.exports = {
   // es efímera, solo quien la abrió puede refrescarla: no hay fuga de datos.
   async boton(interaction, client) {
     await interaction.deferUpdate();
-    const m = await medir(client);
+    const m = await medir(client, interaction.guild);
     await interaction.editReply(vistaStatus(client, m)).catch(() => {});
   },
 };

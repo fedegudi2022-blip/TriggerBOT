@@ -1,6 +1,7 @@
 const { Events } = require('discord.js');
 const { responderCharla, respuestaInstantanea, normalizar } = require('../utils/charla');
-const { conversar, trocearMensaje } = require('../utils/ia');
+const { conversar, trocearMensaje, perfilDe } = require('../utils/ia');
+const { decidirBusqueda, respuestaSinIA } = require('../utils/web');
 const { pedirConfirmacion } = require('../utils/accionesIA');
 const { DUENO_ID } = require('../comunidad');
 const { getAFK, quitarAFK } = require('../commands/afk');
@@ -201,6 +202,18 @@ async function manejarMencion(message) {
     }
   } catch (error) {
     console.warn(`[TriggerBOT] IA no disponible, uso respuesta local: ${error.message}`);
+  }
+
+  // Sin IA (no hay claves o se cayeron todos los proveedores) una pregunta de cultura
+  // general todavía se puede contestar: se busca en la web y se cita la fuente. Antes
+  // esto caía en el repertorio local, que solo sabe decir que no entendió.
+  try {
+    if (decidirBusqueda(texto, { perfil: perfilDe(texto) }).buscar) {
+      const directa = await respuestaSinIA(texto, { usuarioId: message.author.id });
+      if (directa) return message.reply({ content: directa }).catch(() => {});
+    }
+  } catch (error) {
+    console.warn(`[TriggerBOT] búsqueda web sin IA falló: ${error.message}`);
   }
 
   await message.reply({ content: responderCharla(texto) }).catch(() => {});

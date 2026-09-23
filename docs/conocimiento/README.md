@@ -1,9 +1,15 @@
 # Base de conocimiento de la IA
 
-Los archivos `.md` de esta carpeta son lo que el bot **usa como verdad** cuando
-alguien le pregunta algo por chat (mencionándolo). La IA lee estos archivos, busca
-los fragmentos más parecidos a la pregunta y responde **solo con eso**: si la
-respuesta no está acá, dice que no tiene esa información y deriva al staff.
+Los archivos `.md` de esta carpeta son lo que el bot **usa como verdad** para los
+temas de la comunidad cuando alguien le pregunta algo por chat (mencionándolo). La IA
+lee estos archivos, busca los fragmentos más parecidos a la pregunta y responde **solo
+con eso**: si la pregunta es de la comunidad y la respuesta no está acá, dice que no
+tiene esa información y deriva al staff. Nunca inventa una regla, una sanción ni un
+horario de acá.
+
+> Esto vale para la comunidad. Para preguntas de cultura general (deportes, historia,
+famosos, ciencia, precios, noticias) el bot responde con su propio conocimiento y con
+una búsqueda web real (ver `utils/web.js`): ahí no hace falta cargar nada acá.
 
 > Este `README.md` **no** se usa como conocimiento (se ignora a propósito): las
 > instrucciones de carga viven acá, no en las respuestas.
@@ -14,6 +20,12 @@ respuesta no está acá, dice que no tiene esa información y deriva al staff.
   `##` es el contenido de esa sección.
 - El buscador puntúa secciones por coincidencia de palabras (con raíces: `banear`
   encuentra `baneo`) y devuelve las 3 mejores, hasta 1.200 caracteres cada una.
+- **Solo entran al prompt cuando corresponden**: en una pregunta de la comunidad
+  siempre; en una de cultura general únicamente si la coincidencia tocó alguna palabra
+  **con contenido del título** ("publicidad" entra por *Norma 3 — Spam, flood y
+  publicidad*; "cuántos" no cuenta, es parte del armado de la pregunta). Por eso los
+  títulos deben describir el tema con las palabras que usaría la gente: es lo que hace
+  que la sección se encuentre y se inyecte donde tiene que aparecer.
 - Los archivos que empiezan con `_` o se llaman `README.md` se ignoran.
 - Los cambios en estos archivos se recargan solos como máximo **1 minuto** después
   de guardarlos: no hay que reiniciar el bot.
