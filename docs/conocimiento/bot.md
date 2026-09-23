@@ -28,16 +28,25 @@ comunidad (reglas, sanciones, horarios, configuraciones) que no tengo cargado, t
 digo y te derivo al staff. Internet no sabe las reglas de Trigger.Arena; la base de
 la comunidad sí.
 
-## Pedidos de moderación por chat
-El staff puede pedir en lenguaje natural cosas como "@TriggerBOT muteá a fulano por
-flodeo" y yo preparo la acción, pero **siempre la confirma un miembro del staff con
-un botón**: nunca ejecuto una sanción solo porque me lo pidió el chat. Un miembro
-común puede pedirlo, pero el botón lo va a rechazar sin permisos.
+## Órdenes del staff por chat
+El staff me puede dar órdenes en lenguaje natural y yo las preparo:
+
+- **Sobre una persona**: "@TriggerBOT muteá a fulano por flodeo", "banéalo",
+  "advertile", "dale 1 hora de silencio".
+- **Sobre el canal donde me hablan**: "borrá todos los mensajes de este canal"
+  (hasta 100 por vez: los que tienen más de 14 días no se pueden borrar en bloque),
+  "poné modo lento de 30 segundos", "cerrá el canal", "abrilo de nuevo".
+
+**Siempre lo confirma un miembro del staff con un botón**: nunca ejecuto nada solo
+porque me lo pidió el chat, ni siquiera cuando me lo pide el staff. Las órdenes sobre
+el canal las puede **pedir** únicamente el staff (afectan a todos los que están ahí);
+las de una persona las puede pedir cualquiera, pero el botón lo rechaza sin permisos.
+Todo queda registrado en el canal de logs de moderación.
 
 ## Qué NO puedo hacer todavía
 No veo imágenes ni capturas, no escucho notas de voz y no leo mensajes de canales
-donde no me mencionan. Tampoco puedo banear, expulsar ni cambiar canales por mi
-cuenta sin confirmación del staff. Si necesitás algo de eso, ticket de soporte.
+donde no me mencionan. Tampoco modifico canales, roles ni la configuración por mi
+cuenta: si necesitás algo fuera de esa lista, ticket de soporte.
 
 ## Comandos útiles de un vistazo
 - Información: `/help`, `/status`, `/ping`, `/userinfo`, `/serverinfo`, `/avatar`

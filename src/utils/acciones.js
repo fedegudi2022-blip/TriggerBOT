@@ -16,6 +16,11 @@
 
 const { MessageFlags } = require('discord.js');
 
+// Discord no deja borrar en bloque mensajes de más de 14 días (y exige entre 2 y 100
+// mensajes por llamada). Vive acá porque lo necesitan los dos caminos que borran
+// mensajes: el comando /clear y las órdenes por chat con IA (utils/accionesIA.js).
+const LIMITE_14_DIAS_MS = 14 * 86400_000;
+
 // ¿El staff pidió que la confirmación la vea solo él? (opción `silencioso`).
 function quiereSilencioso(interaction) {
   return interaction.options?.getBoolean?.('silencioso') === true;
@@ -61,4 +66,4 @@ async function responder(interaction, payload) {
   return interaction.reply(payload);
 }
 
-module.exports = { quiereSilencioso, diferir, resolverMiembro, intentar, responder };
+module.exports = { quiereSilencioso, diferir, resolverMiembro, intentar, responder, LIMITE_14_DIAS_MS };

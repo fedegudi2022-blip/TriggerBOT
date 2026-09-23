@@ -53,10 +53,11 @@ Ambas devuelven `null` si todo está bien o un mensaje de error listo para mostr
 
 ## Acciones de moderación por IA (`accionesIA.js`)
 
-1. La IA puede responder un JSON de acción (`{accion, objetivo, motivo, duracion_min}`) cuando el usuario pide algo como "@TriggerBOT muteá a @fulano".
-2. `pedirConfirmacion()` muestra el embed con botones. **Solo staff** (permisos de moderación o roles admin/mod/helper de `/config`) puede ejecutar; expiran a los 5 minutos.
-3. Al confirmar, `validarAccionIA()` **revalida todo** contra la realidad del momento: objetivo existe, no es el dueño ni el bot, jerarquía contra quien confirma, permiso concreto del bot (incluye el caso mute-sin-rol → timeout). No confía en lo que la IA pidió hace minutos.
-4. Cada acción verifica su resultado real; el mod-log registra lo que pasó (no lo que se intentó).
+1. La IA puede responder un JSON de acción cuando el usuario pide algo como "@TriggerBOT muteá a @fulano" o "borrá todos los mensajes de este canal". Hay **dos familias**: acciones sobre una **persona** (`{accion, objetivo, motivo, duracion_min}`: warn, timeout, mute, kick, ban) y acciones sobre el **canal** donde se mencionó al bot (`{accion, cantidad|segundos, motivo}`: limpiar, slowmode, bloquear, desbloquear). El detector del prompt (ia.js) le ordena explícitamente NO negarse cuando quien pide es del staff —el caso real era el bot contestando "no tengo permiso para borrar mensajes"— y negarse (en texto, sin JSON) cuando no lo es.
+2. `pedirConfirmacion()` muestra el embed con botones. Para las de canal, además, exige que **quien pide** sea del staff: afectan a todos los que están ahí. `puedeConfirmar()` es la única regla de permiso (dueño, staff de `/config`, o el permiso exacto que exige el comando equivalente: Gestionar mensajes para `/clear`, Gestionar canales para `/slowmode` y `/lockdown`) y se aplica dos veces: al pedir y al apretar el botón. Expiran a los 5 minutos.
+3. Al confirmar, `validarAccionIA()` **revalida todo** contra la realidad del momento: objetivo existe, no es el dueño ni el bot, jerarquía contra quien confirma, permiso concreto del bot (incluye el caso mute-sin-rol → timeout). Para las de canal, `validarAccionCanal()`: es de texto, el bot puede gestionarlo y tiene el permiso puntual. No confía en lo que la IA pidió hace minutos.
+4. Los límites son los de los comandos, y se aplican en la ejecución (no en el prompt): hasta 100 mensajes por vez, nada de más de 14 días en bloque, 0-6 h de modo lento. Un solo mensaje se borra individualmente porque `bulkDelete` exige entre 2 y 100.
+5. Cada acción verifica su resultado real; el mod-log registra lo que pasó (no lo que se intentó), con el mismo nombre de acción que usa el comando equivalente (`/clear` y la orden por chat comparten `LIMITE_14_DIAS_MS` desde `utils/acciones.js`).
 
 ## Protección automática (`proteccion.js`)
 

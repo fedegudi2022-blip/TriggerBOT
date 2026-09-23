@@ -1,12 +1,10 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const { logAction } = require('../utils/modlog');
 const { errorEmbed, accionEmbed, COLORS } = require('../utils/replies');
-const { quiereSilencioso, diferir } = require('../utils/acciones');
-
-// Discord no deja borrar en bloque mensajes de más de 14 días (y exige entre 2 y
-// 100 mensajes por llamada): los dos límites se manejan acá para no responder con
-// un error engañoso ni perder el pedido del staff.
-const LIMITE_14_DIAS_MS = 14 * 86400_000;
+// El límite de 14 días de Discord (y el 2-100 por llamada) vive en utils/acciones.js:
+// lo comparten este comando y las órdenes por chat con IA, para no responder con un
+// error engañoso ni perder el pedido del staff.
+const { quiereSilencioso, diferir, LIMITE_14_DIAS_MS } = require('../utils/acciones');
 
 module.exports = {
   data: new SlashCommandBuilder()

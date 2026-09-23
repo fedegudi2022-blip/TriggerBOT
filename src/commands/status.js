@@ -1,7 +1,7 @@
 // /status — estado del bot con botón de refresco: se re-mide todo (latencia, memoria,
 // CPU, IAs, BD) y se edita el mismo mensaje, sin reescribir el comando.
 const { SlashCommandBuilder, MessageFlags, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const { estadoIA, getStatsIA } = require('../utils/ia');
+const { estadoIA, getStatsIA, nombreProveedor } = require('../utils/ia');
 const presupuesto = require('../utils/presupuesto');
 const { brandEmbed, miles, duracion, UMBRALES, nivel, COLORS } = require('../utils/replies');
 const db = require('../db/mariadb');
@@ -31,7 +31,19 @@ function vistaStatus(client, m) {
     const bajas = p.modelosCaidos.length ? ` · ${p.modelosCaidos.length} modelo(s) descartado(s)` : '';
     return `${etiqueta}: **${p.p50} ms** de mediana · ${p.p95} ms en el peor 5% · ${p.muestras} respuesta(s)${bajas}`;
   };
-  const velocidadIA = [vel('Groq', m.ia.groq), vel('Gemini', m.ia.gemini)].filter(Boolean).join('\n') || 'Sin datos de IA todavía';
+  // Un chip por proveedor de la cadena y una línea de velocidad para cada uno: `m.ia`
+  // llega en orden (principal → respaldos) y con los nombres ya resueltos, así sumar un
+  // proveedor nuevo no obliga a tocar este comando.
+  const chipsIA = Object.entries(m.ia).map(([id, p]) => ({
+    name: `🧠 ${nombreProveedor(id)}`,
+    value: chipIA(p),
+    inline: true,
+  }));
+  const velocidadIA =
+    Object.entries(m.ia)
+      .map(([id, p]) => vel(nombreProveedor(id), p))
+      .filter(Boolean)
+      .join('\n') || 'Sin datos de IA todavía';
 
   const embed = brandEmbed({
     color: m.color,
@@ -51,8 +63,7 @@ function vistaStatus(client, m) {
       },
       { name: '⏱️ Tiempo encendido', value: `**${duracion(process.uptime())}**`, inline: true },
       { name: '🟢 Node.js', value: `\`${process.version}\``, inline: true },
-      { name: '🧠 IA principal (Groq)', value: chipIA(m.ia.groq), inline: true },
-      { name: '🧠 Respaldo (Gemini)', value: chipIA(m.ia.gemini), inline: true },
+      ...chipsIA,
       { name: '⚡ Velocidad de la IA', value: velocidadIA, inline: false },
       { name: '💬 Respuestas de IA', value: m.statsIA, inline: false },
       { name: '🗄️ Base de datos (MariaDB)', value: m.textoDB, inline: false },
@@ -95,7 +106,7 @@ async function medir(client, guild = null) {
   // Cada contador se nombra solo cuando se usó: en el uso normal agregan ruido.
   const partes = Object.entries(stats)
     .filter(([nombre]) => !CONTEOS_FIJOS.has(nombre))
-    .map(([nombre, valor]) => `${ia.nombreProveedor(nombre)}: **${miles(valor)}**`);
+    .map(([nombre, valor]) => `${nombreProveedor(nombre)}: **${miles(valor)}**`);
   partes.push(`Local: **${miles(stats.local)}**`);
   if (stats.web) partes.push(`Web: **${miles(stats.web)}**`);
   if (stats.cache) partes.push(`Caché: **${miles(stats.cache)}**`);
@@ -118,9 +129,10 @@ async function medir(client, guild = null) {
   } else textoDB = `❌ Error de conexión${db.estado.ultimoError ? `: \`${db.estado.ultimoError}\`` : ''}`;
 
   // Color general: verde si todo bien; amarillo si algo está degradado; rojo si la BD
-  // configurada falla. La IA cuenta como degradada si el principal está en pausa o
-  // si su mediana de respuesta se estira más de lo razonable.
-  const iaLenta = ia.groq.configurada && ia.groq.p50 != null && ia.groq.p50 > 2500;
+  // configurada falla. La IA cuenta como degradada con cualquier proveedor en pausa o
+  // con una mediana de respuesta que se estira más de lo razonable (antes solo miraba
+  // a Groq, que era el único principal posible).
+  const iaLenta = Object.values(ia).some((p) => p.configurada && p.p50 != null && p.p50 > 2500);
   const enPausa = Object.values(ia).some((p) => p.configurada && p.enPausa);
   const degradado = (api !== null && api > UMBRALES.ping.ok) || !iaOk || enPausa || iaLenta;
   const color = db.configurada && !dbOk ? COLORS.error : degradado ? COLORS.warn : COLORS.success;
@@ -130,6 +142,11 @@ async function medir(client, guild = null) {
 }
 
 module.exports = {
+  // `medir` y `vistaStatus` se exportan para los tests: es donde se arma el render del
+  // estado (mismo criterio que `vistaDiag` en /diag).
+  medir,
+  vistaStatus,
+
   data: new SlashCommandBuilder().setName('status').setDescription('Muestra el estado del bot: IAs, latencia y servicios'),
 
   async execute(interaction, client) {

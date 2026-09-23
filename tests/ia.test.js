@@ -331,6 +331,50 @@ describe('conversar — cadena de proveedores', () => {
     assert.equal(respuesta.motivo, 'flood');
   });
 
+  test('una orden sobre el canal se devuelve como acción, sin objetivo', async () => {
+    instalarFetch({ chat: () => ({ texto: '{"accion":"limpiar","cantidad":500,"motivo":"ruido"}' }) });
+
+    const respuesta = await conversar('u-limpiar', 'borra todos los mensajes de este canal', { usuario: 'Fede' });
+
+    assert.equal(respuesta.tipo, 'accion');
+    assert.equal(respuesta.accion, 'limpiar');
+    assert.equal(respuesta.objetivo, '', 'no hay objetivo: la orden es sobre el canal');
+    assert.equal(respuesta.cantidad, 100, 'la cantidad se acota al tope de Discord');
+  });
+
+  test('slowmode: los segundos vienen del modelo y se acotan al máximo de Discord', async () => {
+    instalarFetch({ chat: () => ({ texto: '{"accion":"slowmode","segundos":999999}' }) });
+
+    const respuesta = await conversar('u-slowmode', 'pone modo lento en este canal', { usuario: 'Fede' });
+    assert.equal(respuesta.accion, 'slowmode');
+    assert.equal(respuesta.segundos, 21600, '6 horas: el máximo que acepta Discord');
+  });
+
+  test('una orden de moderación sin objetivo se trata como chat (no se inventa a quién)', async () => {
+    instalarFetch({ chat: () => ({ texto: '{"accion":"ban","motivo":"flood"}' }) });
+
+    const respuesta = await conversar('u-sin-objetivo', 'banea a alguien del canal', { usuario: 'Fede' });
+    assert.equal(respuesta.tipo, 'chat');
+  });
+
+  test('una acción inventada por el modelo no se ejecuta', async () => {
+    instalarFetch({ chat: () => ({ texto: '{"accion":"borrar_todo_el_servidor"}' }) });
+
+    const respuesta = await conversar('u-accion-inventada', 'borra el servidor entero', { usuario: 'Fede' });
+    assert.equal(respuesta.tipo, 'chat', 'la lista blanca vale más que lo que devuelva el modelo');
+  });
+
+  test('el prompt le prohíbe a la IA negarse cuando la orden viene del staff', () => {
+    const sistema = sistemaCompleto({ perfil: 'consulta' });
+    // El caso real: "borrá todos los mensajes de este canal" contestado con "no tengo
+    // permiso para borrar mensajes". El contrato tiene que incluir las órdenes de canal
+    // y decir explícitamente que el staff no recibe negativas.
+    assert.match(sistema, /"limpiar"/, 'el contrato incluye las órdenes sobre el canal');
+    assert.match(sistema, /"slowmode"/);
+    assert.match(sistema, /NUNCA contestes que no pod[eé]s/);
+    assert.match(sistema, /solo el staff puede pedirlo/, 'y qué contestar cuando no es staff');
+  });
+
   test('una respuesta con llaves pero sin acción válida se trata como chat', async () => {
     instalarFetch({ chat: () => ({ texto: 'Para moderar usá {"ejemplo": "de json"} en la doc.' }) });
     const respuesta = await conversar('u-json-raro', 'como modero', { usuario: 'Fede' });

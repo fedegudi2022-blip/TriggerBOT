@@ -582,11 +582,20 @@ const GROUNDING =
   'ante la duda, deriva al staff.';
 
 const DETECTOR_ACCIONES =
-  'Además: si el mensaje del usuario PIDE una acción de moderación sobre otra persona ' +
-  '(advertir, silenciar, expulsar, banear o mutear a alguien), no respondas texto: ' +
-  'respondé ÚNICAMENTE un JSON válido con esta forma exacta: ' +
-  '{"accion":"warn|timeout|mute|kick|ban","objetivo":"nombre del usuario tal como aparece","motivo":"motivo en pocas palabras","duracion_min":60}. ' +
-  'duracion_min solo se usa para timeout (en minutos). En cualquier otro caso respondé con texto normal, nunca JSON.';
+  'ACCIONES DE MODERACIÓN: si quien escribe ES DEL STAFF (el contexto lo dice con claridad: ' +
+  '"Es del staff" o "Es el DUEÑO del servidor") y PIDE una acción de la lista, no respondas ' +
+  'texto: respondé ÚNICAMENTE un JSON válido. NUNCA contestes que no podés, que no tenés ' +
+  'permiso para borrar mensajes, que eso es cosa de administradores o que se lo pida a un ' +
+  'moderador: VOS podés hacerlo, y el staff confirma con un botón antes de que se ejecute. ' +
+  'Los formatos son: ' +
+  '1) Sobre una PERSONA: {"accion":"warn|timeout|mute|kick|ban","objetivo":"nombre del usuario tal como aparece","motivo":"motivo en pocas palabras","duracion_min":60} ' +
+  '(duracion_min solo se usa para timeout, en minutos). ' +
+  '2) Sobre ESTE CANAL (sin objetivo): {"accion":"limpiar","cantidad":100,"motivo":"..."} para borrar mensajes ' +
+  '(cantidad de 1 a 100; con "borrá todos los mensajes" o "limpiá el canal" usá 100), ' +
+  '{"accion":"slowmode","segundos":30,"motivo":"..."} para el modo lento (0 lo desactiva), ' +
+  'y {"accion":"bloquear"} o {"accion":"desbloquear"} (con "motivo" opcional) para cerrar o abrir el canal. ' +
+  'Si quien pide NO es del staff, no devuelvas JSON: explicá en texto que solo el staff puede pedirlo. ' +
+  'En cualquier otro caso respondé con texto normal, nunca JSON.';
 
 // ---------- Perfiles de respuesta ----------
 // Charla (saludo, broma, charla general): corto y con algo de gracia.
@@ -992,7 +1001,12 @@ function esMensajeSimple(texto) {
 }
 
 // ---------- Entrada principal: Gemini → Groq → respaldo local ----------
-const ACCIONES_VALIDAS = ['warn', 'timeout', 'mute', 'kick', 'ban'];
+// Lista blanca de acciones que la IA puede pedir. Todo lo que devuelva el modelo se
+// valida contra esto ANTES de mostrar nada: un JSON con una acción inventada se trata
+// como charla. Las de canal actúan sobre el canal donde se mencionó al bot.
+const ACCIONES_PERSONA = ['warn', 'timeout', 'mute', 'kick', 'ban'];
+const ACCIONES_CANAL = ['limpiar', 'slowmode', 'bloquear', 'desbloquear'];
+const ACCIONES_VALIDAS = [...ACCIONES_PERSONA, ...ACCIONES_CANAL];
 
 // Conversa con la IA. Devuelve:
 //   { tipo: 'chat', texto }                    → respuesta conversacional
@@ -1256,13 +1270,21 @@ async function conversar(userId, mensaje, contexto = {}) {
   if (match) {
     try {
       const j = JSON.parse(match[0]);
-      if (j && ACCIONES_VALIDAS.includes(j.accion) && typeof j.objetivo === 'string' && j.objetivo.trim()) {
+      const accion = j && ACCIONES_VALIDAS.includes(j.accion) ? j.accion : null;
+      // Las de persona necesitan objetivo (a quién); las de canal actúan sobre el canal
+      // donde se mencionó al bot y no llevan ninguno. Los números vienen del modelo: se
+      // acotan ACÁ también, no solo al ejecutar (defensa en profundidad).
+      const esCanal = ACCIONES_CANAL.includes(accion);
+      const objetivo = typeof j?.objetivo === 'string' ? j.objetivo.trim() : '';
+      if (accion && (esCanal || objetivo)) {
         guardarTurno(userId, 'user', mensaje);
-        guardarTurno(userId, 'model', `[Solicitud de ${j.accion} para ${j.objetivo.trim()}]`);
+        guardarTurno(userId, 'model', esCanal ? `[Solicitud de ${accion} en este canal]` : `[Solicitud de ${accion} para ${objetivo}]`);
         return {
           tipo: 'accion',
-          accion: j.accion,
-          objetivo: j.objetivo.trim(),
+          accion,
+          objetivo,
+          cantidad: Math.min(Math.max(Math.round(Number(j.cantidad) || 100), 1), 100),
+          segundos: Math.min(Math.max(Math.round(Number(j.segundos) || 0), 0), 21600),
           motivo: String(j.motivo || '').slice(0, 300),
           duracionMin: Number(j.duracion_min) || 60,
         };
