@@ -1,5 +1,6 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
-const { brandEmbed, errorEmbed } = require('../utils/replies');
+const { brandEmbed, errorEmbed, accionEmbed, COLORS } = require('../utils/replies');
+const { quiereSilencioso, diferir, intentar } = require('../utils/acciones');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -11,7 +12,8 @@ module.exports = {
     .addStringOption((o) => o.setName('color').setDescription('Color en hex sin # (ej: 5865f2)').setMaxLength(6))
     .addStringOption((o) => o.setName('imagen_url').setDescription('URL de imagen para el anuncio'))
     .addStringOption((o) => o.setName('miniatura_url').setDescription('URL de miniatura (esquina)'))
-    .addChannelOption((o) => o.setName('canal').setDescription('Canal de destino (vacío = este canal)')),
+    .addChannelOption((o) => o.setName('canal').setDescription('Canal de destino (vacío = este canal)'))
+    .addBooleanOption((o) => o.setName('silencioso').setDescription('Mostrar la confirmación solo a vos')),
 
   async execute(interaction) {
     const titulo = interaction.options.getString('titulo', true);
@@ -20,8 +22,9 @@ module.exports = {
     const imagen = interaction.options.getString('imagen_url');
     const miniatura = interaction.options.getString('miniatura_url');
     const canal = interaction.options.getChannel('canal') ?? interaction.channel;
+    const silencioso = quiereSilencioso(interaction);
 
-    let color = 0x5865f2;
+    let color = COLORS.info;
     if (colorHex) {
       if (!/^[0-9a-fA-F]{6}$/.test(colorHex)) {
         return interaction.reply({
@@ -42,11 +45,35 @@ module.exports = {
     });
 
     const destino = interaction.guild.channels.cache.get(canal.id) ?? canal;
-    await destino.send({ embeds: [embed] }).catch(() => {});
 
-    return interaction.reply({
-      embeds: [brandEmbed({ color: 0x57f287, title: '📢 Anuncio enviado', description: `Publicado en ${destino}.` })],
-      flags: MessageFlags.Ephemeral,
+    await diferir(interaction, silencioso);
+
+    // El envío se reporta de verdad: antes se respondía "📢 Anuncio enviado"
+    // incluso cuando Discord lo rechazaba (faltaba el permiso de escribir).
+    const resultado = await intentar(`Discord rechazó el envío en <#${destino.id}>`, () => destino.send({ embeds: [embed] }));
+
+    if (!resultado.ok) {
+      return interaction.editReply({
+        embeds: [
+          errorEmbed(
+            `No pude publicar el anuncio en <#${destino.id}>.
+> ${resultado.error}`,
+            'El anuncio no se publicó'
+          ),
+        ],
+      });
+    }
+
+    return interaction.editReply({
+      embeds: [
+        accionEmbed({
+          color: COLORS.success,
+          titulo: '📢 Anuncio enviado',
+          detalle: `Publicado en <#${destino.id}>.`,
+          moderador: interaction.member?.displayName ?? interaction.user.username,
+          footer: 'se puede editar o borrar como cualquier mensaje',
+        }),
+      ],
     });
   },
 };

@@ -53,9 +53,18 @@ function instalarFetch({ chat, fallar } = {}) {
     LLAMADAS.push({ url: u, agente, esGeneracion, cuerpo, headers: opciones.headers ?? {} });
 
     if (!esGeneracion) {
-      // Listado de modelos.
+      // Listado de modelos: refleja el catálogo real del plan gratuito de Groq
+      // (agosto 2026: la familia llama pasó a Enterprise y quedaron los GPT-OSS).
       return agente === 'groq'
-        ? json({ data: [{ id: 'llama-3.3-70b-versatile' }, { id: 'llama-3.1-8b-instant' }] })
+        ? json({
+            data: [
+              { id: 'openai/gpt-oss-120b' },
+              { id: 'openai/gpt-oss-20b' },
+              { id: 'llama-3.3-70b-versatile' },
+              { id: 'whisper-large-v3' },
+              { id: 'meta-llama/llama-prompt-guard-2-22m' },
+            ],
+          })
         : json({ models: [{ name: 'models/gemini-3.6-flash', supportedGenerationMethods: ['generateContent'] }] });
     }
 
@@ -174,7 +183,9 @@ describe('sistemaCompleto — armado del prompt', () => {
       conocimiento: '### Cómo entro a un servidor\nUsá connect IP en la consola.',
     });
 
-    assert.match(sistema, /TriggerBOT/);
+    // El nombre de marca no se fija acá (puede cambiar): lo que importa es que el
+    // bloque de identidad esté y que el bot siga sabiendo que es de Trigger.Arena.
+    assert.match(sistema, /bot de moderación del servidor de Discord Trigger/);
     assert.match(sistema, /REGLAS DE PRECISIÓN/);
     assert.match(sistema, /INFORMACIÓN DEL SERVIDOR/);
     assert.match(sistema, /312 miembros/);
@@ -390,5 +401,192 @@ describe('base de conocimiento integrada en el prompt', () => {
     const stats = conocimiento.estadisticas(conocimiento.DIRECTORIO_POR_DEFECTO);
     assert.ok(stats.secciones > 0, 'docs/conocimiento debe estar cargada');
     assert.ok(stats.archivos.length >= 5);
+  });
+});
+
+// ---------- Salud del motor: modelos caídos, pausas y carrera ----------
+//
+// Este bloque cubre el bug real que hacía lento al bot: Groq retiró la familia llama
+// del plan gratuito (agosto 2026) y el bot la pedía primero en CADA mensaje, se comía
+// un 404 y terminaba siempre en Gemini. Estos tests garantizan que un modelo que
+// falla no se vuelva a intentar, que un proveedor sin acceso se aparte y que la
+// respuesta llegue apenas contesta el primer proveedor que sirva.
+describe('salud del motor de IA (modelos caídos, pausas y carrera)', () => {
+  const { modelosCaidos, proveedoresPausados, verificarModelos } = ia._internos;
+
+  const LISTA_GROQ = [
+    { id: 'openai/gpt-oss-120b' },
+    { id: 'openai/gpt-oss-20b' },
+  ];
+
+  function resetSalud() {
+    modelosCaidos.clear();
+    proveedoresPausados.clear();
+  }
+
+  // Fetch propio para estos casos: permite decidir la respuesta POR MODELO y agregar
+  // demoras, cosas que el mock general (que solo distingue proveedor) no cubre.
+  function fetchPropio({ groqChat, geminiChat, demoraGroqMs = 0 }) {
+    const pedidos = [];
+    const original = global.fetch;
+    global.fetch = async (url, opciones = {}) => {
+      const u = String(url);
+      const cuerpo = opciones.body ? JSON.parse(opciones.body) : null;
+      if (u.includes('groq.com') && u.includes('/models')) return json({ data: LISTA_GROQ });
+      // OJO con el orden: la URL de generación de Gemini también contiene "/models/",
+      // así que hay que reconocer primero generateContent.
+      if (u.includes('generateContent')) {
+        pedidos.push({ proveedor: 'gemini', modelo: u.match(/models\/([^:]+):/)?.[1] });
+        return geminiChat ? geminiChat() : json({ candidates: [{ content: { parts: [{ text: 'de gemini' }] }, finishReason: 'STOP' }] });
+      }
+      // Listado de Gemini: el mock NUNCA debe tocar la red (un test que sale a
+      // internet espera el timeout real y ensucia la suite).
+      if (u.includes('generativelanguage')) {
+        return json({ models: [{ name: 'models/gemini-3.6-flash', supportedGenerationMethods: ['generateContent'] }] });
+      }
+      if (u.includes('chat/completions')) {
+        const modelo = cuerpo.model;
+        pedidos.push({ proveedor: 'groq', modelo });
+        if (demoraGroqMs) {
+          // Timer sin ref: la carrera debe resolverse antes y no queremos que un
+          // temporizador pendiente mantenga vivo el proceso de tests.
+          const esperar = new Promise((_, rechazar) => {
+            const t = setTimeout(() => rechazar(new Error('Groq tardó demasiado')), demoraGroqMs);
+            t.unref?.();
+          });
+          await esperar;
+        }
+        return groqChat ? groqChat(modelo) : json({ choices: [{ message: { content: 'de groq' }, finish_reason: 'stop' }] });
+      }
+      return original(url, opciones);
+    };
+    return pedidos;
+  }
+
+  test('un modelo retirado (404) se marca caído y NO se reintenta en el mensaje siguiente', async () => {
+    resetSalud();
+    const pedidos = fetchPropio({
+      groqChat: (modelo) =>
+        modelo === 'openai/gpt-oss-120b'
+          ? json({ error: { message: 'The model does not exist or you do not have access to it.' } }, 404)
+          : json({ choices: [{ message: { content: 'respuesta buena' }, finish_reason: 'stop' }] }),
+    });
+
+    // Primer mensaje: se come el 404 del modelo retirado y sigue con el que funciona.
+    const primera = await conversar('u-caido-1', 'que reglas tiene el server', { usuario: 'Fede' });
+    assert.equal(primera.texto, 'respuesta buena');
+    assert.deepEqual(
+      pedidos.map((p) => p.modelo),
+      ['openai/gpt-oss-120b', 'openai/gpt-oss-20b'],
+      'el primer mensaje prueba el modelo caído y sigue con el bueno'
+    );
+
+    // Segundo mensaje: el caído ya está en el registro y no se vuelve a pedir.
+    const segunda = await conversar('u-caido-2', 'y las sanciones?', { usuario: 'Fede' });
+    assert.equal(segunda.texto, 'respuesta buena');
+    assert.deepEqual(
+      pedidos.map((p) => p.modelo),
+      ['openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'openai/gpt-oss-20b'],
+      'el modelo retirado no se reintenta: el segundo mensaje va directo al que funciona'
+    );
+    assert.ok(ia.saludIA().groq.modelosCaidos.includes('openai/gpt-oss-120b'));
+  });
+
+  test('una clave sin permiso (401) aparta el proveedor y el mensaje siguiente ni lo intenta', async () => {
+    resetSalud();
+    const pedidos = fetchPropio({
+      groqChat: () => json({ error: { message: 'Invalid API Key' } }, 401),
+    });
+
+    const primera = await conversar('u-401-1', 'puedo publicar mi discord', { usuario: 'Fede' });
+    assert.equal(primera.texto, 'de gemini', 'responde el respaldo');
+    const llamadasGroqTrasLaPrimera = pedidos.filter((p) => p.proveedor === 'groq').length;
+    assert.ok(llamadasGroqTrasLaPrimera > 0, 'el primer mensaje sí intenta Groq');
+    assert.equal(ia.saludIA().groq.enPausa, true);
+    assert.match(ia.saludIA().groq.motivoPausa, /clave/);
+
+    const segunda = await conversar('u-401-2', 'cuantos niveles hay', { usuario: 'Fede' });
+    assert.equal(segunda.texto, 'de gemini');
+    assert.equal(
+      pedidos.filter((p) => p.proveedor === 'groq').length,
+      llamadasGroqTrasLaPrimera,
+      'con Groq en pausa no se gasta ni una llamada más: eso era la demora de 2 s'
+    );
+  });
+
+  test('carrera con respaldo: si el principal se demora, contesta el respaldo sin esperarlo', async () => {
+    resetSalud();
+    const pedidos = fetchPropio({ demoraGroqMs: 3_000 });
+
+    const inicio = Date.now();
+    const respuesta = await conversar('u-hedge', 'que comandos hay para niveles', { usuario: 'Fede' });
+    const transcurrido = Date.now() - inicio;
+
+    assert.equal(respuesta.texto, 'de gemini');
+    assert.ok(
+      transcurrido < 2_600,
+      `no se espera al proveedor lento (tardó ${transcurrido} ms; Groq tardaba 3000 ms)`
+    );
+    assert.ok(pedidos.some((p) => p.proveedor === 'groq'), 'el principal igual arranca primero');
+    assert.ok(pedidos.some((p) => p.proveedor === 'gemini'), 'y el respaldo sale en paralelo');
+  });
+
+  test('si el principal contesta rápido, el respaldo ni se llama', async () => {
+    resetSalud();
+    const pedidos = fetchPropio({});
+    const respuesta = await conversar('u-sin-hedge', 'que comandos hay para niveles', { usuario: 'Fede' });
+    assert.equal(respuesta.texto, 'de groq');
+    assert.equal(pedidos.filter((p) => p.proveedor === 'gemini').length, 0);
+  });
+
+  test('la verificación del arranque prueba los modelos y descarta el retirado', async () => {
+    resetSalud();
+    fetchPropio({
+      groqChat: (modelo) =>
+        modelo === 'openai/gpt-oss-120b'
+          ? json({ error: { message: 'model not found' } }, 404)
+          : json({ choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }] }),
+    });
+
+    await verificarModelos();
+    const estado = await ia.estadoIA();
+    assert.equal(estado.groq.modelo, 'openai/gpt-oss-20b', 'queda el modelo que funciona');
+    assert.ok(estado.groq.modelosCaidos.includes('openai/gpt-oss-120b'));
+    assert.equal(estado.groq.enPausa, false);
+  });
+
+  test('la latencia real queda medida y /status la puede mostrar', async () => {
+    resetSalud();
+    fetchPropio({});
+    await conversar('u-latencia-1', 'que reglas tiene el server', { usuario: 'Fede' });
+    await conversar('u-latencia-2', 'y los niveles?', { usuario: 'Fede' });
+
+    const estado = await ia.estadoIA();
+    assert.ok(estado.groq.muestras >= 2, 'hay muestras de latencia de Groq');
+    assert.ok(Number.isFinite(estado.groq.p50) && estado.groq.p50 >= 0);
+    assert.ok(estado.groq.p95 >= estado.groq.p50, 'el p95 nunca es menor que el p50');
+  });
+
+  test('el catálogo de modelos descarta audio, TTS y guardrails (no son chat)', async () => {
+    resetSalud();
+    // La lista falsa incluye whisky, guard y prompt-guard: ninguno debe ser candidato.
+    global.fetch = async (url) => {
+      if (String(url).includes('/models')) {
+        return json({
+          data: [
+            { id: 'whisper-large-v3' },
+            { id: 'openai/gpt-oss-safeguard-20b' },
+            { id: 'meta-llama/llama-prompt-guard-2-22m' },
+            { id: 'canopylabs/orpheus-v1-english' },
+            { id: 'openai/gpt-oss-120b' },
+          ],
+        });
+      }
+      return json({ choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }] });
+    };
+
+    await ia._internos.verificarModelos();
+    const estado = await ia.estadoIA();
+    assert.equal(estado.groq.modelo, 'openai/gpt-oss-120b');
   });
 });

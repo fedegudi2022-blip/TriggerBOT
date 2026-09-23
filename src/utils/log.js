@@ -1,5 +1,6 @@
 const { EmbedBuilder } = require('discord.js');
 const { getGuildConfig } = require('../store');
+const { COLORS } = require('./replies');
 
 // Registro general de eventos del servidor (mensajes borrados/editados, salidas,
 // cambios de roles, etc.). Usa el canal de /config logs y, si no está configurado,
@@ -12,7 +13,7 @@ function canalDeLogs(guild) {
 }
 
 // Envía un embed de evento con el formato profesional unificado.
-function logEvent(guild, { color = 0x5865f2, title, description, fields, thumbnail }) {
+function logEvent(guild, { color = COLORS.info, title, description, fields, thumbnail }) {
   const channel = canalDeLogs(guild);
   if (!channel) return;
 

@@ -6,7 +6,7 @@
 //   mensajePanel: id del mensaje del panel (lo publica /servidores con publicar:true)
 //   monitoreo: on/off de las alertas de caída/vuelta (el panel se actualiza siempre)
 //   lista: [{ host, puerto, nombre, modo }]
-const { brandEmbed } = require('./replies');
+const { brandEmbed, COLORS } = require('./replies');
 const a2s = require('./a2s');
 const { getGuildConfig } = require('../store');
 
@@ -122,8 +122,7 @@ function embedAlerta(guild, server, tipo, resultado) {
   const [host, puerto] = parsearDestino(server);
   const cayoAhora = tipo === 'cayo';
 
-  return brandEmbed({
-    color: cayoAhora ? 0xed4245 : 0x57f287,
+  return brandEmbed({        color: cayoAhora ? COLORS.error : COLORS.success,
     title: cayoAhora ? `🔴 ${server.nombre} — cayó` : `🟢 ${server.nombre} — volvió a responder`,
     description:
       `**${host}:${puerto}**\n` +
@@ -157,7 +156,7 @@ function tarjetaServidor(server, host, puerto, s) {
 
   if (!s) {
     return brandEmbed({
-      color: 0x5865f2,
+      color: COLORS.info,
       title: server.nombre,
       description: `${base}\n\n⏳ Consultando estado…`,
       thumbnail: server.imagen || undefined,
@@ -167,7 +166,7 @@ function tarjetaServidor(server, host, puerto, s) {
 
   if (!s.ok) {
     return brandEmbed({
-      color: 0xed4245,
+      color: COLORS.error,
       title: server.nombre,
       description: base,
       thumbnail: server.imagen || undefined,
@@ -187,7 +186,7 @@ function tarjetaServidor(server, host, puerto, s) {
   const aviso = notaDifiere(server, d);
 
   return brandEmbed({
-    color: 0x5865f2,
+    color: COLORS.info,
     title: server.nombre,
     description: base + (aviso ? `\n\n${aviso.trim()}` : ''),
     thumbnail: server.imagen || undefined,

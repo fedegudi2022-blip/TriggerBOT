@@ -33,7 +33,7 @@ const {
   TextInputStyle,
 } = require('discord.js');
 const { getGuildConfig, setGuildConfig, mutarYAgendar } = require('../store');
-const { brandEmbed, successEmbed } = require('./replies');
+const { brandEmbed, successEmbed, COLORS } = require('./replies');
 const { logEvent } = require('./log');
 const crearLogger = require('../logger');
 const log = crearLogger('voz');
@@ -228,7 +228,7 @@ function filaControles3() {
 
 function enviarPanel(canal, dueno) {
   const embed = brandEmbed({
-    color: 0x5865f2,
+    color: COLORS.info,
     title: `🎧 Tu canal, ${dueno.displayName}`,
     description:
       'Controlá tu canal con estos botones.\n' +
@@ -260,7 +260,7 @@ async function avisarFallo(guild, dueno, motivo) {
       .send({
         embeds: [
           brandEmbed({
-            color: 0xed4245,
+            color: COLORS.error,
             title: '⚠️ No se pudo crear tu canal',
             description: `<@${dueno.id}>, algo falló al crear tu canal de voz:\n\`${texto}\`\nAvisale al staff para que revise los permisos del bot.`,
           }),
@@ -269,7 +269,7 @@ async function avisarFallo(guild, dueno, motivo) {
       .catch(() => {});
   }
   logEvent(guild, {
-    color: 0xed4245,
+    color: COLORS.error,
     title: '⚠️ Error creando canal temporal',
     description: `No se pudo crear el canal de voz para **${dueno.displayName}** (<@${dueno.id}>).`,
     fields: [{ name: 'Motivo', value: texto }],
@@ -540,7 +540,7 @@ async function crearParaInterno(state) {
   await enviarPanel(canal, dueno).catch(() => {});
   log.info(`Canal temporal creado para ${dueno.user?.tag ?? dueno.id} en ${guild.name}`);
   registrarEvento(guild, {
-    color: 0x57f287,
+    color: COLORS.success,
     title: '🎧 Canal de voz temporal creado',
     description: `**${dueno.displayName}** entró al canal de creación y se le creó <#${canal.id}>.`,
     fields: padre ? [{ name: 'Categoría', value: `<#${padre}>` }] : [],
@@ -554,7 +554,7 @@ async function transferirA(guild, canal, nuevoOwner, { silencioso = false } = {}
   if (anteriorId && anteriorId !== nuevoOwner.id) {
     await opQuitarOverwrite(canal, anteriorId, `Transferencia del canal temporal a ${nuevoOwner.id}`);
     registrarEvento(guild, {
-      color: 0xfee75c,
+      color: COLORS.warn,
       title: '👑 Canal de voz temporal transferido',
       description: `**${canal.name}** (<#${canal.id}>) pasó de <@${anteriorId}> a <@${nuevoOwner.id}>.`,
     });
@@ -574,7 +574,7 @@ async function transferirA(guild, canal, nuevoOwner, { silencioso = false } = {}
   );
   if (!silencioso) {
     await canal
-      .send({ embeds: [brandEmbed({ color: 0xfee75c, title: `👑 ${nuevoOwner.displayName} ahora es el dueño del canal` })] })
+      .send({ embeds: [brandEmbed({ color: COLORS.warn, title: `👑 ${nuevoOwner.displayName} ahora es el dueño del canal` })] })
       .catch(() => {});
   }
 }
@@ -645,7 +645,7 @@ function programarBorrado(guildId, canal) {
     if (!resultado.ok) return; // sin permisos: queda vivo, no anunciamos un borrado que no pasó
     log.info(`Canal temporal vacío borrado (${fresco.name})`);
     registrarEvento(fresco.guild, {
-      color: 0xed4245,
+      color: COLORS.error,
       title: '🗑️ Canal de voz temporal borrado',
       description: `**${fresco.name}** quedó vacío y se borró solo${duenoId ? ` (era de <@${duenoId}>)` : ''}.`,
     });
@@ -1089,7 +1089,7 @@ async function manejarComponente(interaction) {
       }
       olvidarTemporal(guild.id, canal.id); // solo si Discord aceptó: si no, el canal seguiría vivo y huérfano
       logEvent(guild, {
-        color: 0xed4245,
+        color: COLORS.error,
         title: '🗑️ Canal de voz temporal borrado',
         description: `**${canal.name}** (de <@${duenoId}>) fue cerrado por <@${interaction.user.id}>.`,
       });
@@ -1285,7 +1285,7 @@ async function limpiarAlArrancar(client) {
         const resultado = await opBorrar(canal, 'Limpieza al arrancar: canal temporal vacío');
         if (!resultado.ok) continue;
         registrarEvento(guild, {
-          color: 0xed4245,
+          color: COLORS.error,
           title: '🗑️ Canal de voz temporal borrado',
           description: `**${canal.name}** (de <@${duenoId}>) quedó vacío tras un reinicio y se limpió.`,
         });

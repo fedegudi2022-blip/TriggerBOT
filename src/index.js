@@ -83,12 +83,12 @@ setInterval(async () => {
         const miembro = guild.members.cache.get(marca[1]) ?? (await guild.members.fetch(marca[1]).catch(() => null));
         if (miembro) autor = `@${miembro.displayName}`;
       }
-      const { brandEmbed } = require('./utils/replies');
+      const { brandEmbed, COLORS } = require('./utils/replies');
       await canal
         .send({
           embeds: [
             brandEmbed({
-              color: 0x5865f2,
+              color: COLORS.info,
               title: 'Frase del día',
               description: `> ${elegida.texto}`,
               footer: `— ${autor} • TriggerBOT`,
@@ -111,6 +111,7 @@ setInterval(async () => {
 const { manejarBoton } = require('./utils/accionesIA');
 const { manejarComponente } = require('./utils/configPanel');
 const memeCmd = require('./commands/meme');
+const warningsCmd = require('./commands/warnings');
 const pingCmd = require('./commands/ping');
 const statusCmd = require('./commands/status');
 const topCmd = require('./commands/top');
@@ -129,6 +130,15 @@ client.on('interactionCreate', async (interaction) => {
     } else if (interaction.isButton() && interaction.customId.startsWith('top:page:')) {
       // El comando /top expone su render para que el botón pida otra página.
       await topCmd.ejecutar(interaction, Number(interaction.customId.split(':')[2]) || 1);
+    } else if (interaction.isButton() && interaction.customId.startsWith('warnings:')) {
+      // Página del historial de advertencias (customId: warnings:<userId>:<pagina>).
+      const [, userId, pagina] = interaction.customId.split(':');
+      const autor = await interaction.client.users.fetch(userId).catch(() => null);
+      if (!autor) {
+        await interaction.reply({ content: 'No pude resolver ese usuario.', flags: MessageFlags.Ephemeral });
+      } else {
+        await warningsCmd.ejecutar(interaction, autor, Number(pagina) || 1);
+      }
     } else if (interaction.isButton() && interaction.customId.startsWith('ticket:')) {
       await manejarBotonTicket(interaction);
     } else if (interaction.isButton() && interaction.customId.startsWith('voz:')) {

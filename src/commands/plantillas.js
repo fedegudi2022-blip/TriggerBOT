@@ -1,7 +1,7 @@
 const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const { PermissionFlagsBits } = require('discord.js');
 const { listar, agregar, quitar } = require('../utils/plantillas');
-const { brandEmbed, successEmbed, errorEmbed } = require('../utils/replies');
+const { infoEmbed, warnEmbed, successEmbed, errorEmbed } = require('../utils/replies');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -60,13 +60,13 @@ module.exports = {
       const entradas = Object.entries(plantillas);
       if (!entradas.length) {
         return interaction.reply({
-          embeds: [brandEmbed({ color: 0xfee75c, title: 'Plantillas de sanciones', description: 'No hay plantillas cargadas todavía. Creá la primera con `/plantillas agregar`.' })],
+          embeds: [warnEmbed('No hay plantillas cargadas todavía. Creá la primera con `/plantillas agregar`.', 'Plantillas de sanciones')],
           flags: MessageFlags.Ephemeral,
         });
       }
       const cuerpo = entradas.map(([nombre, razon]) => `**${nombre}** — ${razon}`).join('\n');
       return interaction.reply({
-        embeds: [brandEmbed({ color: 0x5865f2, title: `Plantillas de sanciones (${entradas.length})`, description: cuerpo.slice(0, 4000) })],
+        embeds: [infoEmbed(cuerpo.slice(0, 4000), `Plantillas de sanciones (${entradas.length})`)],
         flags: MessageFlags.Ephemeral,
       });
     }

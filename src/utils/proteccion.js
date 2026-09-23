@@ -14,7 +14,7 @@
 // lo que intentó. Si Discord rechaza la operación, el log y la alerta lo dicen.
 const { PermissionFlagsBits } = require('discord.js');
 const { getGuildConfig } = require('../store');
-const { brandEmbed } = require('./replies');
+const { brandEmbed, COLORS } = require('./replies');
 const { avisarPorDM, validarAccionDelBot } = require('./moderation');
 const { logAction } = require('./modlog');
 
@@ -169,8 +169,7 @@ async function ejecutarAccion(member, accion, razon, tipo) {
   }
 
   logAction(guild, {
-    action: tipo === 'spam' ? 'Anti-spam automático' : 'Anti-raid automático',
-    color: tipo === 'spam' ? 0xfee75c : 0xed4245,
+    action: tipo === 'spam' ? 'Anti-spam automático' : 'Anti-raid automático',        color: tipo === 'spam' ? COLORS.warn : COLORS.error,
     target: member.user,
     moderator: guild.client.user,
     reason: razon,
@@ -225,7 +224,7 @@ async function procesarMensajeParaSpam(message) {
   alertar(
     message.guild,
     brandEmbed({
-      color: 0xfee75c,
+      color: COLORS.warn,
       title: '🛡️ Anti-spam — posible flood detectado',
       description: `${member} (**${member.user.tag}**) superó el umbral: **${enVentana.length} mensajes en ${config.spamSegundos} s** en <#${message.channelId}>.`,
       fields: [
@@ -292,7 +291,7 @@ async function registrarIngreso(member) {
   alertar(
     member.guild,
     brandEmbed({
-      color: 0xed4245,
+      color: COLORS.error,
       title: '🚨 Anti-raid — oleada de ingresos detectada',
       description:
         `**${enVentana.length} ingresos en ${config.raidSegundos} s** (${recientes.length} con cuenta de menos de 7 días 🆕).\n` +

@@ -1,6 +1,6 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const { getGuildConfig, setGuildConfig } = require('../store');
-const { brandEmbed, successEmbed, errorEmbed } = require('../utils/replies');
+const { infoEmbed, warnEmbed, successEmbed, errorEmbed } = require('../utils/replies');
 
 // Frases del día por servidor: { canal, hora, frases: [{ texto, autor }], ultima }.
 // El scheduler global las publica una vez por día a la hora configurada.
@@ -74,7 +74,11 @@ module.exports = {
         c.fraseDelDia = { canalId: canal.id, hora, frases: c.fraseDelDia?.frases ?? [], ultima: c.fraseDelDia?.ultima ?? null };
       });
       return interaction.reply({
-        embeds: [successEmbed(`Frase del día configurada: se publica en ${canal} a las **${hora}:00** (hora de Argentina).\nAgregá frases con \`/frases agregar\`.`)],
+        embeds: [
+          successEmbed(
+            `Frase del día configurada: se publica en ${canal} a las **${hora}:00** (hora de Argentina).\nAgregá frases con \`/frases agregar\`.`
+          ),
+        ],
         flags: MessageFlags.Ephemeral,
       });
     }
@@ -97,28 +101,37 @@ module.exports = {
     if (sub === 'publicar') {
       const frases = config.fraseDelDia?.frases ?? [];
       if (!frases.length) {
-        return interaction.reply({ embeds: [errorEmbed('No hay frases cargadas. Agregá la primera con `/frases agregar`.')], flags: MessageFlags.Ephemeral });
+        return interaction.reply({
+          embeds: [errorEmbed('No hay frases cargadas. Agregá la primera con `/frases agregar`.')],
+          flags: MessageFlags.Ephemeral,
+        });
       }
+      // Diferido antes de resolver el autor (puede hacer fetch) y de publicar.
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       const frase = frases[Math.floor(Math.random() * frases.length)];
       const autor = await resolverAutor(interaction.guild, frase.autor);
-      const embed = brandEmbed({
-        color: 0x5865f2,
-        title: 'Frase del día',
-        description: `> ${frase.texto}`,
-        footer: `— ${autor} • TriggerBOT`,
-      });
-      await interaction.channel.send({ embeds: [embed] });
-      return interaction.reply({ embeds: [successEmbed('Frase publicada en este canal.')], flags: MessageFlags.Ephemeral });
+      const embed = infoEmbed(`> ${frase.texto}`, 'Frase del día');
+      embed.setFooter({ text: `— ${autor} • TriggerBOT` });
+
+      // Si el canal no acepta mensajes, hay que decirlo: antes se confirmaba la
+      // publicación aunque Discord la hubiera rechazado.
+      const enviado = await interaction.channel.send({ embeds: [embed] }).catch((e) => e);
+      if (enviado instanceof Error) {
+        return interaction.editReply({
+          embeds: [errorEmbed(`No pude publicar la frase en este canal.\n> ${enviado.message}`)],
+        });
+      }
+      return interaction.editReply({ embeds: [successEmbed('Frase publicada en este canal.')] });
     }
 
     if (sub === 'lista') {
       const frases = config.fraseDelDia?.frases ?? [];
       if (!frases.length) {
-        return interaction.reply({ embeds: [errorEmbed('No hay frases cargadas todavía.')], flags: MessageFlags.Ephemeral });
+        return interaction.reply({ embeds: [warnEmbed('No hay frases cargadas todavía.', 'Frases del día')], flags: MessageFlags.Ephemeral });
       }
       const cuerpo = frases.map((f, i) => `**${i + 1}.** ${f.texto} — *${f.autor}*`).join('\n');
       return interaction.reply({
-        embeds: [brandEmbed({ color: 0x5865f2, title: `Frases del día (${frases.length})`, description: cuerpo.slice(0, 4000) })],
+        embeds: [infoEmbed(cuerpo.slice(0, 4000), `Frases del día (${frases.length})`)],
         flags: MessageFlags.Ephemeral,
       });
     }

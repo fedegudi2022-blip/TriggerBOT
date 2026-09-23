@@ -5,7 +5,7 @@
 //   logs      (staff)  → canal donde quedan los transcripts al cerrar
 //   mensaje   (staff)  → texto del panel (el embed de bienvenida del canal de soporte)
 const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags } = require('discord.js');
-const { successEmbed } = require('../utils/replies');
+const { successEmbed, errorEmbed } = require('../utils/replies');
 const { panel } = require('../utils/tickets');
 const { setGuildConfig } = require('../store');
 
@@ -39,8 +39,16 @@ module.exports = {
     const guild = interaction.guild;
 
     if (sub === 'publicar') {
-      await interaction.channel.send(panel(guild));
-      return interaction.reply({ embeds: [successEmbed('Los usuarios ya pueden abrir tickets desde el botón del panel.')], flags: MessageFlags.Ephemeral });
+      // Diferido antes del envío: publicar el panel implica una llamada a la API y
+      // sin esto la interacción puede expirar.
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      const enviado = await interaction.channel.send(panel(guild)).catch((e) => e);
+      if (enviado instanceof Error) {
+        return interaction.editReply({
+          embeds: [errorEmbed(`No pude publicar el panel en este canal.\n> ${enviado.message}`)],
+        });
+      }
+      return interaction.editReply({ embeds: [successEmbed('Los usuarios ya pueden abrir tickets desde el botón del panel.')] });
     }
 
     if (sub === 'categoria') {

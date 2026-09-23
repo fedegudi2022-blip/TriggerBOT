@@ -61,6 +61,7 @@ Los tests corren aislados del `data/` real (usan un directorio temporal) y no to
 | `/ticket publicar/categoria/logs/mensaje` | Panel de soporte con botón, canales privados por ticket y transcript al cerrar | Staff (config) |
 | `/help user` | Guía de comandos para usuarios, por categorías | Todos |
 | `/help staff` | Guía completa (incluye moderación y configuración); respuesta de staff, no visible en canales públicos | Staff |
+| Guía de comandos: `/help user` y `/help staff` | Se arma sola desde los comandos cargados (nunca queda desactualizada) | Todos / Staff |
 | `/userinfo [usuario]` | Ficha de usuario: fechas, roles, permisos, warns | Todos |
 | `/serverinfo` | Ficha del server: dueño, canales, roles, boosts | Todos |
 | `/avatar [usuario]` | Avatar en grande con link de descarga | Todos |
@@ -72,20 +73,24 @@ Los tests corren aislados del `data/` real (usan un directorio temporal) y no to
 | Comando | Qué hace | Permisos |
 |---|---|---|
 | `/warn usuario [razon]` | Advierte a un usuario. **Al 3er warn: timeout de 1 h automático** | Mods |
-| `/warnings usuario` | Muestra el historial de advertencias | Mods |
+| `/warnings usuario` | Historial de advertencias, paginado con botones (aguanta historiales largos) | Mods |
 | `/quitarnota usuario numero [razon]` | Elimina una advertencia del historial | Mods |
 | `/kick usuario [razon]` | Expulsa a un usuario | Mods |
 | `/ban usuario [razon] [borrar_dias]` | Banea y opcionalmente borra mensajes | Mods |
 | `/unban usuario_id [razon]` | Revoca un baneo por ID | Mods |
 | `/softban usuario [borrar_dias] [razon]` | Expulsa borrando sus mensajes (ban + unban) | Mods |
-| `/timeout usuario duracion [razon]` | Silencia de 5 min a 28 días | Mods |
+| `/timeout usuario duracion [razon]` | Silencia de 5 min a 28 días, o **levanta el silencio** con *Quitarlo ahora* | Mods |
 | `/mute usuario [razon]` | Silencia con rol (crea el rol *Silenciado* solo) | Mods |
 | `/unmute usuario [razon]` | Quita el silencio | Mods |
 | `/clear cantidad [usuario] [razon]` | Borra hasta 100 mensajes recientes | Mods |
 | `/lockdown bloquear/desbloquear [canal]` | Cierra o reabre un canal | Mods |
 | `/slowmode segundos [canal]` | Modo lento de 0 s a 6 h | Mods |
 
-> Todos los comandos de moderación validan jerarquía (no podés moderar a alguien con rol igual o superior), avisan al usuario por DM cuando es posible y quedan registrados en el mod-log.
+> Todos los comandos de moderación validan jerarquía (no podés moderar a alguien con rol igual o superior), avisan al usuario por DM **solo si la sanción se aplicó** y quedan registrados en el mod-log con número de caso (que también aparece en la confirmación).
+
+**Cómo responden:** la confirmación es pública (transparencia) y suma la opción `silencioso:true` para que la veas solo vos; el motivo se muestra siempre (o *No especificado*), los silencios indican **cuándo terminan** con la hora local de cada persona, y si Discord rechaza una acción el bot lo dice con el motivo real y registra el caso como rechazado — nunca confirma algo que no pasó.
+
+> Los errores de Discord se reportan tal cual (permisos, jerarquía, límites) y **todo intento queda en el mod-log**, aplicado o no: es lo que permite auditar el servidor después.
 
 ### Tickets de soporte
 
@@ -179,16 +184,19 @@ Si la respuesta no está en esos datos, el bot **lo dice y te deriva al staff** 
 **Acciones de moderación por chat:** si un usuario le pide `@TriggerBOT banear a @fulano por flodeo`, la IA interpreta el pedido y muestra un embed con botones. **Solo el staff** (permisos de moderación o roles de `/config staff`) puede apretar **Ejecutar**; la acción queda registrada en el mod-log. Hay cooldown de 20 s por usuario para evitar abusos y las solicitudes expiran a los 5 minutos.
 
 **Cadena de respaldo automática (optimizada por velocidad):**
-1. **Groq** (principal) — chips LPU: responde en ~0,3-0,8 s, 5-10x más rápido que Gemini.
-2. **Gemini** (respaldo de calidad) — si Groq no tiene clave, falla o se queda sin cuota; se autorrepara si Google retira un modelo.
+1. **Groq** (principal) — chips LPU: responde en ~0,3-0,8 s, 5-10x más rápido que Gemini. Modelos del plan gratuito: `openai/gpt-oss-120b` (calidad) y `openai/gpt-oss-20b` (1000 tps, el más rápido).
+2. **Gemini** (respaldo de calidad) — si Groq no tiene clave, falla o se queda sin cuota; si Google retira un modelo, el bot lo descarta solo.
 3. **Respuestas locales** — si no hay claves o todo falla, usa su repertorio propio. Nunca se queda mudo.
 
 **Optimizado para responder rápido:**
 - **Respuestas instantáneas (0 ms):** preguntas canónicas (quién te creó, cuál es la web, las redes, saludos de identidad) se responden sin llamar a la IA — funcionan siempre, incluso sin claves o con los proveedores caídos.
-- **Enrutado por complejidad:** los mensajes sociales cortos ("hola", "todo bien?", "gracias", "jaja") van al modelo chico `llama-3.1-8b-instant` (~2-3x más rápido) y el `70b` queda para preguntas que sí requieren pensar.
+- **Carrera con respaldo (hedged request):** el proveedor preferido arranca al instante y, si no contestó en 1,4 s, el respaldo sale **en paralelo** y gana el primero que responda. Cuando Groq va rápido no cuesta ninguna llamada extra; cuando está lento, la respuesta llega igual en ~1,5 s en vez de esperar la cadena completa.
+- **Memoria de fallos:** un modelo retirado o sin permiso se descarta por horas y una clave inválida aparta al proveedor según el error (1 h si la clave no sirve, 1 min si se agotó la cuota). Sin esto, un modelo muerto costaba un viaje de red fallido en **cada** mensaje.
+- **Prueba de modelos al arrancar:** el bot prueba el modelo elegido con una petición mínima antes de que llegue el primer mensaje, así el usuario nunca paga el descubrimiento de un modelo caído.
+- **Enrutado por complejidad:** los mensajes sociales cortos ("hola", "todo bien?", "gracias", "jaja") van al modelo chico `openai/gpt-oss-20b` (~2x más rápido que el grande) y el `120b` queda para preguntas que sí requieren pensar.
 - **Dos perfiles:** *charla* (temperatura 0,75, respuestas de 1-3 frases) y *consulta* (temperatura 0,3, respuestas completas). Es lo que hace que no invente cuando le preguntan algo concreto.
 - **Respuestas largas:** si el modelo se queda sin tokens, reintenta con más margen; al publicar, el texto se parte en varios mensajes sin cortar palabras al medio.
-- **Precalentamiento:** el bot consulta la lista de modelos al arrancar, no en el primer mensaje: la primera respuesta tras un reinicio no se come la demora del listado.
+- **Precalentamiento:** el bot consulta la lista de modelos al arrancar, no en el primer mensaje: la primera respuesta tras un reinicio no se come la demora del listado. Si el listado falla, no lo reintenta en cada mensaje (antes costaba hasta 5 s por respuesta).
 - Los modelos con **thinking** (razonamiento previo) están excluidos: solo chat directo.
 
 Para activarlo:
@@ -197,7 +205,7 @@ Para activarlo:
 3. Agregá `GEMINI_API_KEY` y `GROQ_API_KEY` en el panel de Wispbyte (Startup → Variables) o en tu `.env` local.
 4. (Opcional) `GEMINI_MODEL` / `GROQ_MODEL` para fijar modelos — por defecto el bot detecta solo los mejores disponibles.
 
-Con `/status` ves qué modelo está usando cada IA.
+Con `/status` ves qué modelo usa cada IA, su **latencia real** (mediana y peor 5 %), los errores acumulados, si algún proveedor está en pausa y qué modelos quedaron descartados.
 
 **Sin clave configurada el bot funciona igual**: usa su repertorio local de respuestas. Si la IA falla o se queda sin cuota, también cae al respaldo automáticamente — nunca se queda mudo.
 

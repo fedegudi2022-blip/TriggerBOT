@@ -61,8 +61,8 @@ function canalVozFake(id, guild) {
       edit: async (idOrRole, permisos) => {
         canal.overwriteEdits.push({ id: idOrRole, permisos });
       },
-      delete: async (id) => {
-        canal.overwritesEliminados.push(id);
+      delete: async (idBorrado) => {
+        canal.overwritesEliminados.push(idBorrado);
       },
     },
     setParentLlamadas: [],
@@ -117,7 +117,10 @@ function guildFake() {
   return guild;
 }
 
-function guild() {
+// Acceso al guild de prueba. Se llama guildActual (y no guild) para no chocar con
+// los parámetros `guild` de los fakes: un shadowing acá no rompe nada, pero ensucia
+// el lint y esconde errores de verdad.
+function guildActual() {
   return guilds.get(GUILD_ID);
 }
 const guilds = new Map();
@@ -153,7 +156,7 @@ function reset() {
   store.escribir(GUILD_ID, {});
   guilds.clear();
   guilds.set(GUILD_ID, guildFake());
-  return guild();
+  return guildActual();
 }
 
 describe('helpers puros', () => {

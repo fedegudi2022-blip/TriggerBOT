@@ -38,8 +38,14 @@ function validarAccionDelBot(guild, member, permiso) {
 }
 
 // Intenta enviar un DM; ignora el error si el usuario tiene los DMs cerrados.
+// El try/catch (y no solo .catch()) importa porque varios comandos la llaman con
+// `void avisarPorDM(...)`: un fallo síncrono escapearía como unhandledRejection.
 async function avisarPorDM(user, texto) {
-  await user.send(texto).catch(() => {});
+  try {
+    await user.send(texto);
+  } catch {
+    /* DMs cerrados, usuario bloqueado o cuenta inexistente: no es un problema del comando */
+  }
 }
 
 module.exports = { motivoNoModerable, validarAccionDelBot, avisarPorDM };

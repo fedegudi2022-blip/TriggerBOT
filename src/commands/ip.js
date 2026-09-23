@@ -1,13 +1,16 @@
 // /ip — la IP para conectar, lista para copiar. Sin args muestra todas; con
 // filtro muestra solo ese server con su mapa y jugadores de ahora mismo.
 const { SlashCommandBuilder, MessageFlags } = require('discord.js');
-const { brandEmbed } = require('../utils/replies');
+const { successEmbed, warnEmbed } = require('../utils/replies');
 const monitoreo = require('../utils/monitoreo');
 const { getGuildConfig } = require('../store');
 
 // Compara sin acentos ni mayúsculas: "publico" encuentra "PÚBLICO CLÁSICO".
 function normalizar(t) {
-  return String(t).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  return String(t)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
 }
 
 // Emoji según la ocupación del server.
@@ -28,7 +31,7 @@ module.exports = {
 
     if (!servers.length) {
       return interaction.reply({
-        embeds: [brandEmbed({ color: 0xfee75c, title: '🎮 Sin servidores configurados', description: 'El staff todavía no los cargó en `/config → Servidores CS 1.6`.' })],
+        embeds: [warnEmbed('El staff todavía no los cargó en `/config → Servidores CS 1.6`.', '🎮 Sin servidores configurados')],
         flags: MessageFlags.Ephemeral,
       });
     }
@@ -40,10 +43,14 @@ module.exports = {
 
     if (!elegidos.length) {
       return interaction.reply({
-        embeds: [brandEmbed({ color: 0xfee75c, title: '🎮 No encontré ese servidor', description: `Probá con: ${servers.map((s) => `\`${s.nombre}\``).join(' · ')}` })],
+        embeds: [warnEmbed(`Probá con: ${servers.map((s) => `\`${s.nombre}\``).join(' · ')}`, '🎮 No encontré ese servidor')],
         flags: MessageFlags.Ephemeral,
       });
     }
+
+    // Diferido antes de las consultas A2S: cada server puede tardar hasta su timeout
+    // y sin esto Discord cierra la interacción antes de que lleguen los datos.
+    await interaction.deferReply();
 
     const resultados = await Promise.all(
       elegidos.map(async (server) => {
@@ -57,19 +64,16 @@ module.exports = {
       if (!resultado.ok) return `**${server.nombre}** — 🔴 caído\n> \`${host}:${puerto}\``;
 
       const d = resultado.datos;
-      const conMapa = filtro
-        ? ` — 🗺️ \`${d.mapa}\` — ${estado(d.jugadores, d.maximo)} **${d.jugadores}/${d.maximo}**`
-        : '';
+      const conMapa = filtro ? ` — 🗺️ \`${d.mapa}\` — ${estado(d.jugadores, d.maximo)} **${d.jugadores}/${d.maximo}**` : '';
       return `**${server.nombre}**${conMapa}\n> \`${host}:${puerto}\``;
     });
 
-    const embed = brandEmbed({
-      color: 0x57f287,
-      title: '🔗 IPs para conectarte',
-      description: lineas.join('\n\n') + '\n\n**Cómo entrar:** copiá la IP → abrí CS 1.6 → consola (`~`) → `connect IP`',
-      footer: 'TriggerBOT • /servidores para ver el estado completo en vivo',
-    });
+    const embed = successEmbed(
+      lineas.join('\n\n') + '\n\n**Cómo entrar:** copiá la IP → abrí CS 1.6 → consola (`~`) → `connect IP`',
+      '🔗 IPs para conectarte'
+    );
+    embed.setFooter({ text: 'TriggerBOT • /servidores para ver el estado completo en vivo' });
 
-    return interaction.reply({ embeds: [embed] });
+    return interaction.editReply({ embeds: [embed] });
   },
 };

@@ -12,7 +12,7 @@ const {
   rangoDe,
 } = require('../niveles');
 const { asignarRolesNivel } = require('../utils/rolesNivel');
-const { brandEmbed } = require('../utils/replies');
+const { brandEmbed, COLORS } = require('../utils/replies');
 const { getGuildConfig } = require('../store');
 const { procesarMensajeParaSpam } = require('../utils/proteccion');
 
@@ -124,7 +124,7 @@ async function anunciarProgreso(message, progreso) {
   for (const definicion of progreso.logrosNuevos) {
     if (!definicion?.id) continue;
     const embed = brandEmbed({
-      color: 0xf1c40f,
+      color: COLORS.logro,
       title: `${definicion.emoji} ${definicion.nombre}`,
       description:
         `**${message.author}** desbloqueó un logro nuevo.\n` +
@@ -157,7 +157,7 @@ async function manejarMencion(message) {
   // Ping rápido con formato del bot; el resto es charla o acciones con IA.
   if (texto === 'ping') {
     const embed = brandEmbed({
-      color: 0x57f287,
+      color: COLORS.success,
       title: 'Pong!',
       description: `**Latencia de la API:** ${Math.round(client.ws.ping)}ms\nPara más detalle usá /ping.`,
     });

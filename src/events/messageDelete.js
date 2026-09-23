@@ -1,5 +1,6 @@
 const { Events } = require('discord.js');
 const { logEvent, cita, tiempoRelativo } = require('../utils/log');
+const { COLORS } = require('../utils/replies');
 
 module.exports = {
   name: Events.MessageDelete,
@@ -25,7 +26,7 @@ module.exports = {
     fields.push({ name: 'Contenido', value: cita(contenido) });
 
     logEvent(message.guild, {
-      color: 0xed4245,
+      color: COLORS.error,
       title: 'Mensaje borrado',
       fields,
     });

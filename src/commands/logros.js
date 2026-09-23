@@ -1,6 +1,6 @@
 const { SlashCommandBuilder } = require('discord.js');
 const { datosDe, posicion, totalUsuarios, LOGROS } = require('../niveles');
-const { brandEmbed, miles } = require('../utils/replies');
+const { brandEmbed, miles, COLORS } = require('../utils/replies');
 
 // Barra ASCII de 10 celdas para el progreso de cada logro (estilo /estadisticas).
 function barraLogro(progreso) {
@@ -59,7 +59,7 @@ module.exports = {
     const quedanPendientes = pendientes.length > 0;
 
     const embed = brandEmbed({
-      color: desbloqueados.length >= LOGROS.length ? 0xf1c40f : 0x5865f2,
+      color: desbloqueados.length >= LOGROS.length ? COLORS.logro : COLORS.info,
       title: `Logros de ${user.username}`,
       thumbnail: user.displayAvatarURL({ size: 256 }),
       description:

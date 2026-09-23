@@ -6,7 +6,7 @@ const {
   MessageFlags,
 } = require('discord.js');
 const { logAction } = require('./modlog');
-const { successEmbed, errorEmbed, brandEmbed } = require('./replies');
+const { successEmbed, errorEmbed, brandEmbed, COLORS } = require('./replies');
 const { validarAccionDelBot } = require('./moderation');
 
 const LABELS = {
@@ -95,7 +95,7 @@ async function ejecutarAccion(interaction, accion, miembro, motivo, duracionMin)
     }
     logAction(guild, {
       action: 'Advertencia (warn)',
-      color: 0xfee75c,
+      color: COLORS.warn,
       target: miembro.user,
       moderator: interaction.user,
       reason: motivo,
@@ -220,7 +220,7 @@ async function pedirConfirmacion(message, solicitud) {
 
   const label = LABELS[solicitud.accion];
   const embed = brandEmbed({
-    color: 0xfee75c,
+    color: COLORS.warn,
     title: `${label.titulo} — confirmación requerida`,
     description:
       `${message.author} pidió por chat que ${label.verbo} a **${miembro.user.tag}**.\n` +
@@ -274,7 +274,7 @@ async function manejarBoton(interaction) {
 
   if (interaction.customId.endsWith('no')) {
     return interaction.update({
-      embeds: [brandEmbed({ color: 0x99aab5, title: '❌ Solicitud cancelada', description: `Cancelada por ${interaction.user}.` })],
+      embeds: [brandEmbed({ color: COLORS.gris, title: '❌ Solicitud cancelada', description: `Cancelada por ${interaction.user}.` })],
       components: [],
     });
   }

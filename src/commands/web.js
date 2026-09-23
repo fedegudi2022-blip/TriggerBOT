@@ -1,6 +1,6 @@
 // /web — link oficial de la página TriGGer.Arena con botón directo.
 const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const { brandEmbed } = require('../utils/replies');
+const { brandEmbed, COLORS } = require('../utils/replies');
 const { WEB } = require('../comunidad');
 
 module.exports = {
@@ -8,7 +8,7 @@ module.exports = {
 
   async execute(interaction) {
     const embed = brandEmbed({
-      color: 0x57f287,
+      color: COLORS.success,
       title: '🌐 TriGGer.Arena — Sitio oficial',
       description:
         `Entrá a **${WEB}** para novedades, torneos y todo lo de la comunidad.\n\n` +

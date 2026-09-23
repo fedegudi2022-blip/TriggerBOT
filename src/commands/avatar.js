@@ -1,11 +1,13 @@
 const { SlashCommandBuilder, MessageFlags, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const { brandEmbed } = require('../utils/replies');
+const { brandEmbed, COLORS } = require('../utils/replies');
 
 // Formatos que ofrece Discord y para qué sirve cada uno.
+// Los emojis van como escapes Unicode: así el archivo queda portable y ningún
+// editor o herramienta que no respete UTF-8 los borra por accidente.
 const FORMATOS = [
-  { clave: 'png', etiqueta: 'PNG', emoji: '🖼️' },
-  { clave: 'jpg', etiqueta: 'JPG', emoji: '📸' },
-  { clave: 'webp', etiqueta: 'WEBP', emoji: '🕸️' },
+  { clave: 'png', etiqueta: 'PNG', emoji: '\u{1F5BC}\uFE0F' },
+  { clave: 'jpg', etiqueta: 'JPG', emoji: '\u{1F4F8}' },
+  { clave: 'webp', etiqueta: 'WEBP', emoji: '\u{1F578}\uFE0F' },
 ];
 
 module.exports = {
@@ -17,12 +19,18 @@ module.exports = {
   async execute(interaction) {
     const user = interaction.options.getUser('usuario') ?? interaction.user;
 
-    // Fetch con force para tener el color de acento del perfil fresco.
-    const completo = await interaction.client.users.fetch(user.id, { force: true }).catch(() => null);
-    const member = await interaction.guild.members.fetch(user.id).catch(() => null);
+    // Se difiere ANTES de cualquier fetch: pedir el perfil completo puede tardar y
+    // sin esto Discord cierra la interacción a los 3 s con "no respondió a tiempo".
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+    // El miembro ya viene resuelto en la interacción (cero fetch para quien está en
+    // el servidor). El perfil completo solo se pide cuando hace falta el color de
+    // acento, es decir cuando el usuario no tiene ningún rol con color.
+    const member = interaction.options.getMember('usuario') ?? (await interaction.guild.members.fetch(user.id).catch(() => null));
+    const completo = member?.displayColor ? null : await interaction.client.users.fetch(user.id).catch(() => null);
 
     // Prioridad de color: rol más alto del miembro > acento del perfil > azul del bot.
-    const color = member?.displayColor || completo?.accentColor || 0x5865f2;
+    const color = member?.displayColor || completo?.accentColor || COLORS.info;
 
     // Avatar específico del servidor (si el usuario tiene uno distinto al global).
     const avatarServidor = member?.avatar;
@@ -63,6 +71,6 @@ module.exports = {
       filas.push(filaServidor);
     }
 
-    return interaction.reply({ embeds: [embed], components: filas, flags: MessageFlags.Ephemeral });
+    return interaction.editReply({ embeds: [embed], components: filas });
   },
 };

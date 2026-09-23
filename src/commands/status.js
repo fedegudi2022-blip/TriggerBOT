@@ -2,7 +2,7 @@
 // CPU, IAs, BD) y se edita el mismo mensaje, sin reescribir el comando.
 const { SlashCommandBuilder, MessageFlags, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { estadoIA, getStatsIA } = require('../utils/ia');
-const { brandEmbed, miles, duracion, UMBRALES, nivel } = require('../utils/replies');
+const { brandEmbed, miles, duracion, UMBRALES, nivel, COLORS } = require('../utils/replies');
 const db = require('../db/mariadb');
 
 // Snapshot de CPU al arrancar el módulo, para calcular el uso medio del proceso.
@@ -13,7 +13,24 @@ const REFRESH_ID = 'status:refresh';
 
 // Arma el embed con mediciones ya hechas (lo comparten el slash y el botón refrescar).
 function vistaStatus(client, m) {
-  const chipIA = (proveedor) => (proveedor.configurada ? `\`${proveedor.modelo}\`` : '`—` sin clave');
+  // Chip de una IA: modelo en uso + latencia medida (mediana real de las últimas
+  // respuestas). Si el proveedor está apartado, se dice por qué: es la información
+  // que antes había que adivinar mirando los logs del server.
+  const chipIA = (proveedor) => {
+    if (!proveedor.configurada) return '`—` sin clave';
+    if (proveedor.enPausa) return `⏸️ en pausa · ${proveedor.motivoPausa}`;
+    if (!proveedor.modelo) return '❌ sin modelos disponibles';
+    return `\`${proveedor.modelo}\`${proveedor.p50 != null ? ` · **${proveedor.p50} ms**` : ''}`;
+  };
+
+  // Línea de velocidad: mediana y p95 de cada proveedor, más los modelos descartados.
+  const vel = (etiqueta, p) => {
+    if (!p.configurada) return null;
+    if (!p.muestras) return `${etiqueta}: sin muestras todavía`;
+    const bajas = p.modelosCaidos.length ? ` · ${p.modelosCaidos.length} modelo(s) descartado(s)` : '';
+    return `${etiqueta}: **${p.p50} ms** de mediana · ${p.p95} ms en el peor 5% · ${p.muestras} respuesta(s)${bajas}`;
+  };
+  const velocidadIA = [vel('Groq', m.ia.groq), vel('Gemini', m.ia.gemini)].filter(Boolean).join('\n') || 'Sin datos de IA todavía';
 
   const embed = brandEmbed({
     color: m.color,
@@ -35,6 +52,7 @@ function vistaStatus(client, m) {
       { name: '🟢 Node.js', value: `\`${process.version}\``, inline: true },
       { name: '🧠 IA principal (Groq)', value: chipIA(m.ia.groq), inline: true },
       { name: '🧠 Respaldo (Gemini)', value: chipIA(m.ia.gemini), inline: true },
+      { name: '⚡ Velocidad de la IA', value: velocidadIA, inline: false },
       { name: '💬 Respuestas de IA', value: m.statsIA, inline: false },
       { name: '🗄️ Base de datos (MariaDB)', value: m.textoDB, inline: false },
     ],
@@ -85,9 +103,12 @@ async function medir(client) {
     textoDB = `✅ Conectada — **${miles(db.estado.subidasOk)}** respaldos en la nube${hace}`;
   } else textoDB = `❌ Error de conexión${db.estado.ultimoError ? `: \`${db.estado.ultimoError}\`` : ''}`;
 
-  // Color general: verde si todo bien; amarillo si algo está degradado; rojo si la BD configurada falla.
-  const degradado = (api !== null && api > UMBRALES.ping.ok) || !iaOk;
-  const color = db.configurada && !dbOk ? 0xed4245 : degradado ? 0xfee75c : 0x57f287;
+  // Color general: verde si todo bien; amarillo si algo está degradado; rojo si la BD
+  // configurada falla. La IA cuenta como degradada si el principal está en pausa o
+  // si su mediana de respuesta se estira más de lo razonable.
+  const iaLenta = ia.groq.configurada && ia.groq.p50 != null && ia.groq.p50 > 2500;
+  const degradado = (api !== null && api > UMBRALES.ping.ok) || !iaOk || ia.groq.enPausa || iaLenta;
+  const color = db.configurada && !dbOk ? COLORS.error : degradado ? COLORS.warn : COLORS.success;
   const estadoGeneral = db.configurada && !dbOk ? 'Degradado' : degradado ? 'Funcionando con avisos' : 'Todo en orden';
 
   return { ia, dbOk, api, calPing, mem, heap, calMem, cpu, statsIA, textoDB, degradado, color, estadoGeneral };

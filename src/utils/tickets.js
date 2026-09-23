@@ -5,7 +5,7 @@
 // Config (config.tickets en store.js): { categoriaId, canalLogs, mensajes }
 // Estado de cada ticket (en el topic del canal): guildId:userId:numero
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits, ChannelType, MessageFlags, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
-const { brandEmbed } = require('./replies');
+const { brandEmbed, COLORS } = require('./replies');
 const { getGuildConfig, setGuildConfig } = require('../store');
 
 function configDe(guildId) {
@@ -104,7 +104,7 @@ async function abrirTicketInterno(interaction, motivo, { config, raiz }) {
     content: `${user}, acá está tu ticket. El staff te va a responder a la brevedad.`,
     embeds: [
       brandEmbed({
-        color: 0x5865f2,
+        color: COLORS.info,
         title: `🎫 Ticket #${numeroTxt}`,
         description: `**Usuario:** ${user} (\`${user.tag}\`)\n**Motivo:** ${motivo || 'sin especificar'}`,
         footer: 'TriggerBOT • usá el botón para cerrar cuando esté resuelto',
@@ -114,7 +114,7 @@ async function abrirTicketInterno(interaction, motivo, { config, raiz }) {
   });
 
   loguear(guild, {
-    color: 0x57f287,
+    color: COLORS.success,
     title: '🎫 Ticket abierto',
     description: `${user} abrió el ticket **#${numeroTxt}** → <#${canal.id}>`,
   });
@@ -128,7 +128,7 @@ async function cerrarTicket(interaction, cerradoPor) {
   const [, userId, numero] = canal.topic?.split(':') ?? [];
   const guild = canal.guild;
 
-  await canal.send({ embeds: [brandEmbed({ color: 0xfee75c, title: '📦 Generando transcript…', description: `El canal se cierra en un momento, ${cerradoPor}.` })] }).catch(() => {});
+  await canal.send({ embeds: [brandEmbed({ color: COLORS.warn, title: '📦 Generando transcript…', description: `El canal se cierra en un momento, ${cerradoPor}.` })] }).catch(() => {});
 
   // Transcript: todos los mensajes del canal, en orden (de a 100 por fetch).
   // Tope práctico: 50.000 mensajes (500 páginas). Un ticket normal nunca llega;
@@ -159,7 +159,7 @@ async function cerrarTicket(interaction, cerradoPor) {
   await canal.send({
     embeds: [
       brandEmbed({
-        color: 0xed4245,
+        color: COLORS.error,
         title: `🔒 Ticket cerrado por ${cerradoPor.tag}`,
         description: `Se guardó un transcript con **${lineas.length}** mensajes. El canal se borra en **30 segundos**.`,
       }),
@@ -175,7 +175,7 @@ async function cerrarTicket(interaction, cerradoPor) {
       .send({
         embeds: [
           brandEmbed({
-            color: 0xfee75c,
+            color: COLORS.warn,
             title: `🔒 Ticket #${numero} cerrado`,
             description: `**Abierto por:** <@${userId}>\n**Cerrado por:** ${cerradoPor}\n**Mensajes:** ${lineas.length}`,
           }),
@@ -191,7 +191,7 @@ async function cerrarTicket(interaction, cerradoPor) {
     if (duenio) {
       await duenio
         .send({
-          embeds: [brandEmbed({ color: 0x5865f2, title: `🎫 Tu ticket #${numero} fue cerrado`, description: `Gracias por contactar al staff de **${guild.name}**. Te dejamos la conversación por si la necesitás.` })],
+          embeds: [brandEmbed({ color: COLORS.info, title: `🎫 Tu ticket #${numero} fue cerrado`, description: `Gracias por contactar al staff de **${guild.name}**. Te dejamos la conversación por si la necesitás.` })],
           files: [{ attachment: transcript, name: nombreArchivo }],
         })
         .catch(() => {});
@@ -199,7 +199,7 @@ async function cerrarTicket(interaction, cerradoPor) {
   }
 
   loguear(guild, {
-    color: 0xfee75c,
+    color: COLORS.warn,
     title: `🔒 Ticket #${numero} cerrado`,
     description: `Por ${cerradoPor} · transcript enviado a logs y al DM del usuario.`,
   });
@@ -222,7 +222,7 @@ function panel(guild) {
   return {
     embeds: [
       brandEmbed({
-        color: 0x5865f2,
+        color: COLORS.info,
         title: '🎫 Soporte',
         description:
           config.mensajes ||

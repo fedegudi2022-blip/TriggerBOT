@@ -2,7 +2,7 @@
 // Consulta A2S en el momento; con `publicar` deja un panel fijo que el monitoreo
 // actualiza solo cada 90 s (Estado/Jugadores/Mapa/IP siempre frescos).
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
-const { brandEmbed } = require('../utils/replies');
+const { infoEmbed, warnEmbed, errorEmbed, successEmbed } = require('../utils/replies');
 const monitoreo = require('../utils/monitoreo');
 const { getGuildConfig, setGuildConfig } = require('../store');
 
@@ -10,9 +10,7 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('servidores')
     .setDescription('Muestra el estado en vivo de los servidores CS 1.6 de la comunidad')
-    .addBooleanOption((o) =>
-      o.setName('publicar').setDescription('Staff: publica acá el panel que se actualiza solo')
-    ),
+    .addBooleanOption((o) => o.setName('publicar').setDescription('Staff: publica acá el panel que se actualiza solo')),
 
   async execute(interaction) {
     const guild = interaction.guild;
@@ -22,11 +20,7 @@ module.exports = {
     if (!servers.length) {
       return interaction.reply({
         embeds: [
-          brandEmbed({
-            color: 0xfee75c,
-            title: '🎮 Sin servidores configurados',
-            description: 'El staff todavía no cargó los servers. Se agregan desde `/config → Servidores CS 1.6`.',
-          }),
+          warnEmbed('El staff todavía no cargó los servers. Se agregan desde `/config → Servidores CS 1.6`.', '🎮 Sin servidores configurados'),
         ],
         flags: MessageFlags.Ephemeral,
       });
@@ -36,12 +30,16 @@ module.exports = {
     if (interaction.options.getBoolean('publicar')) {
       if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
         return interaction.reply({
-          embeds: [brandEmbed({ color: 0xed4245, title: 'Solo el staff puede publicar el panel' })],
+          embeds: [errorEmbed('Publicar el panel fijo del servidor es una acción de staff.', 'Solo el staff puede publicar el panel')],
           flags: MessageFlags.Ephemeral,
         });
       }
       return publicarPanel(interaction);
     }
+
+    // Diferido antes de consultar: con varios servers, esperar el A2S de todos
+    // supera los 3 s que Discord da para responder.
+    await interaction.deferReply();
 
     // Consulta todos los servers en paralelo y arma una tarjeta por server (como la web).
     const resultados = await Promise.all(
@@ -57,7 +55,7 @@ module.exports = {
       return monitoreo.tarjetaServidor(server, host, puerto, snapshot);
     });
 
-    return interaction.reply({ embeds: tarjetas.slice(0, 10) });
+    return interaction.editReply({ embeds: tarjetas.slice(0, 10) });
   },
 };
 
@@ -67,7 +65,7 @@ async function publicarPanel(interaction) {
 
   const guild = interaction.guild;
   const mensaje = await interaction.channel.send({
-    embeds: [brandEmbed({ color: 0x5865f2, title: '🎮 Panel de servidores', description: 'Generando panel…' })],
+    embeds: [infoEmbed('Generando panel…', '🎮 Panel de servidores')],
   });
 
   setGuildConfig(guild.id, (c) => {
@@ -91,11 +89,10 @@ async function publicarPanel(interaction) {
 
   return interaction.editReply({
     embeds: [
-      brandEmbed({
-        color: 0x57f287,
-        title: '📌 Panel publicado',
-        description: `El panel se actualiza solo cada 90 s en <#${interaction.channelId}>. Para moverlo, volvé a usar /servidores → publicar en el canal nuevo.`,
-      }),
+      successEmbed(
+        `El panel se actualiza solo cada 90 s en <#${interaction.channelId}>. Para moverlo, volvé a usar /servidores → publicar en el canal nuevo.`,
+        '📌 Panel publicado'
+      ),
     ],
   });
 }

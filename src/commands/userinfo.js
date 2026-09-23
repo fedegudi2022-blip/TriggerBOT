@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, MessageFlags, PermissionFlagsBits } = require('discord.js');
-const { brandEmbed } = require('../utils/replies');
+const { brandEmbed, COLORS } = require('../utils/replies');
 const { getWarns } = require('../warns');
 
 const PERMISOS_INTERESANTES = [
@@ -31,6 +31,10 @@ module.exports = {
   async execute(interaction) {
     const user = interaction.options.getUser('usuario') ?? interaction.user;
 
+    // Diferido antes del fetch: la ficha se arma con datos de la API y sin esto
+    // Discord corta la interacción a los 3 s.
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
     // El miembro ya viaja resuelto con la interacción (roles, permisos, apodo y fecha
     // de ingreso incluidos): cero fetch de red para la parte de miembro.
     const member =
@@ -44,7 +48,7 @@ module.exports = {
 
     // Color de la ficha: el del rol más alto del miembro; si no tiene, el color
     // de acento de su banner de perfil; si tampoco, el azul del bot.
-    const color = member?.displayColor || completo?.accentColor || 0x5865f2;
+    const color = member?.displayColor || completo?.accentColor || COLORS.info;
 
     // Rol más alto (sin @everyone): lo usamos para la insignia de jerarquía.
     const rolTop = member?.roles.highest && member.roles.highest.id !== interaction.guild.id ? member.roles.highest : null;
@@ -98,6 +102,6 @@ module.exports = {
     const banner = completo?.bannerURL({ size: 1024 });
     if (banner) embed.setImage(banner);
 
-    return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
+    return interaction.editReply({ embeds: [embed] });
   },
 };

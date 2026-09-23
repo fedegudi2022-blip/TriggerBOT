@@ -14,8 +14,14 @@ const {
   PermissionFlagsBits,
 } = require('discord.js');
 const { getGuildConfig, setGuildConfig } = require('../store');
-const { brandEmbed, errorEmbed } = require('./replies');
+const { brandEmbed, errorEmbed, COLORS } = require('./replies');
 const { POR_DEFECTO: PROTECCION_DEFECTO } = require('./proteccion');
+const {
+  ACCIONES: ACCIONES_ESCALADA,
+  LIMITES: LIMITES_ESCALADA,
+  resolver: resolverEscalada,
+  describir: describirEscalada,
+} = require('./escalada');
 
 // ---------- Definición de secciones ----------
 const SECCIONES = [
@@ -25,6 +31,12 @@ const SECCIONES = [
   { value: 'avisos', label: 'Avisos al staff', description: 'Canal de notificaciones para el equipo', emoji: '4️⃣' },
   { value: 'staff', label: 'Roles de staff', description: 'Quiénes son admin, mod y helper para el bot', emoji: '5️⃣' },
   { value: 'mute', label: 'Rol de silenciado', description: 'Rol que usa /mute (si no hay, se crea uno solo)', emoji: '6️⃣' },
+  {
+    value: 'escalada',
+    label: 'Escalada de avisos',
+    description: 'Qué pasa cuando alguien acumula advertencias',
+    emoji: '⚠️',
+  },
   { value: 'ia', label: 'Chat con IA', description: 'Prender o apagar las respuestas al mencionar al bot', emoji: '7️⃣' },
   { value: 'niveles', label: 'Niveles y XP', description: 'Canal donde se anuncian subidas de nivel y logros', emoji: '8️⃣' },
   { value: 'frases', label: 'Frase del día', description: 'Canal y hora de la frase automática diaria', emoji: '9️⃣' },
@@ -79,7 +91,7 @@ function panelCompleto(guild) {
 
   const embed = new EmbedBuilder()
     .setTitle('Configuración del servidor')
-    .setColor(0x5865f2)
+    .setColor(COLORS.info)
     .setDescription('Usá el menú de abajo para configurar cada sección. Todo se guarda al instante.')
     .addFields(
       { name: 'Bienvenida', value: estado(config.welcome?.channelId ? `<#${config.welcome.channelId}>` : null), inline: true },
@@ -114,7 +126,7 @@ function vistaSeccion(guild, seccion, guardado = false) {
   if (seccion === 'bienvenida') {
     embed = new EmbedBuilder()
       .setTitle('Bienvenida y autorol')
-      .setColor(0x5865f2)
+      .setColor(COLORS.info)
       .setDescription(
         `**Canal:** ${canalActual(config.welcome?.channelId)}\n` +
           `**Autorol:** ${rolActual(config.autorole)}\n` +
@@ -150,7 +162,7 @@ function vistaSeccion(guild, seccion, guardado = false) {
 
     embed = new EmbedBuilder()
       .setTitle(datos.titulo)
-      .setColor(0x5865f2)
+      .setColor(COLORS.info)
       .setDescription(`**Canal actual:** ${datos.actual}\n\n${datos.desc}${nota}`);
 
     components.push(
@@ -165,7 +177,7 @@ function vistaSeccion(guild, seccion, guardado = false) {
   } else if (seccion === 'staff') {
     embed = new EmbedBuilder()
       .setTitle('Roles de staff')
-      .setColor(0x5865f2)
+      .setColor(COLORS.info)
       .setDescription(
         `**Admin:** ${rolActual(config.adminRole)}\n**Mod:** ${rolActual(config.modRole)}\n**Helper:** ${rolActual(config.helperRole)}${nota}\n\n` +
           'El staff puede usar los comandos de moderación y confirmar acciones pedidas por chat con IA.'
@@ -186,7 +198,7 @@ function vistaSeccion(guild, seccion, guardado = false) {
   } else if (seccion === 'mute') {
     embed = new EmbedBuilder()
       .setTitle('Rol de silenciado')
-      .setColor(0x5865f2)
+      .setColor(COLORS.info)
       .setDescription(
         `**Rol actual:** ${rolActual(config.muteRole)}${nota}\n\n` +
           'Si no configurás ninguno, /mute crea y configura uno llamado "Silenciado" automáticamente.'
@@ -198,11 +210,50 @@ function vistaSeccion(guild, seccion, guardado = false) {
       )
     );
     components.push(new ActionRowBuilder().addComponents(filaDesactivar('mute').components[0], filaVolver().components[0]));
+  } else if (seccion === 'escalada') {
+    const e = resolverEscalada(config);
+
+    embed = new EmbedBuilder()
+      .setTitle('Escalada de advertencias')
+      .setColor(e.activada ? COLORS.info : COLORS.gris)
+      .setDescription(
+        `**Estado:** ${e.activada ? '🟢 Prendida' : '🔴 Apagada'}${nota}\n\n` +
+          `${describirEscalada(e)}\n\n` +
+          'La advertencia siempre se guarda en el historial del usuario (se ve con `/warnings`); ' +
+          'esto define qué pasa ADEMÁS de guardarla. El DM al usuario refleja solo lo que se aplicó de verdad.'
+      )
+      .setFooter({ text: `Umbral: ${e.umbral} · Duración: ${e.duracion} min · Acción: ${ACCIONES_ESCALADA[e.accion]}` });
+
+    components.push(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId('cfg:toggle:escalada')
+          .setLabel(e.activada ? 'Apagar' : 'Prender')
+          .setStyle(e.activada ? ButtonStyle.Danger : ButtonStyle.Success),
+        new ButtonBuilder().setCustomId('cfg:modalpedir:escalada').setLabel('Ajustar umbral y duración').setStyle(ButtonStyle.Primary)
+      )
+    );
+
+    components.push(
+      new ActionRowBuilder().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId('cfg:set:escalada:accion')
+          .setPlaceholder('Acción al alcanzar el umbral')
+          .addOptions(
+            Object.entries(ACCIONES_ESCALADA).map(([valor, etiqueta]) => ({
+              label: etiqueta,
+              value: valor,
+              default: e.accion === valor,
+            }))
+          )
+      )
+    );
+    components.push(filaVolver());
   } else if (seccion === 'ia') {
     const prendida = config.iaActivada !== false;
     embed = new EmbedBuilder()
       .setTitle('Chat con IA')
-      .setColor(0x5865f2)
+      .setColor(COLORS.info)
       .setDescription(
         `**Estado:** ${prendida ? 'Prendida' : 'Apagada'}${nota}\n\n` +
           'Cuando alguien menciona al bot, responde con IA. También interpreta pedidos de moderación ' +
@@ -227,7 +278,7 @@ function vistaSeccion(guild, seccion, guardado = false) {
 
     embed = new EmbedBuilder()
       .setTitle(esNiveles ? 'Niveles y XP' : 'Frase del día')
-      .setColor(0x5865f2)
+      .setColor(COLORS.info)
       .setDescription(`**Canal actual:** ${canalActual(canalId)}\n\n${extra}${nota}`);
 
     components.push(
@@ -256,7 +307,7 @@ function vistaSeccion(guild, seccion, guardado = false) {
 
     embed = new EmbedBuilder()
       .setTitle('Anti-spam y anti-raid')
-      .setColor(0x5865f2)
+      .setColor(COLORS.info)
       .setDescription(
         `**Estado:** ${p.activado ? '🟢 Prendida' : '🔴 Apagada'}${nota}\n\n` +
           `**Spam:** ${p.spamMensajes} mensajes en ${p.spamSegundos} s → **${ETIQUETA_ACCION_SPAM[p.accionSpam] ?? p.accionSpam}**\n` +
@@ -307,7 +358,7 @@ function vistaSeccion(guild, seccion, guardado = false) {
 
     embed = new EmbedBuilder()
       .setTitle('Servidores CS 1.6')
-      .setColor(0x5865f2)
+      .setColor(COLORS.info)
       .setDescription(
         `**Panel en vivo:** ${canalActual(config.servidores?.canalPanel)}\n` +
           `**Alertas de caída:** ${config.servidores?.monitoreo === false ? 'Apagadas' : 'Prendidas'}\n\n` +
@@ -353,7 +404,7 @@ function vistaSeccion(guild, seccion, guardado = false) {
     const t = config.tickets || {};
     embed = new EmbedBuilder()
       .setTitle('Tickets de soporte')
-      .setColor(0x5865f2)
+      .setColor(COLORS.info)
       .setDescription(
         `**Categoría de tickets:** ${canalActual(t.categoriaId)}\n` +
           `**Canal de transcripts:** ${canalActual(t.canalLogs)}\n` +
@@ -382,7 +433,7 @@ function vistaSeccion(guild, seccion, guardado = false) {
   } else if (seccion === 'desactivar') {
     embed = new EmbedBuilder()
       .setTitle('Desactivar funciones')
-      .setColor(0x5865f2)
+      .setColor(COLORS.info)
       .setDescription('Elegí la función que querés apagar. Te va a pedir confirmación.');
 
     components.push(
@@ -391,7 +442,9 @@ function vistaSeccion(guild, seccion, guardado = false) {
           .setCustomId('cfg:off:menu')
           .setPlaceholder('Elegí la función a desactivar')
           .addOptions(
-            SECCIONES.filter((s) => s.value !== 'desactivar').map((s) => ({
+            // La escalada tiene su propio interruptor en su sección (apagarla desde
+            // acá sería un segundo camino para lo mismo).
+            SECCIONES.filter((s) => !['desactivar', 'escalada'].includes(s.value)).map((s) => ({
               label: s.label,
               value: s.value,
               emoji: s.emoji,
@@ -414,7 +467,7 @@ function vistaSeccion(guild, seccion, guardado = false) {
 function vistaConfirmarDesactivado(feature) {
   const embed = new EmbedBuilder()
     .setTitle('Confirmar desactivado')
-    .setColor(0xfee75c)
+    .setColor(COLORS.warn)
     .setDescription(`¿Seguro que querés desactivar **${NOMBRE_SECCION[feature]}**?`);
 
   return {
@@ -458,6 +511,10 @@ function aplicarSet(guildId, seccion, campo, valor) {
       c[`${campo}Role`] = valor;
     } else if (seccion === 'mute' && campo === 'rol') {
       c.muteRole = valor;
+    } else if (seccion === 'escalada') {
+      // Solo se guarda el valor crudo: utils/escalada.js valida y acota al leer,
+      // así un valor viejo o raro nunca rompe /warn.
+      c.escalada = { ...(c.escalada || {}), [campo]: valor };
     } else if (seccion === 'proteccion') {
       c.proteccion = { ...PROTECCION_DEFECTO, ...(c.proteccion || {}) };
       c.proteccion[campo] = valor;
@@ -477,6 +534,7 @@ function aplicarDesactivado(guildId, feature) {
     else if (feature === 'logs') delete c.logs;
     else if (feature === 'avisos') delete c.avisosChannel;
     else if (feature === 'mute') delete c.muteRole;
+    else if (feature === 'escalada') c.escalada = { ...(c.escalada || {}), activada: false };
     else if (feature === 'niveles') delete c.canalNiveles;
     else if (feature === 'frases') delete c.fraseDelDia;
     else if (feature === 'ia') c.iaActivada = false;
@@ -547,7 +605,7 @@ async function manejarComponente(interaction) {
     if (interaction.isFromMessage()) {
       return interaction.update(vistaSeccion(guild, 'bienvenida', true));
     }
-    return interaction.reply({ embeds: [brandEmbed({ color: 0x57f287, title: 'Mensaje de bienvenida guardado' })], flags: MessageFlags.Ephemeral });
+    return interaction.reply({ embeds: [brandEmbed({ color: COLORS.success, title: 'Mensaje de bienvenida guardado' })], flags: MessageFlags.Ephemeral });
   }
 
   // Toggle de la IA
@@ -558,6 +616,67 @@ async function manejarComponente(interaction) {
       c.iaActivada = nuevo;
     });
     return interaction.update(vistaSeccion(guild, 'ia', true));
+  }
+
+  // Toggle de la escalada de advertencias
+  if (accion === 'toggle' && partes[2] === 'escalada' && interaction.isButton()) {
+    const actual = resolverEscalada(getGuildConfig(guild.id));
+    setGuildConfig(guild.id, (c) => {
+      c.escalada = { ...(c.escalada || {}), activada: !actual.activada };
+    });
+    return interaction.update(vistaSeccion(guild, 'escalada', true));
+  }
+
+  // Botón que pide el modal de umbral y duración de la escalada
+  if (accion === 'modalpedir' && partes[2] === 'escalada' && interaction.isButton()) {
+    const e = resolverEscalada(getGuildConfig(guild.id));
+    const modal = new ModalBuilder()
+      .setCustomId('cfg:modal:escalada')
+      .setTitle('Escalada de advertencias')
+      .addComponents(
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder()
+            .setCustomId('umbral')
+            .setLabel(`Advertencias para disparar (${LIMITES_ESCALADA.umbral[0]}-${LIMITES_ESCALADA.umbral[1]})`)
+            .setStyle(TextInputStyle.Short)
+            .setValue(String(e.umbral))
+            .setMaxLength(2)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder()
+            .setCustomId('duracion')
+            .setLabel(`Duración en minutos (${LIMITES_ESCALADA.duracion[0]}-${LIMITES_ESCALADA.duracion[1]})`)
+            .setStyle(TextInputStyle.Short)
+            .setValue(String(e.duracion))
+            .setMaxLength(5)
+        )
+      );
+    return interaction.showModal(modal);
+  }
+
+  // Modal de escalada enviado: validar, guardar y redibujar
+  if (accion === 'modal' && partes[2] === 'escalada' && interaction.isModalSubmit()) {
+    const numero = (id, [min, max], defecto) => {
+      const n = Number(interaction.fields.getTextInputValue(id));
+      return Number.isFinite(n) ? Math.min(Math.max(Math.round(n), min), max) : defecto;
+    };
+    const base = resolverEscalada(getGuildConfig(guild.id));
+    const umbral = numero('umbral', LIMITES_ESCALADA.umbral, base.umbral);
+    const duracion = numero('duracion', LIMITES_ESCALADA.duracion, base.duracion);
+    setGuildConfig(guild.id, (c) => {
+      c.escalada = { ...(c.escalada || {}), umbral, duracion };
+    });
+    if (interaction.isFromMessage()) return interaction.update(vistaSeccion(guild, 'escalada', true));
+    return interaction.reply({
+      embeds: [
+        brandEmbed({
+          color: COLORS.success,
+          title: 'Escalada guardada',
+          description: describirEscalada(resolverEscalada(getGuildConfig(guild.id))),
+        }),
+      ],
+      flags: MessageFlags.Ephemeral,
+    });
   }
 
   // Toggle de la protección (anti-spam y anti-raid)
@@ -642,7 +761,7 @@ async function manejarComponente(interaction) {
     });
     if (interaction.isFromMessage()) return interaction.update(vistaSeccion(guild, 'proteccion', true));
     return interaction.reply({
-      embeds: [brandEmbed({ color: 0x57f287, title: 'Umbrales de protección guardados' })],
+      embeds: [brandEmbed({ color: COLORS.success, title: 'Umbrales de protección guardados' })],
       flags: MessageFlags.Ephemeral,
     });
   }
@@ -726,7 +845,7 @@ async function manejarComponente(interaction) {
     });
     if (interaction.isFromMessage()) return interaction.update(vistaSeccion(guild, 'servidores', true));
     return interaction.reply({
-      embeds: [brandEmbed({ color: 0x57f287, title: `Servidor "${nombre}" agregado`, description: `Ya podés usar /servidores e /ip.` })],
+      embeds: [brandEmbed({ color: COLORS.success, title: `Servidor "${nombre}" agregado`, description: `Ya podés usar /servidores e /ip.` })],
       flags: MessageFlags.Ephemeral,
     });
   }

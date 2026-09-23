@@ -5,7 +5,7 @@ const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 
 const { respuestaInstantanea, normalizar } = require('../src/utils/charla');
-const { esMensajeSimple, GROQ_RAPIDO } = require('../src/utils/ia');
+const { esMensajeSimple, GROQ_RAPIDO, GROQ_CALIDAD } = require('../src/utils/ia');
 const { DUENO_ID, WEB, REDES } = require('../src/comunidad');
 
 describe('respuestaInstantanea — identidad y dueño', () => {
@@ -69,7 +69,10 @@ describe('esMensajeSimple — enrutado rápido', () => {
     }
   });
 
-  test('el modelo rápido es el 8b de Groq', () => {
-    assert.equal(GROQ_RAPIDO, 'llama-3.1-8b-instant');
+  test('el modelo rápido es el chico del plan gratuito de Groq', () => {
+    // Groq retiró la familia llama del plan gratuito (agosto 2026): los modelos
+    // vigentes son los GPT-OSS y el 20B es el más rápido del catálogo (1000 tps).
+    assert.equal(GROQ_RAPIDO, 'openai/gpt-oss-20b');
+    assert.equal(GROQ_CALIDAD, 'openai/gpt-oss-120b');
   });
 });

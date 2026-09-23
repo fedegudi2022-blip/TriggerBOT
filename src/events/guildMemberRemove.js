@@ -1,5 +1,6 @@
 const { Events } = require('discord.js');
 const { logEvent, tiempoRelativo } = require('../utils/log');
+const { COLORS } = require('../utils/replies');
 
 module.exports = {
   name: Events.GuildMemberRemove,
@@ -21,7 +22,7 @@ module.exports = {
     }
 
     logEvent(member.guild, {
-      color: 0x99aab5,
+      color: COLORS.gris,
       title: 'Miembro salió',
       thumbnail: member.user.displayAvatarURL({ size: 128 }),
       fields,

@@ -24,6 +24,145 @@ const { contextoPara } = require('./conocimiento');
 const TIMEOUT_MS = 10_000;
 const TOKENS_MAX = 1200; // techo de reintento cuando la respuesta sale cortada
 
+// ---------- Salud de proveedores y modelos ----------
+//
+// Todo esto existe por un motivo concreto y medido: sin memoria de fallos, un modelo
+// retirado o una clave sin permiso se pagaban con un viaje de red fallido en CADA
+// mensaje. El caso real: Groq pasó llama-3.3-70b-versatile a plan Enterprise en
+// agosto de 2026; el bot lo pedía primero, se comía un 404 en cada respuesta y
+// terminaba en Gemini (2-4 s) aunque hubiera modelos de Groq funcionando al lado.
+//
+// Tres niveles de memoria, del más fino al más grueso:
+//   1. modelo caído  → se saltea ese modelo (6 h; los retiros son definitivos).
+//   2. proveedor en pausa → no se intenta ninguno de sus modelos (según el error).
+//   3. latencia medida → sirve para saber cuánto tarda de verdad cada proveedor.
+const CASTIGO_MODELO_MS = 6 * 60 * 60 * 1000;
+// Si el listado de modelos falla (red, endpoint caído), no se reintenta en cada
+// mensaje: cada reintento costaba hasta 5 s de espera antes de responder.
+const REINTENTO_LISTADO_MS = 10 * 60 * 1000;
+const listadoFallidoHasta = new Map(); // 'groq' → timestamp hasta el que no reintentar
+const modelosCaidos = new Map(); // 'proveedor|modelo' → { hasta, motivo }
+const proveedoresPausados = new Map(); // 'groq' → { hasta, motivo }
+const metricas = new Map(); // 'groq' → { ok, error, tiempos: [] }
+const MAX_MUESTRAS = 50; // ventana de latencias que se conserva por proveedor
+
+// Cuánto se aparta un proveedor según el error que devolvió. No es lo mismo una
+// clave inválida (no se arregla sola) que un pico de cuota (se recupera en un minuto).
+function castigoPorEstado(status) {
+  if (status === 401) return { ms: 60 * 60 * 1000, motivo: 'la clave de API no es válida' };
+  if (status === 403) return { ms: 60 * 60 * 1000, motivo: 'la clave no tiene permiso para este modelo' };
+  if (status === 429) return { ms: 60 * 1000, motivo: 'cuota agotada (se reintenta en un minuto)' };
+  if (status === 404) return { ms: 30 * 60 * 1000, motivo: 'ningún modelo disponible para esta clave' };
+  return { ms: 15 * 1000, motivo: 'error temporal del proveedor' };
+}
+
+// Extrae el código HTTP del mensaje de error (todos los proveedores lo arman así).
+function estadoDeError(error) {
+  const m = /HTTP (\d{3})/.exec(String(error?.message || ''));
+  return m ? Number(m[1]) : null;
+}
+
+function claveModelo(proveedor, modelo) {
+  return `${proveedor}|${modelo}`;
+}
+
+// ¿Se puede intentar este modelo? Si el castigo venció, se perdona solo.
+function modeloUsable(proveedor, modelo) {
+  const caida = modelosCaidos.get(claveModelo(proveedor, modelo));
+  if (!caida) return true;
+  if (caida.hasta <= Date.now()) {
+    modelosCaidos.delete(claveModelo(proveedor, modelo));
+    return true;
+  }
+  return false;
+}
+
+function marcarModeloCaido(proveedor, modelo, motivo) {
+  modelosCaidos.set(claveModelo(proveedor, modelo), { hasta: Date.now() + CASTIGO_MODELO_MS, motivo });
+}
+
+function pausarProveedor(proveedor, ms, motivo) {
+  proveedoresPausados.set(proveedor, { hasta: Date.now() + ms, motivo });
+}
+
+// ¿Vale la pena intentar el listado de modelos otra vez?
+function puedeListar(proveedor) {
+  const hasta = listadoFallidoHasta.get(proveedor);
+  if (!hasta) return true;
+  if (hasta <= Date.now()) {
+    listadoFallidoHasta.delete(proveedor);
+    return true;
+  }
+  return false;
+}
+
+function marcarListadoFallido(proveedor) {
+  listadoFallidoHasta.set(proveedor, Date.now() + REINTENTO_LISTADO_MS);
+}
+
+function olvidarListadoFallido(proveedor) {
+  listadoFallidoHasta.delete(proveedor);
+}
+
+// Devuelve { pausado, motivo, faltanMs } y limpia la pausa cuando vence.
+function estadoProveedor(proveedor) {
+  const pausa = proveedoresPausados.get(proveedor);
+  if (!pausa) return { pausado: false, motivo: null, faltanMs: 0 };
+  const faltanMs = pausa.hasta - Date.now();
+  if (faltanMs <= 0) {
+    proveedoresPausados.delete(proveedor);
+    return { pausado: false, motivo: null, faltanMs: 0 };
+  }
+  return { pausado: true, motivo: pausa.motivo, faltanMs };
+}
+
+// Registra una llamada al proveedor: cuánto tardó y si salió bien.
+function registrarMetrica(proveedor, ms, ok) {
+  const m = metricas.get(proveedor) || { ok: 0, error: 0, tiempos: [] };
+  if (ok) {
+    m.ok += 1;
+    m.tiempos.push(Math.round(ms));
+    if (m.tiempos.length > MAX_MUESTRAS) m.tiempos.shift();
+  } else {
+    m.error += 1;
+  }
+  metricas.set(proveedor, m);
+}
+
+// Percentil sobre las últimas llamadas (la mediana es la que "se siente").
+function percentil(tiempos, p) {
+  if (!tiempos.length) return null;
+  const orden = [...tiempos].sort((a, b) => a - b);
+  const i = Math.min(Math.ceil((p / 100) * orden.length) - 1, orden.length - 1);
+  return orden[Math.max(i, 0)];
+}
+
+function latenciasDe(proveedor) {
+  const m = metricas.get(proveedor);
+  if (!m || !m.tiempos.length) return { p50: null, p95: null, muestras: 0, errores: m?.error ?? 0 };
+  return {
+    p50: percentil(m.tiempos, 50),
+    p95: percentil(m.tiempos, 95),
+    muestras: m.tiempos.length,
+    errores: m.error,
+  };
+}
+
+// Reporte para /status: estado de cada proveedor con su latencia real.
+function saludIA() {
+  const de = (proveedor) => {
+    const pausa = estadoProveedor(proveedor);
+    return {
+      enPausa: pausa.pausado,
+      motivoPausa: pausa.motivo,
+      vuelveEnMs: pausa.faltanMs,
+      ...latenciasDe(proveedor),
+      modelosCaidos: [...modelosCaidos.keys()].filter((k) => k.startsWith(`${proveedor}|`)).map((k) => k.split('|')[1]),
+    };
+  };
+  return { groq: de('groq'), gemini: de('gemini') };
+}
+
 // ---------- Gemini (respaldo de calidad): elige solo el mejor modelo flash disponible ----------
 const GEMINI_DEFAULT = 'gemini-3.6-flash';
 let modelosGemini = null;
@@ -40,6 +179,7 @@ function ordenarPorCalidad(nombres) {
 
 async function listarModelosGemini() {
   if (modelosGemini) return modelosGemini;
+  if (!puedeListar('gemini')) return null;
   try {
     const resp = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models?key=${process.env.GEMINI_API_KEY}`,
@@ -55,37 +195,59 @@ async function listarModelosGemini() {
           .filter((n) => n.includes('flash') && !/thinking|image|tts|live|audio|embedding/.test(n))
       );
       if (modelosGemini.length) {
+        olvidarListadoFallido('gemini');
         console.log(`[TriggerBOT] IA: Gemini usando ${modelosGemini[0]} (${modelosGemini.length} disponibles como respaldo)`);
+      } else {
+        // Listado vacío: no tiene sentido volver a pedirlo en cada mensaje.
+        marcarListadoFallido('gemini');
       }
+    } else {
+      marcarListadoFallido('gemini');
     }
   } catch {
-    // si falla el listado, usamos el default estático
+    // Sin listado se usa el modelo por defecto, pero no se reintenta en cada mensaje.
+    marcarListadoFallido('gemini');
   }
   return modelosGemini;
 }
 
-function quitarModeloGemini(modelo) {
+// Un modelo retirado no vuelve: se marca caído (con castigo) y sale de la lista.
+function quitarModeloGemini(modelo, motivo = 'modelo retirado') {
+  marcarModeloCaido('gemini', modelo, motivo);
   if (modelosGemini) modelosGemini = modelosGemini.filter((m) => m !== modelo);
 }
 
 // ---------- Groq (principal, ultrarrápido): modelos de texto ----------
-const GROQ_DEFAULT = 'llama-3.3-70b-versatile';
-const GROQ_RAPIDO = 'llama-3.1-8b-instant'; // modelo chico: ~2-3x más rápido que el 70b
-const GROQ_PREFERIDOS = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'];
+//
+// La familia llama quedó fuera del plan gratuito (agosto 2026: llama-3.3-70b-versatile
+// y llama-3.1-8b-instant pasaron a Enterprise/contact-sales). Los modelos vigentes
+// y gratis son los GPT-OSS: el 120B para pensar y el 20B (1000 tps, el más rápido
+// del catálogo) para charla social.
+const GROQ_CALIDAD = 'openai/gpt-oss-120b';
+const GROQ_RAPIDO = 'openai/gpt-oss-20b';
+const GROQ_PREFERIDOS = [GROQ_CALIDAD, GROQ_RAPIDO, 'qwen/qwen3.8-27b'];
 let modelosGroq = null;
 
-// Ordena: preferidos explícitos primero, después familias conocidas de chat
-// por calidad de español, y el resto al final.
+// Solo chat de texto útil en español: fuera audio, TTS, moderación de contenido
+// (los "guard"), embeddings y modelos monolingües en otros idiomas (allam = árabe).
+// Ojo: acá NO se filtra gpt-oss ni qwen3 — son justamente los que funcionan.
+const RE_MODELO_NO_CHAT = /whisper|guard|safeguard|tts|orpheus|playai|kokoro|voice|arabic|allam|embedding|rerank|live/;
+
+// Ordena: preferidos explícitos primero (calidad → rapidez → alternativo), después
+// la familia GPT-OSS, y el resto al final por si Groq cambia el catálogo.
 function ordenarGroq(ids) {
   const puntaje = (id) => {
     const idx = GROQ_PREFERIDOS.indexOf(id);
     if (idx !== -1) return 100 - idx;
-    if (/^(llama|meta-llama)/.test(id)) return 60;
-    if (/^qwen(?!3)/.test(id)) return 50;
+    if (/gpt-oss-120b/.test(id)) return 80;
+    if (/gpt-oss-20b/.test(id)) return 75;
+    if (/gpt-oss/.test(id)) return 70;
+    if (/^qwen/.test(id)) return 55;
+    if (/^(llama|meta-llama)/.test(id)) return 50; // siguen existiendo, pero de pago
     if (/^gemma/.test(id)) return 45;
-    if (/^groq\/compound-mini/.test(id)) return 40; // sistema agéntico, variante liviana
     if (/^mistral/.test(id)) return 35;
-    if (/^groq\/compound/.test(id)) return 30;
+    if (/^groq\/compound-mini/.test(id)) return 30;
+    if (/^groq\/compound/.test(id)) return 25;
     return 10;
   };
   return [...ids].sort((a, b) => puntaje(b) - puntaje(a));
@@ -93,6 +255,7 @@ function ordenarGroq(ids) {
 
 async function listarModelosGroq() {
   if (modelosGroq) return modelosGroq;
+  if (!puedeListar('groq')) return null;
   try {
     const resp = await fetch('https://api.groq.com/openai/v1/models', {
       headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
@@ -100,27 +263,44 @@ async function listarModelosGroq() {
     });
     if (resp.ok) {
       const datos = await resp.json();
-      const ids = (datos.data || [])
-        .map((m) => m.id)
-        // Descarta audio/TTS, guardrails, razonadores y modelos monolingües en
-        // otros idiomas (allam = árabe): solo chat de texto útil en español.
-        .filter((id) => !/whisper|guard|tts|distil|gpt-oss|deepseek-r1|qwen3|orpheus|playai|kokoro|voice|arabic|allam/.test(id));
+      const ids = (datos.data || []).map((m) => m.id).filter((id) => !RE_MODELO_NO_CHAT.test(id));
       modelosGroq = ordenarGroq(ids);
       if (modelosGroq.length) {
-        if (!GROQ_PREFERIDOS.includes(modelosGroq[0])) {
-          console.warn(`[TriggerBOT] Aviso: Groq ya no ofrece ${GROQ_PREFERIDOS[0]}; se usa ${modelosGroq[0]} (el mejor disponible).`);
-        }
+        olvidarListadoFallido('groq');
         console.log(`[TriggerBOT] IA: Groq usando ${modelosGroq[0]} (${modelosGroq.length} disponibles como alternativa)`);
+      } else {
+        marcarListadoFallido('groq');
+        console.warn('[TriggerBOT] IA: el listado de Groq llegó vacío; uso los modelos conocidos.');
       }
+    } else {
+      // 401/403/429 en el propio listado: se aparta el proveedor y se sigue con el
+      // respaldo, en vez de intentar un modelo adivinado en cada mensaje.
+      marcarListadoFallido('groq');
+      const castigo = castigoPorEstado(resp.status);
+      pausarProveedor('groq', castigo.ms, castigo.motivo);
+      console.warn(`[TriggerBOT] IA: Groq (listado) HTTP ${resp.status}: ${castigo.motivo}.`);
     }
-  } catch {
-    // si falla el listado, usamos el default estático
+  } catch (error) {
+    // Sin listado (red caída) se sigue siendo optimista: los modelos preferidos se
+    // intentan igual y el primero que devuelva 404 queda marcado como caído. Pero no
+    // se vuelve a pedir el listado en cada mensaje.
+    marcarListadoFallido('groq');
+    console.warn(`[TriggerBOT] IA: no pude listar los modelos de Groq (${error.message}).`);
   }
   return modelosGroq;
 }
 
-function quitarModeloGroq(id) {
-  if (modelosGroq) modelosGroq = modelosGroq.filter((m) => m !== id);
+// Modelos de Groq que vale la pena intentar ahora, en orden.
+// Si el listado falló, se usan los preferidos conocidos: el registro de modelos
+// caídos se encarga de no repetir un 404.
+function candidatosGroq({ rapido = false } = {}) {
+  const base = process.env.GROQ_MODEL ? [process.env.GROQ_MODEL] : (modelosGroq?.length ? modelosGroq : GROQ_PREFERIDOS);
+  const vivos = base.filter((m) => modeloUsable('groq', m));
+  if (!vivos.length) return [];
+  // Charla social: el modelo rápido primero (1000 tps vs 500). Los demás quedan
+  // como respaldo en el mismo orden.
+  if (rapido && vivos.includes(GROQ_RAPIDO)) return [GROQ_RAPIDO, ...vivos.filter((m) => m !== GROQ_RAPIDO)];
+  return vivos;
 }
 
 // ---------- Estadísticas de uso (desde el último arranque) ----------
@@ -338,11 +518,11 @@ async function llamarGemini(contenidos, sistema, { perfil = 'charla' } = {}) {
     return (await generarConGemini(process.env.GEMINI_MODEL, contenidos, sistema, cfg, TOKENS_MAX)).texto;
   }
 
-  const lista = (await listarModelosGemini()) || [];
-  const primario = lista[0] || GEMINI_DEFAULT;
-  const alternos = lista.filter((m) => m !== primario).slice(0, 2);
-  const candidatos = [primario, ...alternos];
-  if (candidatos.length === 1) candidatos.push(primario); // un reintento sobre el mismo
+  // Solo modelos usables: los caídos se saltan sin gastar un viaje de red.
+  const lista = ((await listarModelosGemini()) || []).filter((m) => modeloUsable('gemini', m));
+  const primario = lista[0] || (modeloUsable('gemini', GEMINI_DEFAULT) ? GEMINI_DEFAULT : null);
+  const candidatos = primario ? [primario, ...lista.filter((m) => m !== primario).slice(0, 2)] : [];
+  if (!candidatos.length) throw new Error('Gemini: no hay modelos disponibles para esta clave');
 
   let ultimoError;
   for (let i = 0; i < candidatos.length; i++) {
@@ -364,13 +544,14 @@ async function llamarGemini(contenidos, sistema, { perfil = 'charla' } = {}) {
           ultimoError = errorSinPensar;
         }
       }
-      // Modelo retirado: lo sacamos de la lista y probamos el siguiente candidato.
+      // Modelo retirado: lo marcamos como caído y probamos el siguiente candidato.
       if (/HTTP 404/.test(error.message)) quitarModeloGemini(candidatos[i]);
       if (i === candidatos.length - 1) throw error;
       // Saturación o error interno: breve espera antes del próximo intento.
       if (/HTTP (429|500|503)/.test(error.message)) {
         await new Promise((r) => {
-          setTimeout(r, 800 * (i + 1));
+          const t = setTimeout(r, 800 * (i + 1));
+          t.unref?.();
         });
       }
     }
@@ -410,13 +591,11 @@ async function llamarGroq(mensajeUsuario, previos, sistema, { rapido = false, pe
     { role: 'user', content: mensajeUsuario },
   ];
 
-  // Con GROQ_MODEL fijado no hay lista de alternos; si no, prueba hasta 3 candidatos.
-  // Mensajes simples: el modelo chico va primero (misma lista, otro orden).
-  const lista = process.env.GROQ_MODEL ? [process.env.GROQ_MODEL] : (await listarModelosGroq()) || [];
-  let candidatos = lista.length ? lista.slice(0, 3) : [GROQ_DEFAULT];
-  if (rapido && candidatos.includes(GROQ_RAPIDO)) {
-    candidatos = [GROQ_RAPIDO, ...candidatos.filter((c) => c !== GROQ_RAPIDO)];
-  }
+  // Se asegura el listado (una vez por proceso) y se usan solo modelos usables:
+  // los que ya fallaron no se vuelven a intentar.
+  await listarModelosGroq();
+  const candidatos = candidatosGroq({ rapido }).slice(0, 3);
+  if (!candidatos.length) throw new Error('Groq: no quedan modelos disponibles para esta clave');
 
   let ultimoError;
   for (let i = 0; i < candidatos.length; i++) {
@@ -429,21 +608,123 @@ async function llamarGroq(mensajeUsuario, previos, sistema, { rapido = false, pe
       return r.texto;
     } catch (error) {
       ultimoError = error;
-      // Modelo inaceptable (retirado o con términos sin aceptar): lo sacamos y seguimos.
-      if (/HTTP (400|404)/.test(error.message)) quitarModeloGroq(candidatos[i]);
-      if (i === candidatos.length - 1) throw error;
+      const status = estadoDeError(error);
+      // Modelo inaceptable para esta clave (retirado o sin permiso): se marca caído
+      // por horas en vez de reintentarlo en cada mensaje.
+      if (status === 404 || status === 400) marcarModeloCaido('groq', candidatos[i], `HTTP ${status}`);
+      if (i === candidatos.length - 1) {
+        // Si no quedó ningún modelo vivo —o el error es de clave/cuota— se aparta el
+        // proveedor entero: así el próximo mensaje arranca directo en Gemini.
+        const sinModelos = candidatosGroq({ rapido }).length === 0;
+        if (sinModelos || [401, 403, 429].includes(status)) {
+          const castigo = castigoPorEstado(status);
+          pausarProveedor('groq', castigo.ms, castigo.motivo);
+        }
+        throw error;
+      }
     }
   }
   throw ultimoError;
 }
 
-// ---------- Precalentamiento (al arrancar del bot) ----------
+// ---------- Precalentamiento y prueba real de los modelos ----------
 // Sin esto, el PRIMER mensaje tras cada reinicio esperaba el listado de modelos
-// (hasta 5 s). Precalienta en background: el listado queda cacheado y la primera
-// respuesta ya sale a velocidad normal.
+// (hasta 5 s) y, peor, un modelo retirado se descubría recién con el mensaje del
+// usuario — que era justo el que pagaba la espera de 2 s hasta caer en el respaldo.
+// Acá se prueba el modelo elegido con una petición mínima al arrancar.
+const PROBE_TIMEOUT_MS = 6_000;
+
+async function probarGroq(modelo) {
+  const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
+    body: JSON.stringify({ model: modelo, messages: [{ role: 'user', content: 'ok' }], max_tokens: 1, temperature: 0 }),
+    signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+  });
+  if (!resp.ok) {
+    const detalle = await resp.text().catch(() => '');
+    throw new Error(`Groq HTTP ${resp.status}: ${detalle.slice(0, 120)}`);
+  }
+}
+
+async function probarGemini(modelo) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${process.env.GEMINI_API_KEY}`;
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ role: 'user', parts: [{ text: 'ok' }] }],
+      generationConfig: { maxOutputTokens: 1, temperature: 0 },
+    }),
+    signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+  });
+  if (!resp.ok) {
+    const detalle = await resp.text().catch(() => '');
+    throw new Error(`Gemini HTTP ${resp.status}: ${detalle.slice(0, 120)}`);
+  }
+}
+
+// Prueba los modelos candidatos hasta encontrar uno que responda de verdad.
+// Deja el registro de salud cargado: cuando termina, /status muestra el estado real
+// y las respuestas ya no pagan ningún viaje fallido.
+async function verificarModelos() {
+  if (process.env.GROQ_API_KEY) {
+    const lista = (await listarModelosGroq()) || GROQ_PREFERIDOS;
+    const candidatos = candidatosGroq().length ? candidatosGroq() : lista.slice(0, 3);
+    let listo = null;
+    for (const modelo of candidatos.slice(0, 3)) {
+      const inicio = Date.now();
+      try {
+        await probarGroq(modelo);
+        const ms = Date.now() - inicio;
+        registrarMetrica('groq', ms, true);
+        listo = { modelo, ms };
+        console.log(`[TriggerBOT] IA: Groq listo con ${modelo} (probado en ${ms} ms)`);
+        break;
+      } catch (error) {
+        registrarMetrica('groq', Date.now() - inicio, false);
+        const status = estadoDeError(error);
+        if (status === 404 || status === 400) marcarModeloCaido('groq', modelo, `HTTP ${status} al probar`);
+        if ([401, 403, 429].includes(status)) {
+          const castigo = castigoPorEstado(status);
+          pausarProveedor('groq', castigo.ms, castigo.motivo);
+          console.warn(`[TriggerBOT] IA: Groq no está disponible (${castigo.motivo}). Sigo con el respaldo.`);
+          break;
+        }
+        console.warn(`[TriggerBOT] IA: Groq rechazó ${modelo} (${String(error.message).slice(0, 100)}); pruebo el siguiente.`);
+      }
+    }
+    if (!listo && !estadoProveedor('groq').pausado) {
+      console.warn('[TriggerBOT] IA: ningún modelo de Groq respondió en la prueba; queda Gemini como principal.');
+    }
+  }
+
+  if (process.env.GEMINI_API_KEY) {
+    const lista = (await listarModelosGemini()) || [];
+    const modelo = process.env.GEMINI_MODEL || lista[0] || GEMINI_DEFAULT;
+    const inicio = Date.now();
+    try {
+      await probarGemini(modelo);
+      console.log(`[TriggerBOT] IA: Gemini listo con ${modelo} (probado en ${Date.now() - inicio} ms)`);
+    } catch (error) {
+      const status = estadoDeError(error);
+      console.warn(`[TriggerBOT] IA: la prueba de Gemini falló (${String(error.message).slice(0, 100)}).`);
+      if (status === 429) {
+        const castigo = castigoPorEstado(status);
+        pausarProveedor('gemini', castigo.ms, castigo.motivo);
+      } else if (status === 404 || status === 400) {
+        quitarModeloGemini(modelo, `HTTP ${status} al probar`);
+      }
+    }
+  }
+}
+
+// Arranca la verificación en segundo plano: no bloquea el arranque del bot.
 function precalentar() {
-  if (process.env.GROQ_API_KEY) listarModelosGroq().catch(() => {});
-  if (process.env.GEMINI_API_KEY) listarModelosGemini().catch(() => {});
+  if (!process.env.GROQ_API_KEY && !process.env.GEMINI_API_KEY) return;
+  verificarModelos().catch((error) => {
+    console.warn(`[TriggerBOT] IA: no pude verificar los modelos al arrancar: ${error.message}`);
+  });
 }
 
 // ---------- Enrutado por complejidad ----------
@@ -494,10 +775,69 @@ function conocimientoDe(mensaje) {
   }
 }
 
+// ---------- Carrera con respaldo (hedged request) ----------
+// El proveedor preferido arranca de inmediato; si no contestó en HEDGE_MS, el
+// respaldo sale EN PARALELO y gana el primero que responda bien.
+//
+// Es la mitigación estándar de latencia de cola: cuando el primario va rápido no
+// cuesta una sola llamada extra, y cuando está lento evita esperar los 2-4 s de
+// Gemini "a continuación" de Groq. Es lo que hace que la respuesta se sienta
+// inmediata incluso con un proveedor degradado.
+const HEDGE_MS = 1_400;
+
+function carreraConRespaldo(tareas) {
+  return new Promise((resolve, reject) => {
+    if (!tareas.length) {
+      reject(new Error('sin proveedores disponibles'));
+      return;
+    }
+
+    let fallaron = 0;
+    let terminado = false;
+    const errores = [];
+
+    const lanzar = (tarea, i) => {
+      if (terminado) return;
+      const inicio = Date.now();
+      Promise.resolve()
+        .then(tarea.ejecutar)
+        .then((valor) => {
+          registrarMetrica(tarea.proveedor, Date.now() - inicio, true);
+          if (terminado) return; // ya ganó otro: el resultado se descarta
+          terminado = true;
+          resolve({ texto: valor, proveedor: tarea.proveedor });
+        })
+        .catch((error) => {
+          registrarMetrica(tarea.proveedor, Date.now() - inicio, false);
+          errores[i] = error;
+          fallaron += 1;
+          if (!terminado && fallaron === tareas.length) {
+            terminado = true;
+            // Se reportan TODOS los motivos: si solo se mostrara el primero, el
+            // error del respaldo —que es el que explica por qué no hubo respuesta—
+            // quedaría oculto en el log.
+            const motivos = errores.filter(Boolean).map((e) => e.message);
+            reject(new Error(motivos.join(' | ') || 'sin proveedores disponibles'));
+          }
+        });
+    };
+
+    tareas.forEach((tarea, i) => {
+      if (i === 0) {
+        lanzar(tarea, i);
+        return;
+      }
+      // El temporizador NO se desengancha: la respuesta depende de él.
+      setTimeout(() => lanzar(tarea, i), HEDGE_MS);
+    });
+  });
+}
+
 async function conversar(userId, mensaje, contexto = {}) {
   const previos = historial(userId); // memoria compartida: la charla sigue aunque cambie el motor
   const perfil = perfilDe(mensaje);
   const simple = esMensajeSimple(mensaje); // mensaje social → modelo rápido
+  const rapido = simple && perfil === 'charla';
   const sistema = sistemaCompleto({
     ...contexto,
     perfil,
@@ -505,33 +845,38 @@ async function conversar(userId, mensaje, contexto = {}) {
     conocimiento: conocimientoDe(mensaje),
   });
 
-  let texto = null;
-
-  // 1) Groq (principal): LPU de Groq responden en ~0,3-0,8 s, 5-10x más rápido que Gemini.
-  if (process.env.GROQ_API_KEY) {
-    try {
-      // Solo la charla social va al modelo chico: una consulta necesita el grande.
-      texto = await llamarGroq(mensaje, previos, sistema, {
-        rapido: simple && perfil === 'charla',
-        perfil,
-      });
-      statsIA.groq += 1;
-    } catch (error) {
-      console.warn(`[TriggerBOT] Groq falló, pruebo con Gemini: ${error.message.slice(0, 120)}`);
-    }
+  // Proveedores candidatos, en orden de preferencia. Un proveedor en pausa (clave
+  // inválida, cuota agotada) o sin modelos vivos NO se intenta: eso es lo que antes
+  // costaba un viaje fallido de 2 s en cada mensaje antes de llegar al respaldo.
+  const tareas = [];
+  if (process.env.GROQ_API_KEY && !estadoProveedor('groq').pausado && candidatosGroq({ rapido }).length) {
+    tareas.push({
+      proveedor: 'groq',
+      ejecutar: () => llamarGroq(mensaje, previos, sistema, { rapido, perfil }),
+    });
+  }
+  // Gemini queda como respaldo. Para un simple "hola" no se usa: el repertorio local
+  // responde al instante y no vale la pena esperar 2-4 s por un saludo.
+  if (process.env.GEMINI_API_KEY && !estadoProveedor('gemini').pausado && !rapido) {
+    tareas.push({
+      proveedor: 'gemini',
+      ejecutar: () => {
+        const contenidos = previos.map((t) => ({ role: t.role, parts: [{ text: t.text }] }));
+        contenidos.push({ role: 'user', parts: [{ text: mensaje }] });
+        return llamarGemini(contenidos, sistema, { perfil });
+      },
+    });
   }
 
-  // 2) Gemini (respaldo de calidad): si Groq no tiene clave, falla o se queda sin cuota.
-  //    Para mensajes simples se salta (un "hola" no merece esperar 2-4 s de Gemini):
-  //    el repertorio local responde al instante.
-  if (!texto && process.env.GEMINI_API_KEY && !(simple && perfil === 'charla')) {
+  let texto = null;
+  if (tareas.length) {
     try {
-      const contenidos = previos.map((t) => ({ role: t.role, parts: [{ text: t.text }] }));
-      contenidos.push({ role: 'user', parts: [{ text: mensaje }] });
-      texto = await llamarGemini(contenidos, sistema, { perfil });
-      statsIA.gemini += 1;
+      const ganador = await carreraConRespaldo(tareas);
+      texto = ganador.texto;
+      if (ganador.proveedor === 'groq') statsIA.groq += 1;
+      else statsIA.gemini += 1;
     } catch (error) {
-      console.warn(`[TriggerBOT] Gemini también falló, uso respuestas locales: ${error.message.slice(0, 120)}`);
+      console.warn(`[TriggerBOT] IA: cayeron todos los proveedores (${error.message.slice(0, 140)}); uso el repertorio local.`);
     }
   }
 
@@ -566,15 +911,18 @@ async function conversar(userId, mensaje, contexto = {}) {
   return { tipo: 'chat', texto };
 }
 
-// Estado de ambas IAs para /status: si hay clave y qué modelo usa cada una.
+// Estado de ambas IAs para /status: si hay clave, qué modelo usa cada una AHORA y
+// cómo viene rindiendo (latencia medida, errores, pausas y modelos caídos).
 async function estadoIA() {
-  const gemini = { configurada: Boolean(process.env.GEMINI_API_KEY), modelo: null };
-  const groq = { configurada: Boolean(process.env.GROQ_API_KEY), modelo: null };
+  const salud = saludIA();
+  const gemini = { configurada: Boolean(process.env.GEMINI_API_KEY), modelo: null, ...salud.gemini };
+  const groq = { configurada: Boolean(process.env.GROQ_API_KEY), modelo: null, ...salud.groq };
   if (gemini.configurada) {
-    gemini.modelo = process.env.GEMINI_MODEL || (await listarModelosGemini())?.[0] || GEMINI_DEFAULT;
+    const lista = (await listarModelosGemini()) || [];
+    gemini.modelo = process.env.GEMINI_MODEL || lista[0] || (modeloUsable('gemini', GEMINI_DEFAULT) ? GEMINI_DEFAULT : null);
   }
   if (groq.configurada) {
-    groq.modelo = process.env.GROQ_MODEL || (await listarModelosGroq())?.[0] || GROQ_DEFAULT;
+    groq.modelo = process.env.GROQ_MODEL || candidatosGroq()[0] || null;
   }
   return { gemini, groq };
 }
@@ -582,6 +930,7 @@ async function estadoIA() {
 module.exports = {
   conversar,
   estadoIA,
+  saludIA,
   getStatsIA,
   precalentar,
   esMensajeSimple,
@@ -589,5 +938,9 @@ module.exports = {
   trocearMensaje,
   sistemaCompleto,
   PERFILES,
+  GROQ_CALIDAD,
   GROQ_RAPIDO,
+  HEDGE_MS,
+  // Exportados para los tests: la salud del motor es la parte que más se rompe.
+  _internos: { modelosCaidos, proveedoresPausados, marcarModeloCaido, pausarProveedor, estadoProveedor, modeloUsable, candidatosGroq, carreraConRespaldo, verificarModelos },
 };

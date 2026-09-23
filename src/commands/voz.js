@@ -3,7 +3,7 @@
 // canal propio con controles; se borra solo cuando queda vacío.
 const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { setGuildConfig } = require('../store');
-const { successEmbed, errorEmbed, brandEmbed } = require('../utils/replies');
+const { successEmbed, errorEmbed, brandEmbed, COLORS } = require('../utils/replies');
 const voz = require('../utils/voz');
 
 module.exports = {
@@ -306,7 +306,7 @@ module.exports = {
         .join('\n');
 
       const embed = brandEmbed({
-        color: problemas.some((p) => p.startsWith('🔴')) ? 0xed4245 : 0x5865f2,
+        color: problemas.some((p) => p.startsWith('🔴')) ? COLORS.error : COLORS.info,
         title: '🎧 Canales de voz temporales',
         description:
           `**Estado:** ${hub ? '🟢 Activo' : '🔴 Inactivo'}\n` +

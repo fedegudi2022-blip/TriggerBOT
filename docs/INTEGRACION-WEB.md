@@ -75,9 +75,21 @@ echo json_encode($estado, JSON_UNESCAPED_UNICODE);
     "estado": "online"
   },
   "ia": {                             // proveedores de IA configurados (o null)
-    "groq": "llama-3.3-70b-versatile",
+    "groq": "openai/gpt-oss-120b",
     "gemini": null,
-    "stats": { "groq": 12, "gemini": 0, "local": 3 }
+    "stats": { "groq": 12, "gemini": 0, "local": 3 },
+    "salud": {                        // salud medida desde el último arranque
+      "groq": {
+        "enPausa": false,             // true = el bot lo está salteando (clave/cuota)
+        "motivoPausa": null,
+        "p50": 412,                   // mediana real de respuesta, en ms
+        "p95": 890,
+        "muestras": 12,
+        "errores": 1,
+        "modelosCaidos": ["llama-3.3-70b-versatile"]
+      },
+      "gemini": { "enPausa": false, "p50": null, "p95": null, "muestras": 0, "errores": 0, "modelosCaidos": [] }
+    }
   },
   "baseDatos": { "ok": true, "subidasOk": 142, "ultimoError": null },
   "servidores": 1,

@@ -13,6 +13,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { marcarSucio, tocar } = require('./db/sync');
+const { COLORS } = require('./utils/replies');
 
 // Directorio de datos configurable (TRIGGER_DATA_DIR) para tests y despliegues.
 const DATA_DIR = process.env.TRIGGER_DATA_DIR || path.join(__dirname, '..', 'data');
@@ -109,11 +110,11 @@ function nivelDe(xp) {
 
 // ---------- Rangos por nivel (para /estadisticas y anuncios) ----------
 const RANGOS = [
-  { desde: 30, nombre: 'Leyenda', color: 0xf1c40f },
-  { desde: 20, nombre: 'Veterano', color: 0x9b59b6 },
-  { desde: 10, nombre: 'Experto', color: 0x57f287 },
-  { desde: 5, nombre: 'Activo', color: 0x5865f2 },
-  { desde: 0, nombre: 'Novato', color: 0x99aab5 },
+  { desde: 30, nombre: 'Leyenda', color: COLORS.logro },
+  { desde: 20, nombre: 'Veterano', color: COLORS.servidor },
+  { desde: 10, nombre: 'Experto', color: COLORS.success },
+  { desde: 5, nombre: 'Activo', color: COLORS.info },
+  { desde: 0, nombre: 'Novato', color: COLORS.gris },
 ];
 
 function rangoDe(nivel) {

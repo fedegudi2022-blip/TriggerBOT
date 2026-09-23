@@ -1,5 +1,5 @@
 const { Events } = require('discord.js');
-const { brandEmbed } = require('../utils/replies');
+const { brandEmbed, COLORS } = require('../utils/replies');
 const { registrarIngreso } = require('../utils/proteccion');
 
 function renderWelcome(message, member) {
@@ -35,7 +35,7 @@ module.exports = {
       const channel = member.guild.channels.cache.get(config.welcome.channelId);
       if (channel) {
         const embed = brandEmbed({
-          color: 0x57f287,
+          color: COLORS.success,
           title: `👋 ¡${member.user.tag} se unió!`,
           description: renderWelcome(config.welcome.message, member),
         });

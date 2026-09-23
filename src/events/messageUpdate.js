@@ -1,5 +1,6 @@
 const { Events } = require('discord.js');
 const { logEvent, cita } = require('../utils/log');
+const { COLORS } = require('../utils/replies');
 
 module.exports = {
   name: Events.MessageUpdate,
@@ -13,7 +14,7 @@ module.exports = {
       : '*no disponible — el bot arrancó después de que se enviara*';
 
     logEvent(newMessage.guild, {
-      color: 0xfee75c,
+      color: COLORS.warn,
       title: 'Mensaje editado',
       fields: [
         { name: 'Autor', value: `<@${newMessage.author.id}> (\`${newMessage.author.tag}\`)`, inline: true },

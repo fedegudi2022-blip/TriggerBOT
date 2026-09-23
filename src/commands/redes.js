@@ -1,7 +1,7 @@
 // /redes — todas las redes sociales oficiales de TriGGer.Arena en un embed,
 // con botones de link directo (Discord los abre sin salir del cliente).
 const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const { brandEmbed } = require('../utils/replies');
+const { brandEmbed, COLORS } = require('../utils/replies');
 const { REDES, WEB } = require('../comunidad');
 
 module.exports = {
@@ -11,7 +11,7 @@ module.exports = {
     const lista = REDES.map((r) => `${r.emoji} **${r.nombre}** — ${r.desc}\n${r.url}`).join('\n\n');
 
     const embed = brandEmbed({
-      color: 0x5865f2,
+      color: COLORS.info,
       title: '🌐 Redes oficiales de TriGGer.Arena',
       description: `Sumate a la comunidad en cualquiera de estos espacios:\n\n${lista}\n\n🌐 **Web:** ${WEB}`,
     });

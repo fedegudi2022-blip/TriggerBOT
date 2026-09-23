@@ -1,5 +1,6 @@
 const { Events } = require('discord.js');
 const { logEvent } = require('../utils/log');
+const { COLORS } = require('../utils/replies');
 
 // Diferencia dos conjuntos de IDs y devuelve { agregados, quitados } como menciones.
 function diffRoles(antes, despues) {
@@ -17,7 +18,7 @@ module.exports = {
     // Cambio de apodo
     if (oldMember.nickname !== newMember.nickname) {
       logEvent(newMember.guild, {
-        color: 0x5865f2,
+        color: COLORS.info,
         title: 'Apodo actualizado',
         thumbnail: newMember.user.displayAvatarURL({ size: 128 }),
         description: `${newMember.user} (\`${newMember.user.tag}\`)`,
@@ -37,7 +38,7 @@ module.exports = {
     if (quitados.length) fields.push({ name: 'Roles quitados', value: quitados.join(', ').slice(0, 1024) });
 
     logEvent(newMember.guild, {
-      color: agregados.length ? 0x57f287 : 0xe67e22,
+      color: agregados.length ? COLORS.success : COLORS.naranja,
       title: 'Roles actualizados',
       thumbnail: newMember.user.displayAvatarURL({ size: 128 }),
       description: `${newMember.user} (\`${newMember.user.tag}\`)`,

@@ -4,7 +4,7 @@
 
 const { SlashCommandBuilder, MessageFlags, EmbedBuilder } = require('discord.js');
 const { ACCIONES, traerGIF, contar, total } = require('./interacciones');
-const { brandEmbed, errorEmbed } = require('../utils/replies');
+const { brandEmbed, errorEmbed, COLORS } = require('../utils/replies');
 
 // Textos de auto-interacción (te beso a vos mismo).
 const AUTO_TEXTOS = {
@@ -31,7 +31,7 @@ function crearComando(accion, def) {
 
       if (receptor.id === interaction.user.id) {
         return interaction.reply({
-          embeds: [brandEmbed({ color: 0xfee75c, title: `${def.emoji} Auto-interacción`, description: AUTO_TEXTOS[accion] })],
+          embeds: [brandEmbed({ color: COLORS.warn, title: `${def.emoji} Auto-interacción`, description: AUTO_TEXTOS[accion] })],
           flags: MessageFlags.Ephemeral,
         });
       }
@@ -46,20 +46,28 @@ function crearComando(accion, def) {
       await interaction.deferReply();
 
       // GIF con doble fuente (nekos.best → otakugifs); si ambas fallan, texto simple.
-      const gif = await traerGIF(def.endpoint);
+      // traerGIF nunca lanza: devuelve null y el embed sale sin imagen.
+      const gif = await traerGIF(def.endpoint).catch(() => null);
 
       const veces = contar(interaction.guildId, accion, interaction.user.id, receptor.id);
       const recibidas = total(interaction.guildId, accion, receptor.id);
 
       const embed = new EmbedBuilder()
-        .setColor(def.emoji === '💥' ? 0xed4245 : 0xe91e63)
+        .setColor(def.emoji === '💥' ? COLORS.error : COLORS.carino)
         .setDescription(`**${interaction.member.displayName}** ${def.texto} **${receptor}** ${def.emoji}`)
         .setFooter({
           text: `Llevás ${veces} ${accion}${veces === 1 ? '' : 's'} a ${receptor.username} • recibió ${recibidas} en total`,
         });
       if (gif) embed.setImage(gif);
 
-      await interaction.editReply({ embeds: [embed] }).catch(() => {});
+      // Si Discord rechaza el envío (permisos en el canal), se avisa en vez de
+      // dejar el "pensando…" colgado para siempre.
+      const enviado = await interaction.editReply({ embeds: [embed] }).catch((e) => e);
+      if (enviado instanceof Error) {
+        await interaction
+          .followUp({ embeds: [errorEmbed(`No pude publicar la interacción.\n> ${enviado.message}`)], flags: MessageFlags.Ephemeral })
+          .catch(() => {});
+      }
     },
   };
 }

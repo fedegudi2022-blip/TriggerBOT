@@ -144,11 +144,11 @@ async function procesarFila(fila, client) {
       if (!texto) return { ok: false, error: 'mensaje vacío' };
       const canal = guild.channels.cache.get(canalId);
       if (!canal?.send) return { ok: false, error: `El canal ${canalId} no existe o no acepta mensajes` };
-      const { brandEmbed } = require('../utils/replies');
+      const { brandEmbed, COLORS } = require('../utils/replies');
       await canal.send({
         embeds: [
           brandEmbed({
-            color: 0x5865f2,
+            color: COLORS.info,
             title: String(args.titulo || '📣 Anuncio').slice(0, 256),
             description: texto.slice(0, 4000),
             footer: 'Enviado desde TriGGer.Arena • TriggerBOT',
@@ -417,8 +417,13 @@ function estadoBot(client) {
   const iaGroq = process.env.GROQ_API_KEY ? process.env.GROQ_MODEL || 'groq (modelo por defecto)' : null;
   const iaGemini = process.env.GEMINI_API_KEY ? process.env.GEMINI_MODEL || 'gemini (modelo por defecto)' : null;
   let statsIa = { groq: 0, gemini: 0, local: 0 };
+  let saludIa = null;
   try {
-    statsIa = require('../utils/ia').getStatsIA();
+    const ia = require('../utils/ia');
+    statsIa = ia.getStatsIA();
+    // Latencia medida, pausas y modelos descartados: la web puede mostrar lo mismo
+    // que /status sin consultar nada más.
+    saludIa = ia.saludIA();
   } catch {
     /* IA no cargada */
   }
@@ -515,7 +520,7 @@ function estadoBot(client) {
       avatar: client.user?.displayAvatarURL?.({ size: 256 }) ?? null,
       estado: client.user?.presence?.status ?? null,
     },
-    ia: { groq: iaGroq, gemini: iaGemini, stats: statsIa },
+    ia: { groq: iaGroq, gemini: iaGemini, stats: statsIa, salud: saludIa },
     baseDatos: { ok: dbOk, subidasOk: estado.subidasOk ?? 0, ultimoError: estado.ultimoError ?? null },
     ultimaRevision: new Date().toISOString(),
   };

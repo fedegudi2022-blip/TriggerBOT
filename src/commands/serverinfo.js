@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, MessageFlags } = require('discord.js');
-const { brandEmbed, miles, barra } = require('../utils/replies');
+const { brandEmbed, miles, barra, COLORS } = require('../utils/replies');
 
 // Estos valores pueden llegar como número o como string según la versión de la API,
 // así que normalizamos con mapas numéricos.
@@ -31,6 +31,10 @@ module.exports = {
   async execute(interaction) {
     const g = interaction.guild;
 
+    // Diferido antes del fetch de miembros: en un servidor grande esa descarga
+    // supera los 3 s que da Discord para responder.
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
     // Para el conteo de humanos vs bots: usa la caché si ya está completa (server
     // chico o recién scaneada) y solo descarga si falta gente. Un server chico
     // responde al instante; uno grande descarga una vez y después sirve de caché.
@@ -52,7 +56,7 @@ module.exports = {
     const humanos = Math.max(g.memberCount - bots, 0);
 
     const embed = brandEmbed({
-      color: 0x9b59b6,
+      color: COLORS.servidor,
       title: g.name,
       description: g.description ? `*${g.description}*\n` : '',
       thumbnail: g.iconURL({ size: 256 }),
@@ -89,6 +93,6 @@ module.exports = {
     const banner = g.bannerURL({ size: 1024 });
     if (banner) embed.setImage(banner);
 
-    return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
+    return interaction.editReply({ embeds: [embed] });
   },
 };

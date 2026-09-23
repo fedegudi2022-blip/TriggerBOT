@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
-const { errorEmbed } = require('../utils/replies');
+const { errorEmbed, COLORS } = require('../utils/replies');
 
 // Subreddits hispánicos primero (75% de las veces sale de acá) y luego internacionales.
 const SUBS_ES = ['memesesp', 'ArgMemes'];
@@ -105,7 +105,7 @@ async function memeAleatorio() {
 
 function embedMeme(meme, sub) {
   return new EmbedBuilder()
-    .setColor(0xff4500)
+    .setColor(COLORS.reddit)
     .setTitle(meme.titulo.slice(0, 256))
     .setImage(meme.imagen)
     .setURL(meme.url)

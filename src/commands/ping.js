@@ -1,7 +1,7 @@
 // /ping — latencia del bot con indicadores de calidad y botón para refrescar
 // la medición sin reescribir el comando. El mismo builder sirve para el slash y el botón.
 const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const { brandEmbed, duracion, UMBRALES, nivel } = require('../utils/replies');
+const { brandEmbed, duracion, UMBRALES, nivel, COLORS } = require('../utils/replies');
 
 // Rótulos de cada parte del viaje del mensaje, para mostrarlo como "estaciones".
 const TRAMOS = [
@@ -23,7 +23,7 @@ function vistaPing(client, medicion) {
   const ida = Math.round(total / 2);
 
   const embed = brandEmbed({
-    color: calidad.emoji === '🟢' ? 0x57f287 : calidad.emoji === '🟡' ? 0xfee75c : 0xed4245,
+    color: calidad.emoji === '🟢' ? COLORS.success : calidad.emoji === '🟡' ? COLORS.warn : COLORS.error,
     title: '🏓 Pong!',
     description: `El bot está vivo y responde. Estado general: ${calidad.emoji} **${calidad.texto}**`,
     fields: TRAMOS.map((t) => ({

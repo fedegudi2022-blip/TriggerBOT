@@ -1,6 +1,6 @@
-const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
 const { ranking, rangoDe } = require('../niveles');
-const { brandEmbed, miles } = require('../utils/replies');
+const { brandEmbed, miles, COLORS } = require('../utils/replies');
 
 const MEDALLAS = ['🥇', '🥈', '🥉'];
 const POR_PAGINA = 10;
@@ -27,7 +27,10 @@ async function ejecutar(interaction, paginaPedida = 1) {
       // No debería pasar (las páginas se calculan con datos reales), pero por las dudas.
       return interaction.update({ components: [] });
     }
-    return interaction.reply({ content: 'Todavía no hay datos de actividad en este rango.', ephemeral: true });
+    return interaction.reply({
+      content: 'Todavía no hay datos de actividad en este rango.',
+      flags: MessageFlags.Ephemeral,
+    });
   }
 
   const fila = (e, i) => {
@@ -42,10 +45,16 @@ async function ejecutar(interaction, paginaPedida = 1) {
   const podio = lista.slice(0, 3).map(fila).join('\n');
   const resto = lista.slice(3);
   const columnas = [];
-  for (let i = 0; i < resto.length; i += 3) columnas.push(resto.slice(i, i + 3).map(fila).join('\n'));
+  for (let i = 0; i < resto.length; i += 3)
+    columnas.push(
+      resto
+        .slice(i, i + 3)
+        .map(fila)
+        .join('\n')
+    );
 
   const embed = brandEmbed({
-    color: 0xfee75c,
+    color: COLORS.warn,
     title: `🏆 Ranking de actividad — página ${pagina}/${paginas}`,
     thumbnail: guild.iconURL({ size: 256 }) ?? undefined,
     description: podio,
@@ -82,7 +91,9 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('top')
     .setDescription('Ranking de actividad del servidor (con podio y páginas)')
-    .addIntegerOption((o) => o.setName('pagina').setDescription(`Página del ranking (${POR_PAGINA} por página)`).setMinValue(1).setMaxValue(MAX_PAGINAS)),
+    .addIntegerOption((o) =>
+      o.setName('pagina').setDescription(`Página del ranking (${POR_PAGINA} por página)`).setMinValue(1).setMaxValue(MAX_PAGINAS)
+    ),
 
   async execute(interaction) {
     const pagina = interaction.options.getInteger('pagina') ?? 1;

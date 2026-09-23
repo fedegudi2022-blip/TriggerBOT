@@ -1,5 +1,5 @@
 const { SlashCommandBuilder } = require('discord.js');
-const { brandEmbed } = require('../utils/replies');
+const { brandEmbed, COLORS } = require('../utils/replies');
 
 const RESPUESTAS = [
   'Sí, definitivamente.',
@@ -35,7 +35,7 @@ module.exports = {
     const respuesta = RESPUESTAS[Math.floor(Math.random() * RESPUESTAS.length)];
 
     const embed = brandEmbed({
-      color: 0x2c2f33,
+      color: COLORS.neutral,
       title: 'Bola 8',
       description: `**Pregunta:** ${pregunta}\n\n🎱 **${respuesta}**`,
       footer: `Preguntado por ${interaction.user.username}`,
