@@ -37,6 +37,8 @@ docs/ARQUITECTURA.md    # Documentación técnica de cada sistema
 
 ## Desarrollo
 
+Requiere **Node 22** (está fijado en `engines` y en `.nvmrc`). En Wispbyte, el servidor tiene que arrancar con la imagen Docker de Node 22 (`nodejs_22`): con Node 19, ESLint avisa `EBADENGINE` en cada arranque y el runtime queda sin parches de seguridad.
+
 ```bash
 npm test        # tests (runner nativo de Node, sin dependencias)
 npm run lint    # ESLint: errores reales, no estilo
@@ -45,6 +47,12 @@ npm run check   # lint + tests: el mínimo antes de subir cambios
 ```
 
 Los tests corren aislados del `data/` real (usan un directorio temporal) y no tocan la red. Cómo funciona cada sistema por dentro: [docs/ARQUITECTURA.md](docs/ARQUITECTURA.md).
+
+### Integración continua (GitHub Actions)
+
+`.github/workflows/check.yml` corre `npm run check` en cada push a `main` y en cada pull request. El bot se actualiza solo en cada reinicio (`git pull` + `npm install` + arranque), así que sin esta barrera un commit roto no espera a nadie: baja el bot en producción. Con los tests en verde, ese error se ve antes de llegar a `main`.
+
+Los comandos además se validan con un **smoke test de registro** (`tests/registro.test.js`): recorre el payload real que se le manda a Discord y comprueba nombres, descripciones y opciones. Un comando mal armado hace que Discord rechace el registro **completo**, así que un solo error de tipeo deja al bot sin ningún comando.
 
 ## Comandos
 
@@ -267,6 +275,7 @@ Sin variables `DB_*` el bot funciona igual, solo con archivos locales. **Segurid
 1. Subir el repo a GitHub (ya conectado) y en Wispbyte crear un servidor **Node.js** (el plan gratuito corre 24/7; 1 bot por server).
 2. Subir el código con la **integración de GitHub**: en Files/Deploy poné la URL del repo (`https://github.com/fedegudi2022-blip/TriggerBOT`), branch `main`, y activá **auto-update on startup** para que cada reinicio haga pull.
 3. En la pestaña **Startup**:
+   - **Imagen de Node:** elegí la variante **Node 22** (`nodejs_22`). Con la de Node 19 el bot funciona, pero el `npm install` llena la consola de avisos `EBADENGINE` y esa versión ya no recibe parches de seguridad.
    - Comando de arranque: `node src/index.js`
    - Variables de entorno: `DISCORD_TOKEN` (es la única imprescindible; `CLIENT_ID` y `GUILD_ID` solo hacen falta si usás `npm run register` manual)
    - Las dependencias se instalan solas (hay `package.json`)

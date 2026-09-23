@@ -1295,8 +1295,91 @@ async function limpiarAlArrancar(client) {
   }
 }
 
+// ---------- Diagnóstico operativo ----------
+// Una sola fuente de verdad sobre "qué está roto" en el sistema de voz: la usan
+// `/voz estado` (para mostrarlo) y `/diag` + la vigilancia (para avisar al staff).
+// NO modifica nada: solo informa y dice qué hacer.
+// Devuelve [{ nivel: 'error'|'aviso', texto }].
+function diagnosticoVoz(guild) {
+  const problemas = [];
+  if (!guild) return problemas;
+
+  const config = vozDe(guild.id);
+  const hub = config.hubId ? guild.channels.cache.get(config.hubId) : null;
+  const categoria = config.categoriaId ? guild.channels.cache.get(config.categoriaId) : null;
+  const temporales = Object.entries(temporalesDe(guild.id));
+  const bot = guild.members?.me;
+  const tope = limiteCanales(guild.id);
+
+  // Sistema apagado: no hay nada que diagnosticar (no es un problema, es una decisión).
+  const activo = Boolean(config.hubId || Object.keys(config.canales || {}).length || config.categoriaId);
+  if (!activo) return problemas;
+
+  if (config.hubId && !hub) {
+    problemas.push({
+      nivel: 'error',
+      texto: '🔴 El canal hub fue **eliminado a mano**: volvé a activarlo con `/voz activar` o designá otro con `/voz hub`.',
+    });
+  }
+  if (config.categoriaId && !categoria) {
+    problemas.push({ nivel: 'error', texto: '🔴 La **categoría destino fue eliminada**: elegí otra con `/voz categoria`.' });
+  }
+  if (!bot?.permissions?.has(PermissionFlagsBits.ManageChannels)) {
+    problemas.push({
+      nivel: 'error',
+      texto: '🔴 Al bot le falta el permiso **Gestionar canales** en el server: no puede crear ni borrar canales.',
+    });
+  }
+  if (!bot?.permissions?.has(PermissionFlagsBits.MoveMembers)) {
+    problemas.push({
+      nivel: 'error',
+      texto: '🔴 Al bot le falta **Mover miembros**: no puede meter a la gente en su canal ni expulsarla.',
+    });
+  }
+
+  const fueraDeCategoria = [];
+  const registrosMuertos = [];
+  for (const [canalId] of temporales) {
+    const canal = guild.channels.cache.get(canalId);
+    if (!canal) {
+      registrosMuertos.push(canalId);
+      continue;
+    }
+    if (categoria && canal.parentId !== categoria.id) fueraDeCategoria.push(canal.name);
+  }
+  if (registrosMuertos.length) {
+    problemas.push({
+      nivel: 'aviso',
+      texto: `🟡 **${registrosMuertos.length} registro(s) huérfano(s)** (canales borrados a mano). Se limpian solos en la próxima creación.`,
+    });
+  }
+  if (fueraDeCategoria.length) {
+    problemas.push({
+      nivel: 'aviso',
+      texto: `🟡 **${fueraDeCategoria.length} canal(es) quedaron fuera de la categoría destino** (${fueraDeCategoria.slice(0, 3).join(', ')}${fueraDeCategoria.length > 3 ? '…' : ''}). Movelos con \`/voz categoria\`.`,
+    });
+  }
+
+  const destino = categoria ?? hub?.parent ?? null;
+  if (destino && !bot?.permissionsIn(destino)?.has(PermissionFlagsBits.ManageChannels)) {
+    problemas.push({
+      nivel: 'error',
+      texto: '🔴 El bot **no tiene permiso de crear canales en la categoría destino** (falta «Gestionar canales» para el rol del bot ahí).',
+    });
+  }
+
+  if (temporales.length >= tope) {
+    problemas.push({ nivel: 'error', texto: '🔴 **Límite de canales alcanzado**: nadie más puede crear hasta que se liberen.' });
+  } else if (temporales.length >= Math.ceil(tope * 0.8)) {
+    problemas.push({ nivel: 'aviso', texto: '🟡 Más del 80% del límite de canales en uso.' });
+  }
+
+  return problemas;
+}
+
 module.exports = {
   NOMBRE_HUB,
+  diagnosticoVoz,
   PLANTILLA_NOMBRE,
   nombreCanal,
   nombreConContador,

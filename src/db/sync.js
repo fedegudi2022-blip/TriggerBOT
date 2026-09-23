@@ -197,4 +197,10 @@ async function esperarSubidasPendientes() {
   }
 }
 
-module.exports = { marcarSucio, subirYa, restaurar, tocar, volcarTodo, esperarSubidasPendientes };
+// Cuántos almacenes están esperando subir a la base (lo usa /diag y la vigilancia:
+// un número alto indica que la base está lenta o rechazando escrituras).
+function pendientesDeSubida() {
+  return pendientes.size;
+}
+
+module.exports = { marcarSucio, subirYa, restaurar, tocar, volcarTodo, esperarSubidasPendientes, pendientesDeSubida };

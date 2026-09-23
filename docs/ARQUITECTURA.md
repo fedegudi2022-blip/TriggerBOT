@@ -2,7 +2,7 @@
 
 Guía técnica de cómo funciona cada sistema. Para el uso (comandos, configuración, deploy), ver el [README](../README.md).
 
-El bot es JavaScript CommonJS sobre Node 18+, con **tres dependencias de runtime**: `discord.js`, `dotenv` y `mysql2` (pool MariaDB). Todo lo demás (logger, tests, lint) corre con herramientas nativas o devDependencies.
+El bot es JavaScript CommonJS sobre **Node 22** (fijado en `engines` y en `.nvmrc`; la CI corre en la misma versión), con **tres dependencias de runtime**: `discord.js`, `dotenv` y `mysql2` (pool MariaDB). Todo lo demás (logger, tests, lint) corre con herramientas nativas o devDependencies.
 
 ## Mapa de módulos
 

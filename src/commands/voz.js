@@ -263,39 +263,13 @@ module.exports = {
       const hub = config.hubId ? guild.channels.cache.get(config.hubId) : null;
       const categoria = config.categoriaId ? guild.channels.cache.get(config.categoriaId) : null;
       const temporales = Object.entries(voz.temporalesDe(guild.id));
-      const bot = guild.members.me;
       const tope = voz.limiteCanales(guild.id);
       const bloqueos = Object.entries(config.bloqueos || {});
 
       // ---------- Diagnóstico (solo informa, no modifica nada) ----------
-      const problemas = [];
-      if (config.hubId && !hub) problemas.push('🔴 El canal hub fue **eliminado a mano**: volvé a activarlo con `/voz activar` o designá otro con `/voz hub`.');
-      if (config.categoriaId && !categoria) problemas.push('🔴 La **categoría destino fue eliminada**: elegí otra con `/voz categoria`.');
-      if (!bot?.permissions?.has(PermissionFlagsBits.ManageChannels)) problemas.push('🔴 Al bot le falta el permiso **Gestionar canales** en el server: no puede crear ni borrar canales.');
-      if (!bot?.permissions?.has(PermissionFlagsBits.MoveMembers)) problemas.push('🔴 Al bot le falta **Mover miembros**: no puede meter a la gente en su canal ni expulsarla.');
-
-      const fueraDeCategoria = [];
-      const registrosMuertos = [];
-      for (const [canalId] of temporales) {
-        const canal = guild.channels.cache.get(canalId);
-        if (!canal) {
-          registrosMuertos.push(canalId);
-          continue;
-        }
-        if (categoria && canal.parentId !== categoria.id) fueraDeCategoria.push(canal.name);
-      }
-      if (registrosMuertos.length) {
-        problemas.push(`🟡 **${registrosMuertos.length} registro(s) huérfano(s)** (canales borrados a mano). Se limpian solos en la próxima creación.`);
-      }
-      if (fueraDeCategoria.length) {
-        problemas.push(`🟡 **${fueraDeCategoria.length} canal(es) quedaron fuera de la categoría destino** (${fueraDeCategoria.slice(0, 3).join(', ')}${fueraDeCategoria.length > 3 ? '…' : ''}). Movelos con \`/voz categoria\`.`);
-      }
-      const destino = categoria ?? hub?.parent ?? null;
-      if (destino && !bot?.permissionsIn(destino)?.has(PermissionFlagsBits.ManageChannels)) {
-        problemas.push('🔴 El bot **no tiene permiso de crear canales en la categoría destino** (falta «Gestionar canales» para el rol del bot ahí).');
-      }
-      const ocupacion = temporales.length >= tope ? '🔴 **Límite de canales alcanzado**: nadie más puede crear hasta que se liberen.' : temporales.length >= Math.ceil(tope * 0.8) ? '🟡 Más del 80% del límite de canales en uso.' : '';
-      if (ocupacion) problemas.push(ocupacion);
+      // Sale de utils/voz.js: la MISMA función que usa /diag y la vigilancia, para
+      // que el comando, el aviso automático y la revisión a mano nunca se contradigan.
+      const problemas = voz.diagnosticoVoz(guild);
 
       const lista = temporales
         .map(([canalId, duenoId]) => {
@@ -306,7 +280,7 @@ module.exports = {
         .join('\n');
 
       const embed = brandEmbed({
-        color: problemas.some((p) => p.startsWith('🔴')) ? COLORS.error : COLORS.info,
+        color: problemas.some((p) => p.nivel === 'error') ? COLORS.error : COLORS.info,
         title: '🎧 Canales de voz temporales',
         description:
           `**Estado:** ${hub ? '🟢 Activo' : '🔴 Inactivo'}\n` +
@@ -319,7 +293,7 @@ module.exports = {
           `**Fallback a la categoría del hub:** ${voz.fallbackActivo(guild.id) ? 'activado' : 'apagado (recomendado)'}\n` +
           `**Bloqueos con vencimiento:** ${bloqueos.length ? bloqueos.map(([id, vence]) => `\n• <#${id}> — se reabre <t:${Math.floor(Number(vence) / 1000)}:R>`).join('') : 'ninguno'}\n\n` +
           `**Canales activos (${temporales.length}):**\n${lista || '*ninguno en este momento*'}` +
-          (problemas.length ? `\n\n**🩺 Diagnóstico:**\n${problemas.join('\n')}` : '\n\n✅ Sin problemas operativos detectados.'),
+          (problemas.length ? `\n\n**🩺 Diagnóstico:**\n${problemas.map((p) => p.texto).join('\n')}` : '\n\n✅ Sin problemas operativos detectados.'),
       });
       return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
     }

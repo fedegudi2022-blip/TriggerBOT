@@ -250,9 +250,13 @@ function recargar() {
   cache.clear();
 }
 
+// Cuántas secciones hay cargadas. Lee el índice si todavía no estaba en memoria (con
+// el TTL de la cache, no golpea el disco en cada llamada): quien pregunte primero
+// —/diag o la vigilancia— recibe el número real en vez de un 0 engañoso.
 function estadisticas(directorio = DIR_POR_DEFECTO) {
+  const indice = obtenerIndice(directorio);
   const guardado = cache.get(directorio);
-  const secciones = guardado ? guardado.indice.secciones : [];
+  const secciones = indice.secciones;
   return {
     directorio,
     archivos: [...new Set(secciones.map((s) => s.archivo))].sort(),

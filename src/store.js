@@ -65,7 +65,7 @@ function setGuildConfig(guildId, updater) {
 // (marcarSucio ya agrupa con su propio debounce). El apagado controlado llama
 // a volcar(), así que un apagado limpio no pierde nada.
 const DEBOUNCE_GUARDADO_MS = 1_500;
-const guardadosDiferidos = new Map(); // guildId → timeout
+const guardadosDiferidos = new Map(); // guildId → { timer, desde }
 
 function mutarYAgendar(guildId, updater) {
   const guildConfig = getGuildConfig(guildId);
@@ -73,18 +73,24 @@ function mutarYAgendar(guildId, updater) {
   cache[guildId] = guildConfig;
   tocarMarca(guildId);
   marcarSucio(guildId, 'config', () => cache[guildId] ?? {});
-  clearTimeout(guardadosDiferidos.get(guildId));
-  guardadosDiferidos.set(
-    guildId,
-    setTimeout(() => {
+
+  // `desde` conserva el momento del PRIMER cambio sin escribir del guild (no se
+  // reinicia en cada mutación): así /diag puede detectar que hay datos colgados hace
+  // demasiado, que es distinto de "hubo una ráfaga larga de entradas y salidas".
+  const previo = guardadosDiferidos.get(guildId);
+  if (previo) clearTimeout(previo.timer);
+  guardadosDiferidos.set(guildId, {
+    desde: previo?.desde ?? Date.now(),
+    timer: setTimeout(() => {
       guardadosDiferidos.delete(guildId);
       save();
-    }, DEBOUNCE_GUARDADO_MS)
-  );
+    }, DEBOUNCE_GUARDADO_MS),
+  });
 }
 
 function cancelarGuardadoDiferido(guildId) {
-  clearTimeout(guardadosDiferidos.get(guildId));
+  const pendiente = guardadosDiferidos.get(guildId);
+  if (pendiente) clearTimeout(pendiente.timer);
   guardadosDiferidos.delete(guildId);
 }
 
@@ -92,9 +98,18 @@ function cancelarGuardadoDiferido(guildId) {
 // La llama el apagado controlado (db/sync → volcarTodo).
 function volcar() {
   if (!guardadosDiferidos.size) return;
-  for (const timer of guardadosDiferidos.values()) clearTimeout(timer);
+  for (const { timer } of guardadosDiferidos.values()) clearTimeout(timer);
   guardadosDiferidos.clear();
   save();
+}
+
+// Cuánto hay sin escribir a disco (lo usa /diag): si el cambio más viejo lleva mucho
+// esperando, el guardado no está corriendo (o el proceso está bloqueado).
+function pendientesDeGuardado() {
+  if (!guardadosDiferidos.size) return { guilds: 0, masViejoMs: 0 };
+  let masViejo = Infinity;
+  for (const { desde } of guardadosDiferidos.values()) masViejo = Math.min(masViejo, desde);
+  return { guilds: guardadosDiferidos.size, masViejoMs: Date.now() - masViejo };
 }
 
 // ---------- Integración con la base de datos (respaldo en MariaDB) ----------
@@ -125,4 +140,14 @@ function escribir(guildId, datos) {
 load();
 inicializarMarcas();
 
-module.exports = { getGuildConfig, setGuildConfig, mutarYAgendar, leerGuilds, marcasPorGuild, leer, escribir, volcar };
+module.exports = {
+  getGuildConfig,
+  setGuildConfig,
+  mutarYAgendar,
+  leerGuilds,
+  marcasPorGuild,
+  leer,
+  escribir,
+  volcar,
+  pendientesDeGuardado,
+};

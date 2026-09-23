@@ -14,6 +14,7 @@ const logComandos = crearLogger('comandos');
 const logDiscord = crearLogger('discord');
 const logApagado = crearLogger('apagado');
 const logSesion = crearLogger('sesion');
+const logVigilancia = crearLogger('vigilancia');
 
 const client = new Client({
   intents: [
@@ -31,19 +32,31 @@ client.buffersMensajes = new Map();
 
 // ---------- Carga de comandos slash (única fuente: src/commandLoader.js) ----------
 // Incluye los directos, los generados por fábrica (/beso, /abrazo...) y /moneda.
-const { cargarComandos } = require('./commandLoader');
+// Un módulo roto se saltea y queda anotado (antes tumbaba el arranque entero).
+const { cargarComandos, fallosDeCarga } = require('./commandLoader');
 client.commands = new Collection();
 for (const comando of cargarComandos()) client.commands.set(comando.data.name, comando);
 
+// Lo que no se pudo cargar (comandos + eventos): lo reporta /diag.
+client.fallosCarga = fallosDeCarga();
+
 // ---------- Eventos (src/events/*) ----------
+// Mismo criterio que con los comandos: si un evento tira al cargarse, el bot sigue
+// vivo con el resto. Sin esto, un error de tipeo en un evento dejaba al bot conectado
+// pero sordo (no reaccionaba a mensajes ni a entradas de voz).
 const eventsPath = require('node:path').join(__dirname, 'events');
 const fs = require('node:fs');
 for (const file of fs.readdirSync(eventsPath).filter((f) => f.endsWith('.js'))) {
-  const event = require(require('node:path').join(eventsPath, file));
-  if (event.once) {
-    client.once(event.name, (...args) => event.execute(...args, client));
-  } else {
-    client.on(event.name, (...args) => event.execute(...args, client));
+  try {
+    const event = require(require('node:path').join(eventsPath, file));
+    if (event.once) {
+      client.once(event.name, (...args) => event.execute(...args, client));
+    } else {
+      client.on(event.name, (...args) => event.execute(...args, client));
+    }
+  } catch (error) {
+    client.fallosCarga.push({ archivo: `events/${file}`, motivo: error.message });
+    logDiscord.error(`No pude cargar events/${file}: ${error.message}`);
   }
 }
 
@@ -107,6 +120,17 @@ setInterval(async () => {
   }
 }, 60 * 1000).unref();
 
+// ---------- Vigilancia: avisa al staff cuando algo se degrada ----------
+// Revisa IA, base de datos, monitoreo de servidores, canales de voz, conocimiento y
+// escrituras pendientes. Solo avisa cuando aparece un problema nuevo (o empeora) y
+// cuando se resuelve: no repite el mismo aviso cada 5 minutos.
+const { vigilar } = require('./utils/vigilancia');
+const INTERVALO_VIGILANCIA_MS = 5 * 60 * 1000;
+const pasadaDeVigilancia = () => vigilar(client).catch((error) => logVigilancia.error('Error en la vigilancia', error));
+setInterval(pasadaDeVigilancia, INTERVALO_VIGILANCIA_MS).unref();
+// Primera pasada a los 2 minutos: deja que la base, el monitoreo y la IA se inicialicen.
+setTimeout(pasadaDeVigilancia, 2 * 60 * 1000).unref();
+
 // ---------- Componentes interactivos (botones, selectores y modales) ----------
 const { manejarBoton } = require('./utils/accionesIA');
 const { manejarComponente } = require('./utils/configPanel');
@@ -114,6 +138,7 @@ const memeCmd = require('./commands/meme');
 const warningsCmd = require('./commands/warnings');
 const pingCmd = require('./commands/ping');
 const statusCmd = require('./commands/status');
+const diagCmd = require('./commands/diag');
 const topCmd = require('./commands/top');
 const { manejarBotonTicket, manejarModalTicket } = require('./utils/tickets');
 const voz = require('./utils/voz');
@@ -127,6 +152,8 @@ client.on('interactionCreate', async (interaction) => {
       await pingCmd.boton(interaction, client);
     } else if (interaction.isButton() && interaction.customId === 'status:refresh') {
       await statusCmd.boton(interaction, client);
+    } else if (interaction.isButton() && interaction.customId === 'diag:refresh') {
+      await diagCmd.boton(interaction, client);
     } else if (interaction.isButton() && interaction.customId.startsWith('top:page:')) {
       // El comando /top expone su render para que el botón pida otra página.
       await topCmd.ejecutar(interaction, Number(interaction.customId.split(':')[2]) || 1);
