@@ -23,6 +23,8 @@ src/
     ├── moderation.js   # Validaciones de jerarquía compartidas (comandos + IA + protección)
     ├── proteccion.js   # Anti-spam y anti-raid automáticos
     ├── accionesIA.js   # Acciones de moderación pedidas por IA (confirmación del staff)
+    ├── contexto.js     # Datos en vivo para el prompt de la IA (nivel, servidores CS, comandos)
+    ├── conocimiento.js # Buscador (BM25) de la base de conocimiento en docs/conocimiento
     ├── tickets.js      # Sistema de tickets con transcript
     ├── modlog.js       # Registro de acciones de moderación (mod-log)
     ├── log.js          # Registro de eventos generales (logs)
@@ -165,7 +167,14 @@ XP por escribir (15-25 por mensaje, máximo 1 por minuto para evitar farmeo) con
 
 ## Chat con IA (opcional)
 
-El bot puede conversar cuando lo mencionás, con memoria de contexto por usuario (los últimos 6 turnos, se olvida a los 10 minutos).
+El bot puede conversar cuando lo mencionás, con memoria de contexto por usuario (los últimos 6 turnos, se olvida a los 10 minutos). Responde **con datos reales del servidor**, no de memoria: antes de cada respuesta el prompt se arma con
+
+- tu ficha (`nivel`, XP, puesto en el ranking, racha, logros y advertencias) y si estás silenciado,
+- el estado en vivo de los servidores CS 1.6 (jugadores, mapa, caído) y lo que esté activo (tickets, voz, anti-spam),
+- el **catálogo real de comandos** (sale de los comandos cargados: nunca se desincroniza), y
+- los fragmentos más parecidos de la **base de conocimiento** (`docs/conocimiento/*.md`).
+
+Si la respuesta no está en esos datos, el bot **lo dice y te deriva al staff** en vez de inventar. Para enseñarle algo nuevo (reglas, FAQ, horarios), editá o agregá un `.md` en `docs/conocimiento/` siguiendo el [README de esa carpeta](docs/conocimiento/README.md): se recarga solo en menos de un minuto, sin reiniciar. Las 12 normativas de la comunidad ya están cargadas en `docs/conocimiento/reglas.md`: si el staff las cambia, se edita ese archivo (o se agrega uno nuevo) y el bot responde la versión actualizada.
 
 **Acciones de moderación por chat:** si un usuario le pide `@TriggerBOT banear a @fulano por flodeo`, la IA interpreta el pedido y muestra un embed con botones. **Solo el staff** (permisos de moderación o roles de `/config staff`) puede apretar **Ejecutar**; la acción queda registrada en el mod-log. Hay cooldown de 20 s por usuario para evitar abusos y las solicitudes expiran a los 5 minutos.
 
@@ -177,6 +186,8 @@ El bot puede conversar cuando lo mencionás, con memoria de contexto por usuario
 **Optimizado para responder rápido:**
 - **Respuestas instantáneas (0 ms):** preguntas canónicas (quién te creó, cuál es la web, las redes, saludos de identidad) se responden sin llamar a la IA — funcionan siempre, incluso sin claves o con los proveedores caídos.
 - **Enrutado por complejidad:** los mensajes sociales cortos ("hola", "todo bien?", "gracias", "jaja") van al modelo chico `llama-3.1-8b-instant` (~2-3x más rápido) y el `70b` queda para preguntas que sí requieren pensar.
+- **Dos perfiles:** *charla* (temperatura 0,75, respuestas de 1-3 frases) y *consulta* (temperatura 0,3, respuestas completas). Es lo que hace que no invente cuando le preguntan algo concreto.
+- **Respuestas largas:** si el modelo se queda sin tokens, reintenta con más margen; al publicar, el texto se parte en varios mensajes sin cortar palabras al medio.
 - **Precalentamiento:** el bot consulta la lista de modelos al arrancar, no en el primer mensaje: la primera respuesta tras un reinicio no se come la demora del listado.
 - Los modelos con **thinking** (razonamiento previo) están excluidos: solo chat directo.
 
@@ -278,7 +289,7 @@ El bot está pensado para **un solo servidor**: la comunidad Trigger.
 
 - **Discord**: inherente al bot.
 - **MariaDB de la web** (si está configurada): respaldo de los datos de la tabla de arriba, en tablas propias `bot_*`. La contraseña `DB_PASSWORD` es un secreto: nunca en logs (el logger la enmascara si un error la arrastra), capturas ni el repo.
-- **Proveedores de IA** (solo si configurás `GROQ_API_KEY`/`GEMINI_API_KEY`): al mencionar al bot se envía tu mensaje, tu nombre visible y el canal (como contexto), más los últimos 6 turnos de la conversación con vos. No se envían IDs de Discord ni mensajes de otros usuarios. Sin claves configuradas, el chat usa solo respuestas locales y **nada sale del host**.
+- **Proveedores de IA** (solo si configurás `GROQ_API_KEY`/`GEMINI_API_KEY`): al mencionar al bot se envía tu mensaje, tu nombre visible, el canal, tus datos públicos del sistema de niveles (nivel, XP, puesto, racha) y el estado público de los servidores CS (desde su propia pregunta), más los últimos 6 turnos de la conversación con vos. No se envían IDs de Discord ni mensajes de otros usuarios. Sin claves configuradas, el chat usa solo respuestas locales y **nada sale del host**.
 - **Reddit / APIs de GIFs**: solo peticiones anónimas de contenido público (memes, GIFs de interacciones).
 
 **Retención:** los JSON locales viven mientras el bot esté en el server; al ser expulsado, sus datos se limpian del disco y de la base (`bot_data`). Los transcripts de tickets y los logs de moderación quedan en Discord (canal/DM) según la retención de Discord misma.

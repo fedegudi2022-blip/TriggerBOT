@@ -22,6 +22,8 @@ El bot es JavaScript CommonJS sobre Node 18+, con **tres dependencias de runtime
 | `src/utils/moderation.js` | Validaciones de jerarquía compartidas |
 | `src/utils/proteccion.js` | Anti-spam y anti-raid automáticos |
 | `src/utils/accionesIA.js` | Acciones de moderación pedidas por IA (confirmación con botones) |
+| `src/utils/contexto.js` | Datos en vivo para el prompt de la IA (ficha del autor, servidores CS, config, catálogo real de comandos) |
+| `src/utils/conocimiento.js` | Base de conocimiento de la IA: busca en `docs/conocimiento/*.md` con BM25 (sin dependencias) |
 | `src/utils/tickets.js` | Sistema de tickets con transcript |
 | `src/utils/voz.js` | Canales de voz temporales Join-to-Create (hub, controles, auto-borrado) |
 | `src/utils/modlog.js` | Registro numerado de casos de moderación |
@@ -114,9 +116,20 @@ Sin esto, un reinicio del host perdía hasta 5 s de XP y 3 s de subidas.
 ## Chat con IA (`utils/ia.js`)
 
 - Cadena Groq → Gemini → repertorio local. Si un proveedor falla o un modelo fue retirado (404), lo saca de la lista y sigue (autorreparación).
+- **Perfiles de respuesta**: el mensaje se clasifica en `charla` (temperatura 0,75, 220 tokens, modelo chico de Groq cuando es social) o `consulta` (temperatura 0,3, 700 tokens, modelo grande). Es la palanca que evita que invente datos cuando le preguntan algo concreto.
+- **Dos bloques de datos reales en el prompt**: el *contexto en vivo* (`utils/contexto.js`: servidor y miembros, ficha del autor —nivel, XP, puesto, racha, logros, warns, si está silenciado, si es staff o el dueño—, estado de los servidores CS desde la cache del monitoreo, config relevante y el catálogo de comandos generado desde `client.commands`) y el *conocimiento recuperado* (`utils/conocimiento.js`: las 3 secciones más parecidas de `docs/conocimiento/*.md`).
+- **Anti-alucinación**: el prompt tiene reglas de precisión explícitas (solo afirmar datos del servidor que estén en esos bloques; si no está, decirlo y derivar a `/help` o a un ticket). El catálogo de comandos ya no está hardcodeado: sale de los comandos cargados, así nunca se desincroniza.
+- **Respuestas largas**: si el proveedor corta por límite de tokens (`finish_reason: length` / `MAX_TOKENS`) se reintenta una vez con más margen; al enviar, `trocearMensaje()` parte el texto en pedazos de 2000 respetando párrafos y frases (antes un `slice(0, 2000)` perdía el final).
 - Memoria por usuario: últimos 6 turnos, TTL de 10 minutos, limpieza periódica del Map. La clave es `userId` (bot de un solo server; si se usara en varios, habría que particionar por `guildId:userId`).
-- **Qué se envía al proveedor**: el mensaje del usuario, nombre mostrado del autor y canal (en el prompt de sistema), y el historial reciente (hasta 6 turnos de ese usuario). No se envían IDs de Discord ni contenido de otros usuarios.
-- **Cómo limitarlo**: no configurar `GROQ_API_KEY`/`GEMINI_API_KEY` desactiva el chat externo (queda el repertorio local). Con la IA activa, esos datos salen del host hacia el proveedor elegido.
+- **Qué se envía al proveedor**: el mensaje del usuario, nombre mostrado del autor, canal, el bloque de datos en vivo (incluye su nivel/XP/puesto y el estado público de los servidores CS) y el historial reciente (hasta 6 turnos de ese usuario). No se envían IDs de Discord, ni contenido de otros usuarios, ni mensajes de canales donde no lo mencionan.
+- **Cómo limitarlo**: no configurar `GROQ_API_KEY`/`GEMINI_API_KEY` desactiva el chat externo (queda el repertorio local). El staff puede apagar la IA por servidor con `/config → Chat con IA`.
+
+## Base de conocimiento (`docs/conocimiento/` + `utils/conocimiento.js`)
+
+- Un `.md` por tema, y cada `## Título` es una sección independiente: el buscador puntúa secciones (no archivos completos) y devuelve las 3 mejores, recortadas a 1.200 caracteres cada una.
+- Índice invertido con **BM25** y dos claves por palabra (la palabra y su raíz de 4 letras): `banear` encuentra `baneo` y `/ban` y `ban` son la misma palabra. Las coincidencias exactas pesan más que las de raíz, así "publicidad" le gana al "pone" de otra sección.
+- **Recarga sola**: los archivos se releen como máximo cada minuto, sin reiniciar el bot. `README.md` y los archivos que empiezan con `_` se ignoran (ahí viven las instrucciones de carga).
+- El contenido es **solo lo verificado**: lo que no está escrito no se responde (el bot dice que no tiene esa info). Las 12 normativas de la comunidad están en `reglas.md`, y la sección *Casos que no están contemplados explícitamente* deja claro que lo que no figura en las normas lo resuelve el staff: mejor derivar que inventar una regla.
 
 ## Tickets (`utils/tickets.js`)
 

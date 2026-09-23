@@ -1,6 +1,6 @@
 const { Events } = require('discord.js');
 const { responderCharla, respuestaInstantanea, normalizar } = require('../utils/charla');
-const { conversar } = require('../utils/ia');
+const { conversar, trocearMensaje } = require('../utils/ia');
 const { pedirConfirmacion } = require('../utils/accionesIA');
 const { DUENO_ID } = require('../comunidad');
 const { getAFK, quitarAFK } = require('../commands/afk');
@@ -180,13 +180,24 @@ async function manejarMencion(message) {
       usuario: message.member?.displayName || message.author.username,
       canal: message.channel.name,
       dueñoPresente: mencionaAlDueno,
+      // Contexto en vivo (utils/contexto.js): ficha del autor, servidores CS, config
+      // y catálogo real de comandos. Sin esto la IA responde a ciegas.
+      guild: message.guild,
+      miembro: message.member,
+      client,
     });
 
     if (respuesta?.tipo === 'accion') {
       return pedirConfirmacion(message, respuesta);
     }
     if (respuesta?.tipo === 'chat' && respuesta.texto) {
-      return message.reply({ content: respuesta.texto.slice(0, 2000) }).catch(() => {});
+      // Respuesta larga: se parte en varios mensajes sin cortar palabras al medio.
+      const trozos = trocearMensaje(respuesta.texto);
+      await message.reply({ content: trozos[0] }).catch(() => {});
+      for (const resto of trozos.slice(1)) {
+        await message.channel.send({ content: resto }).catch(() => {});
+      }
+      return;
     }
   } catch (error) {
     console.warn(`[TriggerBOT] IA no disponible, uso respuesta local: ${error.message}`);

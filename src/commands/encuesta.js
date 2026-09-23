@@ -34,7 +34,7 @@ module.exports = {
 
     const embed = brandEmbed({
       color: 0x5865f2,
-      title: `📊 ${tema}`,
+      title: `${tema}`,
       description: cuerpo,
       footer: `Encuesta de ${interaction.user.tag} • votá con las reacciones`,
     });

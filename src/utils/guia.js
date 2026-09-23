@@ -41,7 +41,9 @@ function camposPublicos() {
     },
     {
       name: 'Chat con IA',
-      value: 'Mencioname y charlamos de lo que quieras. 🤖',
+      value:
+        'Mencioname y charlamos de lo que quieras. 🤖\n' +
+        '*Respondo con datos reales del server: tu nivel y XP, el estado de los servidores CS, cómo conectarte, tickets, niveles y comandos. Si algo no lo tengo cargado, te lo digo y te derivo al staff.*',
     },
   ];
 }
