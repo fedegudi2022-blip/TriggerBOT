@@ -52,13 +52,50 @@ function setGuildConfig(guildId, updater) {
   updater(guildConfig);
   cache[guildId] = guildConfig;
   save();
+  cancelarGuardadoDiferido(guildId); // el guardado inmediato ya incluye lo diferido
   tocarMarca(guildId);
   marcarSucio(guildId, 'config', () => cache[guildId] ?? {});
 }
 
-// Volcado forzado (la config ya guarda síncrono; existe por simetría con el apagado).
+// ---------- Escritura diferida para mutaciones de alta frecuencia ----------
+// El registro de canales temporales de voz cambia con cada entrada/salida: la
+// mutación toca el cache AL INSTANTE (el bot nunca lee datos viejos) pero la
+// escritura a disco se agrupa con debounce. Una ráfaga de gente entrando y
+// saliendo = una sola escritura. MariaDB se sigue sincronizando igual
+// (marcarSucio ya agrupa con su propio debounce). El apagado controlado llama
+// a volcar(), así que un apagado limpio no pierde nada.
+const DEBOUNCE_GUARDADO_MS = 1_500;
+const guardadosDiferidos = new Map(); // guildId → timeout
+
+function mutarYAgendar(guildId, updater) {
+  const guildConfig = getGuildConfig(guildId);
+  updater(guildConfig);
+  cache[guildId] = guildConfig;
+  tocarMarca(guildId);
+  marcarSucio(guildId, 'config', () => cache[guildId] ?? {});
+  clearTimeout(guardadosDiferidos.get(guildId));
+  guardadosDiferidos.set(
+    guildId,
+    setTimeout(() => {
+      guardadosDiferidos.delete(guildId);
+      save();
+    }, DEBOUNCE_GUARDADO_MS)
+  );
+}
+
+function cancelarGuardadoDiferido(guildId) {
+  clearTimeout(guardadosDiferidos.get(guildId));
+  guardadosDiferidos.delete(guildId);
+}
+
+// Volcado forzado: escribe al disco lo que quedó pendiente del debounce.
+// La llama el apagado controlado (db/sync → volcarTodo).
 function volcar() {
-  /* la config se escribe siempre al momento */ }
+  if (!guardadosDiferidos.size) return;
+  for (const timer of guardadosDiferidos.values()) clearTimeout(timer);
+  guardadosDiferidos.clear();
+  save();
+}
 
 // ---------- Integración con la base de datos (respaldo en MariaDB) ----------
 // Marca del último cambio real por servidor (la usa db/sync.js al restaurar).
@@ -81,10 +118,11 @@ function leer(guildId) {
 function escribir(guildId, datos) {
   cache[guildId] = datos ?? {};
   save();
+  cancelarGuardadoDiferido(guildId);
   tocarMarca(guildId);
 }
 
 load();
 inicializarMarcas();
 
-module.exports = { getGuildConfig, setGuildConfig, leerGuilds, marcasPorGuild, leer, escribir, volcar };
+module.exports = { getGuildConfig, setGuildConfig, mutarYAgendar, leerGuilds, marcasPorGuild, leer, escribir, volcar };
