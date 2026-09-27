@@ -1,7 +1,7 @@
 // Sincronización con la base MariaDB: respaldo maestro de todos los almacenes de datos.
 //
 // Cómo funciona:
-// - Los 5 almacenes del bot (config, warns, niveles, afk, interacciones) siguen
+// - Los almacenes del bot (config, warns, notas, casos, niveles, afk, interacciones) siguen
 //   escribiendo en data/*.json como siempre: la respuesta del bot nunca espera a la red.
 // - Cada guardado dispara (con debounce de 3 s) una subida del almacén afectado a la
 //   base de datos de la web (trigger-arena-db, tablas bot_).
@@ -173,7 +173,7 @@ async function restaurar(almacenes) {
 // Vuelca a disco los cambios en memoria pendientes (los almacenes con debounce).
 // `volcarTodo` lo implementa cada almacén; aquí solo se lo pide a los módulos.
 function volcarTodo() {
-  const rutas = ['../niveles', '../warns', '../store', '../commands/afk', './interacciones'];
+  const rutas = ['../niveles', '../warns', '../notas', '../casos', '../store', '../commands/afk', './interacciones'];
   for (const ruta of rutas) {
     try {
       const mod = require(ruta);

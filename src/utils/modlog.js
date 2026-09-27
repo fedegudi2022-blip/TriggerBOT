@@ -1,6 +1,7 @@
 const { EmbedBuilder } = require('discord.js');
 const { getGuildConfig, setGuildConfig } = require('../store');
 const { COLORS } = require('./replies');
+const { registrar: registrarCaso } = require('../casos');
 
 // Numeración de casos por servidor: cada acción de moderación queda identificada
 // con un número (estilo Dyno/Carl-bot) para poder referenciarla en el staff.
@@ -50,6 +51,24 @@ function logAction(guild, { action, color = COLORS.error, target, moderator, rea
   if (extra) embed.addFields({ name: 'Detalles', value: extra, inline: false });
 
   channel.send({ embeds: [embed] }).catch((error) => console.error(`[TriggerBOT] No se pudo registrar la acción en el mod-log: ${error.message}`));
+
+  // Además del embed, el caso queda persistido para poder consultarlo con /casos.
+  // El embed se pierde con el scroll del canal; el registro no.
+  registrarCaso(guild.id, {
+    numero: caso,
+    action,
+    color,
+    targetId: target?.id ?? null,
+    targetTag: target?.tag ?? null,
+    targetRaw: target?.raw ?? null,
+    moderatorId: moderator?.id ?? guild.client.user.id,
+    moderatorTag: moderator?.tag ?? 'sistema',
+    reason: reason ?? null,
+    duration: duration ?? null,
+    extra: extra ?? null,
+    timestamp: Date.now(),
+  });
+
   return caso;
 }
 

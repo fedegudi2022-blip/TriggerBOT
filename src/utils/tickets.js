@@ -7,9 +7,42 @@
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits, ChannelType, MessageFlags, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
 const { brandEmbed, COLORS } = require('./replies');
 const { getGuildConfig, setGuildConfig } = require('../store');
+const crearLogger = require('../logger');
+
+const log = crearLogger('tickets');
 
 function configDe(guildId) {
   return getGuildConfig(guildId).tickets ?? {};
+}
+
+// Límite de adjunto de Discord (8 MiB sin boosts). Dejamos margen: si el transcript
+// lo supera, se parte en varios archivos en vez de que el envío falle en silencio.
+const LIMITE_ADJUNTO_BYTES = 7_800_000;
+
+// Parte un transcript en archivos de a lo sumo LIMITE_ADJUNTO_BYTES, cortando por
+// línea y numerando las partes. Devuelve [{ attachment, name }] listos para `files`.
+function dividirTranscript(cabecera, lineas, nombreBase) {
+  const partes = [];
+  let actual = cabecera;
+  let bytes = Buffer.byteLength(actual, 'utf8');
+  for (const linea of lineas) {
+    const lineaBytes = Buffer.byteLength(linea, 'utf8') + 1;
+    if (bytes + lineaBytes > LIMITE_ADJUNTO_BYTES && actual !== cabecera) {
+      partes.push(actual);
+      actual = '';
+      bytes = 0;
+    }
+    actual += linea + '\n';
+    bytes += lineaBytes;
+  }
+  if (actual) partes.push(actual);
+  if (!partes.length) partes.push(cabecera);
+
+  const total = partes.length;
+  return partes.map((texto, i) => ({
+    attachment: Buffer.from((total > 1 ? `# Transcript — parte ${i + 1}/${total}\n` : '') + texto, 'utf8'),
+    name: total > 1 ? nombreBase.replace(/\.txt$/, `-parte-${i + 1}.txt`) : nombreBase,
+  }));
 }
 
 // Contador de tickets por server (para el número #001, #002...).
@@ -131,12 +164,23 @@ async function cerrarTicket(interaction, cerradoPor) {
   await canal.send({ embeds: [brandEmbed({ color: COLORS.warn, title: '📦 Generando transcript…', description: `El canal se cierra en un momento, ${cerradoPor}.` })] }).catch(() => {});
 
   // Transcript: todos los mensajes del canal, en orden (de a 100 por fetch).
-  // Tope práctico: 50.000 mensajes (500 páginas). Un ticket normal nunca llega;
-  // si llegara, se corta y el conteo del aviso refleja lo guardado.
+  // Tope práctico: 50.000 mensajes (500 páginas). Un ticket normal nunca llega.
+  // Si un fetch falla o la conversación es más larga que el tope, el transcript
+  // queda marcado como INCOMPLETO y no se borra el canal (ver más abajo).
+  const MAX_PAGINAS = 500;
   const lineas = [];
   let antes = null;
-  for (let vuelta = 0; vuelta < 500; vuelta++) {
-    const lote = await canal.messages.fetch({ limit: 100, before: antes }).catch(() => null);
+  let parcial = false; // un fetch falló a mitad: no sabemos si faltan mensajes
+  let truncado = false; // se alcanzó el tope de páginas guardando solo una parte
+  for (let vuelta = 0; vuelta < MAX_PAGINAS; vuelta++) {
+    let lote;
+    try {
+      lote = await canal.messages.fetch({ limit: 100, before: antes });
+    } catch (error) {
+      parcial = true;
+      log.warn('No se pudo leer un lote del transcript', error, { canal: canal.id });
+      break;
+    }
     if (!lote?.size) break;
     for (const m of lote.values()) {
       const stamp = new Date(m.createdTimestamp).toISOString().replace('T', ' ').slice(0, 19);
@@ -145,16 +189,113 @@ async function cerrarTicket(interaction, cerradoPor) {
     }
     antes = lote.last().id;
     if (lote.size < 100) break;
+    if (vuelta === MAX_PAGINAS - 1) truncado = true; // quedaba más y cortamos
   }
   lineas.reverse();
+  const integro = !parcial && !truncado;
 
   const cabecera =
     `Transcript del ticket #${numero} — ${guild.name}\n` +
     `Canal: #${canal.name} · Cerrado por: ${cerradoPor.tag} · ${new Date().toISOString()}\n` +
-    `Mensajes: ${lineas.length}\n` +
+    `Mensajes: ${lineas.length}` +
+    (integro ? '' : `  ⚠️ INCOMPLETO (${parcial ? 'falló la lectura de mensajes' : 'se superó el tope de mensajes'})`) +
+    '\n' +
     '='.repeat(60) + '\n\n';
-  const transcript = Buffer.from(cabecera + lineas.join('\n'), 'utf8');
   const nombreArchivo = `transcript-${canal.name}.txt`;
+  const partes = dividirTranscript(cabecera, lineas, nombreArchivo);
+
+  const config = configDe(guild.id);
+  const raiz = getGuildConfig(guild.id);
+  const canalLogs = guild.channels.cache.get(config.canalLogs || raiz.logs || raiz.avisosChannel);
+
+  // 1) Copia al canal de logs (o logs/avisos general como fallback). Es el requisito
+  //    para poder borrar el canal: si no está configurado o algún envío falla, el
+  //    transcript NO quedó a salvo.
+  let guardadoEnLogs = false;
+  if (canalLogs) {
+    guardadoEnLogs = true;
+    for (let i = 0; i < partes.length; i++) {
+      const ok = await canalLogs
+        .send({
+          embeds:
+            i === 0
+              ? [
+                  brandEmbed({
+                    color: COLORS.warn,
+                    title: `🔒 Ticket #${numero} cerrado`,
+                    description:
+                      `**Abierto por:** <@${userId}>\n**Cerrado por:** ${cerradoPor}\n**Mensajes:** ${lineas.length}` +
+                      (integro ? '' : '\n⚠️ **Transcript incompleto**'),
+                  }),
+                ]
+              : undefined,
+          files: [partes[i]],
+        })
+        .then(() => true)
+        .catch((error) => {
+          log.warn('No se pudo enviar una parte del transcript a logs', error, { canal: canalLogs.id, parte: i + 1 });
+          return false;
+        });
+      if (!ok) guardadoEnLogs = false;
+    }
+  }
+
+  // 2) Copia por DM al usuario del ticket (mejor esfuerzo: no decide el cierre).
+  if (userId) {
+    const duenio = await guild.client.users.fetch(userId).catch(() => null);
+    if (duenio) {
+      for (let i = 0; i < partes.length; i++) {
+        await duenio
+          .send({
+            embeds:
+              i === 0
+                ? [
+                    brandEmbed({
+                      color: COLORS.info,
+                      title: `🎫 Tu ticket #${numero} fue cerrado`,
+                      description:
+                        `Gracias por contactar al staff de **${guild.name}**. Te dejamos la conversación por si la necesitás.` +
+                        (integro ? '' : '\n⚠️ El transcript quedó incompleto.'),
+                    }),
+                  ]
+                : undefined,
+            files: [partes[i]],
+          })
+          .catch(() => {});
+      }
+    }
+  }
+
+  // 3) Solo se borra el canal si el transcript ÍNTEGRO quedó guardado en logs. Si
+  //    no, se conserva la conversación y se avisa al staff para que reintente.
+  if (!integro || !guardadoEnLogs) {
+    const motivo = !integro
+      ? parcial
+        ? 'no pude leer todos los mensajes del canal'
+        : 'la conversación supera el tope de mensajes que puedo guardar de una vez'
+      : canalLogs
+        ? `no pude enviar el transcript a <#${canalLogs.id}>`
+        : 'no hay un canal de logs configurado para tickets (`/ticket logs`)';
+    await canal
+      .send({
+        embeds: [
+          brandEmbed({
+            color: COLORS.error,
+            title: '⚠️ No cerré el ticket',
+            description:
+              `No pude guardar el transcript completo: ${motivo}.\n` +
+              '**Este canal no se borra** para no perder la conversación. Arreglá el problema y volvé a cerrar el ticket.',
+          }),
+        ],
+      })
+      .catch(() => {});
+    loguear(guild, {
+      color: COLORS.error,
+      title: `⚠️ Ticket #${numero} sin cerrar (transcript incompleto)`,
+      description: `Por ${cerradoPor} · ${motivo}. El canal quedó abierto.`,
+    });
+    return;
+  }
 
   await canal.send({
     embeds: [
@@ -165,38 +306,6 @@ async function cerrarTicket(interaction, cerradoPor) {
       }),
     ],
   }).catch(() => {});
-
-  // Copia al canal de logs de tickets (o logs/avisos general como fallback).
-  const config = configDe(guild.id);
-  const raiz = getGuildConfig(guild.id);
-  const canalLogs = guild.channels.cache.get(config.canalLogs || raiz.logs || raiz.avisosChannel);
-  if (canalLogs) {
-    await canalLogs
-      .send({
-        embeds: [
-          brandEmbed({
-            color: COLORS.warn,
-            title: `🔒 Ticket #${numero} cerrado`,
-            description: `**Abierto por:** <@${userId}>\n**Cerrado por:** ${cerradoPor}\n**Mensajes:** ${lineas.length}`,
-          }),
-        ],
-        files: [{ attachment: transcript, name: nombreArchivo }],
-      })
-      .catch(() => {});
-  }
-
-  // Copia por DM al usuario del ticket.
-  if (userId) {
-    const duenio = await guild.client.users.fetch(userId).catch(() => null);
-    if (duenio) {
-      await duenio
-        .send({
-          embeds: [brandEmbed({ color: COLORS.info, title: `🎫 Tu ticket #${numero} fue cerrado`, description: `Gracias por contactar al staff de **${guild.name}**. Te dejamos la conversación por si la necesitás.` })],
-          files: [{ attachment: transcript, name: nombreArchivo }],
-        })
-        .catch(() => {});
-    }
-  }
 
   loguear(guild, {
     color: COLORS.warn,
@@ -276,4 +385,4 @@ async function manejarModalTicket(interaction) {
   await interaction.editReply({ content: `✅ Tu ticket quedó abierto en ${resultado.canal}.` });
 }
 
-module.exports = { abrirTicket, cerrarTicket, panel, configDe, esStaff, manejarBotonTicket, manejarModalTicket };
+module.exports = { abrirTicket, cerrarTicket, panel, configDe, esStaff, manejarBotonTicket, manejarModalTicket, dividirTranscript, LIMITE_ADJUNTO_BYTES };

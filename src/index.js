@@ -82,7 +82,12 @@ setInterval(async () => {
       const horaArg = Number(
         new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', hour12: false }).format(new Date())
       );
-      const diaHoy = new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', day: 'numeric', month: 'numeric', year: 'numeric' }).format(new Date());
+      const diaHoy = new Intl.DateTimeFormat('es-AR', {
+        timeZone: 'America/Argentina/Buenos_Aires',
+        day: 'numeric',
+        month: 'numeric',
+        year: 'numeric',
+      }).format(new Date());
       if (frase.ultima === diaHoy || horaArg !== frase.hora) continue;
 
       const canal = guild.channels.cache.get(frase.canalId);
@@ -142,9 +147,12 @@ const diagCmd = require('./commands/diag');
 const topCmd = require('./commands/top');
 const { manejarBotonTicket, manejarModalTicket } = require('./utils/tickets');
 const voz = require('./utils/voz');
+const confirmaciones = require('./utils/confirmaciones');
 client.on('interactionCreate', async (interaction) => {
   try {
-    if (interaction.isButton() && interaction.customId.startsWith('ia_accion:')) {
+    if (interaction.isButton() && interaction.customId.startsWith('conf:')) {
+      await confirmaciones.manejarComponente(interaction);
+    } else if (interaction.isButton() && interaction.customId.startsWith('ia_accion:')) {
       await manejarBoton(interaction);
     } else if (interaction.isButton() && interaction.customId === 'meme:otro') {
       await memeCmd.boton(interaction);
@@ -187,6 +195,22 @@ client.on('interactionCreate', async (interaction) => {
     } else {
       await interaction.reply(payload).catch(() => {});
     }
+  }
+});
+
+// ---------- Autocompletado ----------
+// Los comandos exponen `autocomplete(interaction)` (motivos de /warn, plantillas,
+// nombres de comando de /help). Sin este handler, Discord mostraba el selector pero
+// la respuesta nunca llegaba: el autocompletado estaba muerto.
+client.on('interactionCreate', async (interaction) => {
+  if (!interaction.isAutocomplete()) return;
+  const command = client.commands.get(interaction.commandName);
+  if (!command?.autocomplete) return;
+  try {
+    await command.autocomplete(interaction);
+  } catch (error) {
+    logComandos.error(`Error en autocompletado de /${interaction.commandName}`, error, { comando: interaction.commandName });
+    await interaction.respond([]).catch(() => {});
   }
 });
 
@@ -275,8 +299,7 @@ function iniciarSesion() {
   const vigilante = setTimeout(() => {
     if (respondio) return;
     logSesion.warn(
-      `Sin respuesta de Discord tras 45 s (intento ${intentos}). ` +
-      'Causa probable: bloqueo temporal de la IP del nodo. Nuevo intento en 60 s.'
+      `Sin respuesta de Discord tras 45 s (intento ${intentos}). ` + 'Causa probable: bloqueo temporal de la IP del nodo. Nuevo intento en 60 s.'
     );
     client.destroy().catch(() => {});
     setTimeout(iniciarSesion, 60_000);
@@ -295,13 +318,11 @@ function iniciarSesion() {
       if (/token/i.test(mensaje)) {
         logSesion.error(
           'ERROR CRÍTICO: token inválido o no definido. ' +
-          'Verifique la variable DISCORD_TOKEN en el panel (Startup → Variables) y reinicie el servidor.'
+            'Verifique la variable DISCORD_TOKEN en el panel (Startup → Variables) y reinicie el servidor.'
         );
         process.exit(1);
       }
-      logSesion.warn(
-        `Fallo de conexión con Discord (intento ${intentos}): ${mensaje}. Nuevo intento en 60 s.`
-      );
+      logSesion.warn(`Fallo de conexión con Discord (intento ${intentos}): ${mensaje}. Nuevo intento en 60 s.`);
       client.destroy().catch(() => {});
       setTimeout(iniciarSesion, 60_000);
     });

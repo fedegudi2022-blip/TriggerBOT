@@ -110,6 +110,57 @@ describe('procesarMensajeParaSpam', () => {
     assert.equal(await proteccion.procesarMensajeParaSpam(mensajeFake('m3', guild, member)), false);
   });
 
+  test('respeta umbrales por encima de 10 (rango completo 3-20)', async () => {
+    const guild = guildFake('g-spam-rango');
+    activar(guild.id, { accionSpam: 'aviso', spamMensajes: 12, spamSegundos: 60 });
+    const member = miembroFake('u-rango', guild);
+
+    for (let i = 1; i <= 11; i++) {
+      assert.equal(await proteccion.procesarMensajeParaSpam(mensajeFake(`m${i}`, guild, member)), false, `el mensaje ${i} no debería disparar`);
+    }
+    assert.equal(await proteccion.procesarMensajeParaSpam(mensajeFake('m12', guild, member)), true, 'el mensaje 12 cruza el umbral');
+  });
+
+  test('solo cuenta y borra los mensajes dentro de la ventana', async () => {
+    const guild = guildFake('g-spam-poda', { permisosBot: [PermissionFlagsBits.ManageMessages] });
+    activar(guild.id, { accionSpam: 'aviso', spamMensajes: 3, spamSegundos: 1 });
+    // Canal con bulkDelete que registra qué ids se borran.
+    const borrados = [];
+    guild.channels.cache.set('canal-1', {
+      id: 'canal-1',
+      bulkDelete: async (ids) => {
+        borrados.push(...ids);
+        return new Map(ids.map((id) => [id, {}]));
+      },
+    });
+    const member = miembroFake('u-poda', guild);
+
+    assert.equal(await proteccion.procesarMensajeParaSpam(mensajeFake('m1', guild, member)), false);
+    await new Promise((r) => setTimeout(r, 1500)); // m1 sale de la ventana de 1 s
+    assert.equal(await proteccion.procesarMensajeParaSpam(mensajeFake('m2', guild, member)), false);
+    assert.equal(await proteccion.procesarMensajeParaSpam(mensajeFake('m3', guild, member)), false);
+    assert.equal(await proteccion.procesarMensajeParaSpam(mensajeFake('m4', guild, member)), true);
+    assert.deepEqual(borrados, ['m2', 'm3', 'm4'], 'no se borra el mensaje viejo fuera de la ventana');
+  });
+
+  test('la notificación describe el resultado real cuando la acción falla', async () => {
+    const guild = guildFake('g-spam-dm'); // el bot NO tiene permisos
+    activar(guild.id, { accionSpam: 'timeout', spamMensajes: 3, spamSegundos: 60 });
+    const member = miembroFake('u-dm', guild);
+    const dms = [];
+    member.user.send = async (texto) => {
+      dms.push(texto);
+    };
+
+    await proteccion.procesarMensajeParaSpam(mensajeFake('m1', guild, member));
+    await proteccion.procesarMensajeParaSpam(mensajeFake('m2', guild, member));
+    assert.equal(await proteccion.procesarMensajeParaSpam(mensajeFake('m3', guild, member)), true);
+
+    assert.equal(dms.length, 1);
+    assert.match(dms[0], /Me falta el permiso/, 'avisa que la acción no se pudo aplicar');
+    assert.doesNotMatch(dms[0], /Acción aplicada/, 'no anuncia la acción configurada como si se hubiera aplicado');
+  });
+
   test('no castiga dos veces al mismo usuario dentro del cooldown', async () => {
     const guild = guildFake('g-spam-cooldown');
     activar(guild.id, { accionSpam: 'aviso', spamMensajes: 3, spamSegundos: 60 });

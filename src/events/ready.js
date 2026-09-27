@@ -7,9 +7,7 @@ module.exports = {
   once: true,
   async execute(client) {
     console.log(`[TriggerBOT] Sesión iniciada correctamente como ${client.user.tag}`);
-    console.log(
-      `[TriggerBOT] Servidores activos: ${client.guilds.cache.map((g) => g.name).join(', ') || 'ninguno'}`
-    );
+    console.log(`[TriggerBOT] Servidores activos: ${client.guilds.cache.map((g) => g.name).join(', ') || 'ninguno'}`);
     console.log(`[TriggerBOT] Comandos cargados: ${client.commands.size}`);
 
     // ---------- Base de datos (MariaDB): restaurar/respaldar al arrancar ----------
@@ -18,6 +16,8 @@ module.exports = {
         const resumen = await restaurar({
           config: require('../store'),
           warns: require('../warns'),
+          notas: require('../notas'),
+          casos: require('../casos'),
           niveles: require('../niveles'),
           afk: require('../commands/afk'),
           interacciones: require('../utils/interacciones'),
@@ -26,8 +26,7 @@ module.exports = {
           console.warn(`[TriggerBOT] MariaDB: restauración con errores (${resumen.errores}). El bot sigue con datos locales.`);
         } else {
           console.log(
-            `[TriggerBOT] Base de datos conectada: ${resumen.restaurados} restaurado(s) desde la base, ` +
-            `${resumen.nube} respaldo(s) agendado(s).`
+            `[TriggerBOT] Base de datos conectada: ${resumen.restaurados} restaurado(s) desde la base, ` + `${resumen.nube} respaldo(s) agendado(s).`
           );
         }
       } catch (error) {
@@ -47,7 +46,9 @@ module.exports = {
     require('../utils/ia').precalentar();
 
     // Canales de voz temporales: borra los que quedaron vacíos por un reinicio.
-    require('../utils/voz').limpiarAlArrancar(client).catch(() => {});
+    require('../utils/voz')
+      .limpiarAlArrancar(client)
+      .catch(() => {});
 
     // Sincronización de comandos slash en cada servidor donde está el bot.
     // No hace falta correr "npm run register" manualmente: alcanza con reiniciar.

@@ -28,6 +28,11 @@ const clear = require('../src/commands/clear');
 const warnings = require('../src/commands/warnings');
 const comandoEmbed = require('../src/commands/embed');
 const channelCreate = require('../src/events/channelCreate');
+const confirmaciones = require('../src/utils/confirmaciones');
+const mute = require('../src/commands/mute');
+const userinfo = require('../src/commands/userinfo');
+const { addNota } = require('../src/notas');
+const casosStore = require('../src/casos');
 
 let contadorGuild = 0;
 
@@ -97,6 +102,9 @@ function miembroFake(id, { kickable = true, bannable = true, moderatable = true,
   m.roles.add = async (rol) => {
     m.rolesAgregados.push(rol);
   };
+  m.roles.remove = async (rol) => {
+    m.rolesQuitados.push(rol);
+  };
   return m;
 }
 
@@ -111,6 +119,20 @@ function guildFake({ ownerId = 'dueno' } = {}) {
     members: { cache: new Map(), fetch: async (id) => guild.members.cache.get(id) ?? null, ban: async () => {}, unban: async () => {} },
     bans: { fetch: async () => new Map() },
   };
+  // Los caches reales de discord.js son Collections (con .filter); el fake usa Map.
+  guild.channels.cache.filter = function (fn) {
+    const out = new Map();
+    for (const [k, v] of this) if (fn(v)) out.set(k, v);
+    return out;
+  };
+
+  // Creación de roles (la usa /mute para el rol Silenciado).
+  guild.roles.create = async (opciones) => {
+    const rol = { id: `rol-${guild.roles.cache.size + 1}`, name: opciones.name, color: opciones.color };
+    guild.roles.cache.set(rol.id, rol);
+    return rol;
+  };
+
   const canalModlog = canalFake('modlog-1');
   guild.channels.cache.set('modlog-1', canalModlog);
   guild.canalModlog = canalModlog;
@@ -182,12 +204,75 @@ function miembroConPermisos() {
   return m;
 }
 
+// Toma la última respuesta del comando (el panel de confirmación), encuentra el botón
+// pedido y lo "aprieta" con una interacción de botón falsa. Devuelve esa interacción
+// para inspeccionar lo que el handler dejó en `_edit` / `_update`.
+async function apretarBoton(interaction, llamadas, accion = 'si') {
+  // El panel llega por reply (miembro en caché) o por editReply (si hubo que diferir).
+  const panel = llamadas.replies.at(-1) ?? llamadas.edits.at(-1);
+  // La fila es un ActionRowBuilder: se serializa para leer los custom_id reales
+  // (los builders guardan el id en `custom_id`, no en `customId`).
+  const fila = panel?.components?.[0];
+  const botones = fila?.toJSON?.().components ?? [];
+  const boton = botones.find((b) => String(b.custom_id ?? '').startsWith(`conf:${accion}:`));
+  assert.ok(boton, `el panel debería tener el botón conf:${accion}`);
+
+  const botonIx = {
+    customId: boton.custom_id,
+    guild: interaction.guild,
+    guildId: interaction.guildId,
+    channel: interaction.channel,
+    user: interaction.user,
+    member: interaction.member,
+    deferred: false,
+    replied: false,
+    async deferUpdate() {
+      botonIx.deferred = true;
+    },
+    async update(payload) {
+      botonIx._update = payload;
+      return payload;
+    },
+    async editReply(payload) {
+      botonIx._edit = payload;
+      return payload;
+    },
+  };
+  await confirmaciones.manejarComponente(botonIx);
+  return botonIx;
+}
+
+// Aprieta un botón ya presente en un payload (p. ej. el "Deshacer" del resultado).
+async function clickBoton(interaction, customId) {
+  const botonIx = {
+    customId,
+    guild: interaction.guild,
+    guildId: interaction.guildId,
+    channel: interaction.channel,
+    user: interaction.user,
+    member: interaction.member,
+    deferred: false,
+    replied: false,
+    async deferUpdate() {
+      botonIx.deferred = true;
+    },
+    async update(payload) {
+      botonIx._update = payload;
+      return payload;
+    },
+    async editReply(payload) {
+      botonIx._edit = payload;
+      return payload;
+    },
+  };
+  await confirmaciones.manejarComponente(botonIx);
+  return botonIx;
+}
+
 // Todo el texto visible del embed, footer incluido (ahí va el número de caso).
 const textoDe = (embed) => {
   const data = embed.data ?? embed;
-  return [data.title, data.description, ...(data.fields ?? []).map((f) => `${f.name}: ${f.value}`), data.footer?.text]
-    .filter(Boolean)
-    .join('\n');
+  return [data.title, data.description, ...(data.fields ?? []).map((f) => `${f.name}: ${f.value}`), data.footer?.text].filter(Boolean).join('\n');
 };
 
 // ---------- Mensajería compartida ----------
@@ -259,27 +344,24 @@ describe('plomería de acciones (utils/acciones.js)', () => {
 
 // ---------- Acciones de moderación ----------
 describe('/kick', () => {
-  test('difiere antes de tocar la API, registra el caso y avisa por DM después', async () => {
+  test('primero pide confirmación y recién al confirmar expulsa, registra el caso y avisa por DM', async () => {
     const guild = guildFake();
     const objetivo = miembroFake('user-1');
     guild.members.cache.set('user-1', objetivo);
     const { interaction, llamadas } = interaccionFake(guild, { opciones: { usuario: objetivo.user, razon: 'flodeo' } });
 
-    // ¿La interacción ya estaba diferida cuando se llamó a la API de Discord?
-    let deferidoAlExpulsar = null;
-    const kickReal = objetivo.kick;
-    objetivo.kick = async (motivo) => {
-      deferidoAlExpulsar = interaction.deferred;
-      return kickReal(motivo);
-    };
-
     await kick.execute(interaction);
 
-    assert.equal(llamadas.defers.length, 1, 'se difiere siempre');
-    assert.equal(deferidoAlExpulsar, true, 'cuando la API se llamó, ya estábamos diferidos');
+    // Nada se tocó todavía: solo el panel de confirmación.
+    assert.equal(objetivo.kicks.length, 0, 'el panel no expulsa');
+    const panel = llamadas.replies.at(-1) ?? llamadas.edits.at(-1);
+    assert.match(textoDe(panel.embeds[0]), /Confirmar expulsión/);
+
+    const boton = await apretarBoton(interaction, llamadas);
+
     assert.equal(objetivo.kicks.length, 1);
-    assert.equal(llamadas.edits[0].embeds[0].data.fields[0].value, 'flodeo');
-    assert.match(textoDe(llamadas.edits[0].embeds[0]), /caso #1/);
+    assert.equal(boton._edit.embeds[0].data.fields[0].value, 'flodeo');
+    assert.match(textoDe(boton._edit.embeds[0]), /caso #1/);
 
     const registro = guild.canalModlog.enviados[0].embeds[0].data;
     assert.match(registro.title, /Caso #1 — Expulsión \(kick\)/);
@@ -315,10 +397,67 @@ describe('/kick', () => {
     await kick.execute(interaction);
     assert.equal(llamadas.defers[0].flags, 64);
   });
+
+  test('cancelar no expulsa a nadie', async () => {
+    const guild = guildFake();
+    const objetivo = miembroFake('user-kick-cancel');
+    guild.members.cache.set('user-kick-cancel', objetivo);
+    const { interaction, llamadas } = interaccionFake(guild, { opciones: { usuario: objetivo.user } });
+
+    await kick.execute(interaction);
+    const boton = await apretarBoton(interaction, llamadas, 'no');
+
+    assert.equal(objetivo.kicks.length, 0, 'no se llama a la API al cancelar');
+    assert.match(textoDe(boton._update.embeds[0]), /cancelada/i);
+  });
+});
+
+describe('/mute', () => {
+  test('pide confirmación, aplica el rol Silenciado y el botón Deshacer lo quita', async () => {
+    const guild = guildFake();
+    const objetivo = miembroFake('user-mute');
+    guild.members.cache.set('user-mute', objetivo);
+    const { interaction, llamadas } = interaccionFake(guild, { opciones: { usuario: objetivo.user, razon: 'flood' } });
+
+    await mute.execute(interaction);
+
+    // Confirmar es un paso aparte: nada de rol aplicado todavía.
+    assert.equal(objetivo.rolesAgregados.length, 0, 'el panel no aplica el rol');
+    const panel = llamadas.replies.at(-1) ?? llamadas.edits.at(-1);
+    assert.match(textoDe(panel.embeds[0]), /Confirmar silencio/);
+
+    const confirmado = await apretarBoton(interaction, llamadas);
+    assert.equal(objetivo.rolesAgregados.length, 1, 'se aplica el rol al confirmar');
+    assert.match(textoDe(confirmado._edit.embeds[0]), /quedó silenciado/);
+
+    // El resultado trae el botón de deshacer; al apretarlo se quita el rol.
+    const botones = confirmado._edit.components[0].toJSON().components;
+    const deshacer = botones.find((b) => String(b.custom_id).startsWith('conf:deshacer:'));
+    assert.ok(deshacer, 'el resultado ofrece Deshacer');
+
+    const boton = await clickBoton(interaction, deshacer.custom_id);
+    assert.equal(objetivo.rolesQuitados.length, 1, 'el rol se quitó al deshacer');
+    assert.match(textoDe(boton._edit.embeds[0]), /Silencio deshecho/);
+  });
+
+  test('si el usuario ya tiene el rol, avisa sin mostrar el panel', async () => {
+    const guild = guildFake();
+    const objetivo = miembroFake('user-mute-ya');
+    objetivo.roles.cache.set('rol-mute', { id: 'rol-mute' });
+    guild.members.cache.set('user-mute-ya', objetivo);
+    store.escribir(guild.id, { modlog: 'modlog-1', muteRole: 'rol-mute' });
+    const { interaction, llamadas } = interaccionFake(guild, { opciones: { usuario: objetivo.user } });
+
+    await mute.execute(interaction);
+
+    assert.equal(llamadas.replies.length, 1);
+    assert.match(textoDe(llamadas.replies[0].embeds[0]), /ya está silenciado/);
+    assert.equal(llamadas.replies[0].components, undefined, 'sin botones');
+  });
 });
 
 describe('/ban', () => {
-  test('registra el baneo y menciona la limpieza de mensajes', async () => {
+  test('primero pide confirmación y recién al confirmar banea (con limpieza y caso)', async () => {
     const guild = guildFake();
     const objetivo = miembroFake('user-4');
     guild.members.cache.set('user-4', objetivo);
@@ -332,10 +471,36 @@ describe('/ban', () => {
 
     await ban.execute(interaction);
 
+    // Todavía NO se tocó la API: solo se muestra el panel de confirmación.
+    assert.equal(baneado, null, 'el panel no aplica el baneo');
+    const panel = llamadas.replies.at(-1) ?? llamadas.edits.at(-1);
+    assert.ok(panel?.embeds, 'se muestra el panel');
+    assert.match(textoDe(panel.embeds[0]), /Confirmar baneo/);
+    assert.ok(panel.components?.length, 'tiene botones de confirmar/cancelar');
+
+    const boton = await apretarBoton(interaction, llamadas);
+
     assert.equal(baneado.id, 'user-4');
     assert.equal(baneado.opciones.deleteMessageSeconds, 3 * 86400);
-    assert.match(textoDe(llamadas.edits[0].embeds[0]), /últimos \*\*3\*\* día/);
-    assert.match(textoDe(llamadas.edits[0].embeds[0]), /caso #1/);
+    assert.match(textoDe(boton._edit.embeds[0]), /últimos \*\*3\*\* día/);
+    assert.match(textoDe(boton._edit.embeds[0]), /caso #1/);
+  });
+
+  test('cancelar no banea a nadie', async () => {
+    const guild = guildFake();
+    const objetivo = miembroFake('user-cancel');
+    guild.members.cache.set('user-cancel', objetivo);
+    let baneado = null;
+    guild.members.ban = async () => {
+      baneado = true;
+    };
+    const { interaction, llamadas } = interaccionFake(guild, { opciones: { usuario: objetivo.user } });
+
+    await ban.execute(interaction);
+    const boton = await apretarBoton(interaction, llamadas, 'no');
+
+    assert.equal(baneado, null, 'no se llama a la API al cancelar');
+    assert.match(textoDe(boton._update.embeds[0]), /cancelada/i);
   });
 
   test('si Discord rechaza el baneo, no dice que baneó y deja el caso marcado', async () => {
@@ -348,11 +513,40 @@ describe('/ban', () => {
     const { interaction, llamadas } = interaccionFake(guild, { opciones: { usuario: objetivo.user } });
 
     await ban.execute(interaction);
+    const boton = await apretarBoton(interaction, llamadas);
 
-    assert.match(textoDe(llamadas.edits[0].embeds[0]), /No se pudo banear/);
-    assert.match(textoDe(llamadas.edits[0].embeds[0]), /Missing Permissions/);
+    assert.match(textoDe(boton._edit.embeds[0]), /No se pudo banear/);
+    assert.match(textoDe(boton._edit.embeds[0]), /Missing Permissions/);
     assert.equal(objetivo.mensajesDirectos.length, 0, 'no se avisa una sanción que no pasó');
     assert.match(guild.canalModlog.enviados[0].embeds[0].data.title, /rechazado/);
+  });
+
+  test('el botón Deshacer revierte el baneo (unban)', async () => {
+    const guild = guildFake();
+    const objetivo = miembroFake('user-undo');
+    guild.members.cache.set('user-undo', objetivo);
+    let baneado = null;
+    let desbaneado = null;
+    guild.members.ban = async (id) => {
+      baneado = id;
+    };
+    guild.members.unban = async (id) => {
+      desbaneado = id;
+    };
+    const { interaction, llamadas } = interaccionFake(guild, { opciones: { usuario: objetivo.user } });
+
+    await ban.execute(interaction);
+    const confirmado = await apretarBoton(interaction, llamadas);
+    assert.equal(baneado, 'user-undo');
+
+    // El resultado trae el botón de deshacer; al apretarlo se revierte con un unban.
+    const botones = confirmado._edit.components[0].toJSON().components;
+    const deshacer = botones.find((b) => String(b.custom_id).startsWith('conf:deshacer:'));
+    assert.ok(deshacer, 'el resultado ofrece Deshacer');
+
+    const boton = await clickBoton(interaction, deshacer.custom_id);
+    assert.equal(desbaneado, 'user-undo');
+    assert.match(textoDe(boton._edit.embeds[0]), /Baneo deshecho/);
   });
 });
 
@@ -452,9 +646,16 @@ describe('/clear', () => {
 
     await clear.execute(interaction);
 
+    // Primero el panel: nada borrado todavía.
+    assert.equal(mensaje.borrado, false, 'el panel no borra nada');
+    const panel = llamadas.replies.at(-1) ?? llamadas.edits.at(-1);
+    assert.match(textoDe(panel.embeds[0]), /Confirmar limpieza/);
+
+    const boton = await apretarBoton(interaction, llamadas);
+
     assert.equal(mensaje.borrado, true, 'se borró el único mensaje');
     assert.equal(interaction.channel.borradoEnBloque.length, 0, 'no llamó a bulkDelete');
-    assert.match(textoDe(llamadas.edits[0].embeds[0]), /Borré \*\*1\*\* mensaje/);
+    assert.match(textoDe(boton._edit.embeds[0]), /Borré \*\*1\*\* mensaje/);
   });
 
   test('los mensajes de más de 14 días no se mandan a borrar y se informa cuántos quedaron', async () => {
@@ -471,10 +672,14 @@ describe('/clear', () => {
       ]);
 
     await clear.execute(interaction);
+    const boton = await apretarBoton(interaction, llamadas);
 
     assert.equal(viejo.borrado, false, 'los viejos no se tocan');
-    assert.deepEqual(interaction.channel.borradoEnBloque.map((m) => m.id), ['nuevo-a', 'nuevo-b']);
-    assert.match(textoDe(llamadas.edits[0].embeds[0]), /Quedaron afuera/);
+    assert.deepEqual(
+      interaction.channel.borradoEnBloque.map((m) => m.id),
+      ['nuevo-a', 'nuevo-b']
+    );
+    assert.match(textoDe(boton._edit.embeds[0]), /Quedaron afuera/);
   });
 
   test('si Discord rechaza el borrado, lo dice con el motivo real', async () => {
@@ -490,9 +695,62 @@ describe('/clear', () => {
     };
 
     await clear.execute(interaction);
+    const boton = await apretarBoton(interaction, llamadas);
 
-    assert.match(textoDe(llamadas.edits[0].embeds[0]), /No se aplicó el borrado/);
-    assert.match(textoDe(llamadas.edits[0].embeds[0]), /Missing Permissions/);
+    assert.match(textoDe(boton._edit.embeds[0]), /No se aplicó el borrado/);
+    assert.match(textoDe(boton._edit.embeds[0]), /Missing Permissions/);
+  });
+});
+
+describe('/userinfo', () => {
+  const usuarioFake = (id) => ({
+    id,
+    tag: `${id}#0001`,
+    username: id,
+    bot: false,
+    createdTimestamp: Date.now() - 400 * 86400_000,
+    displayAvatarURL: () => 'https://ejemplo.com/avatar.png',
+  });
+
+  test('el staff ve las notas y los últimos casos del usuario en la misma ficha', async () => {
+    const guild = guildFake();
+    const user = usuarioFake('user-info');
+    addNota(guild.id, user.id, { texto: 'habló con el staff y quedó advertido', moderatorId: 'mod-1', timestamp: Date.now() });
+    casosStore.registrar(guild.id, {
+      numero: 1,
+      action: 'Baneo (ban)',
+      color: 0xed4245,
+      targetId: user.id,
+      moderatorId: 'mod-1',
+      reason: 'raid',
+      timestamp: Date.now(),
+    });
+    const { interaction, llamadas } = interaccionFake(guild, {
+      opciones: { usuario: user },
+      moderador: miembroConPermisos(),
+    });
+
+    await userinfo.execute(interaction);
+
+    const embed = llamadas.edits[0].embeds[0].data;
+    const texto = textoDe(embed);
+    assert.match(texto, /Notas del staff \(1\)/);
+    assert.match(texto, /habló con el staff/);
+    assert.match(texto, /Últimos casos \(1\)/);
+    assert.match(texto, /Baneo \(ban\)/);
+  });
+
+  test('sin permisos de staff, la ficha no incluye notas ni casos', async () => {
+    const guild = guildFake();
+    const user = usuarioFake('user-raso');
+    casosStore.registrar(guild.id, { numero: 1, action: 'Baneo (ban)', targetId: user.id, moderatorId: 'mod-1', timestamp: Date.now() });
+    const { interaction, llamadas } = interaccionFake(guild, { opciones: { usuario: user } });
+
+    await userinfo.execute(interaction);
+
+    const texto = textoDe(llamadas.edits[0].embeds[0].data);
+    assert.doesNotMatch(texto, /Notas del staff/);
+    assert.doesNotMatch(texto, /Últimos casos/);
   });
 });
 

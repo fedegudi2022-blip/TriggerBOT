@@ -4,7 +4,8 @@ const { logAction } = require('../utils/modlog');
 const { errorEmbed, accionEmbed, COLORS } = require('../utils/replies');
 const { motivoNoModerable, avisarPorDM } = require('../utils/moderation');
 const { autocompletar } = require('../utils/plantillas');
-const { quiereSilencioso, diferir, resolverMiembro, intentar } = require('../utils/acciones');
+const { quiereSilencioso, resolverMiembro, intentar } = require('../utils/acciones');
+const { pedir } = require('../utils/confirmaciones');
 
 // Permisos que se niegan con el rol Silenciado. Los usa también el evento
 // channelCreate (events/channelCreate.js) para que un canal creado DESPUÉS de que
@@ -61,6 +62,7 @@ module.exports = {
     const user = interaction.options.getUser('usuario', true);
     const reason = interaction.options.getString('razon');
     const silencioso = quiereSilencioso(interaction);
+    const guild = interaction.guild;
 
     const member = await resolverMiembro(interaction);
 
@@ -70,58 +72,103 @@ module.exports = {
       return interaction.reply({ embeds: [errorEmbed(error)], flags: MessageFlags.Ephemeral });
     }
 
-    const config = getGuildConfig(interaction.guild.id);
+    const config = getGuildConfig(guild.id);
     const yaTieneRol = config.muteRole && member.roles.cache.has(config.muteRole);
     if (yaTieneRol) {
       return interaction.reply({ embeds: [errorEmbed(`${user} ya está silenciado con el rol Silenciado.`)], flags: MessageFlags.Ephemeral });
     }
 
-    await diferir(interaction, silencioso);
+    // El rol que se aplique queda a mano para que el botón Deshacer sepa qué quitar.
+    let rolUsado = null;
 
-    let role;
-    try {
-      role = await asegurarRolMute(interaction.guild);
-    } catch (err) {
-      return interaction.editReply({
-        embeds: [errorEmbed(`No pude crear el rol **Silenciado**.\n> ${err.message}\n\nVerificá que tenga permiso de **Gestionar roles**.`)],
-      });
-    }
+    return pedir(interaction, {
+      titulo: '🔇 Confirmar silencio',
+      color: COLORS.error,
+      silencioso,
+      deshacerLabel: 'Deshacer (quitar silencio)',
+      detalle:
+        `Vas a silenciar a **${user.tag}** (${user}) con el rol Silenciado.\n` +
+        `**Motivo:** ${reason || '*no especificado*'}\n` +
+        `Dura hasta que alguien lo levante con \`/unmute\` o el botón Deshacer.`,
+      ejecutar: async (btn) => {
+        // El rol se crea recién acá: confirmar no debe dejar un rol nuevo en el servidor.
+        try {
+          rolUsado = await asegurarRolMute(guild);
+        } catch (err) {
+          return {
+            ok: false,
+            embeds: [errorEmbed(`No pude crear el rol **Silenciado**.\n> ${err.message}\n\nVerificá que tenga permiso de **Gestionar roles**.`)],
+          };
+        }
 
-    const resultado = await intentar('Discord rechazó asignar el rol de silenciado', () =>
-      member.roles.add(role, reason ? `${reason} — por ${interaction.user.tag}` : `por ${interaction.user.tag}`)
-    );
+        const resultado = await intentar('Discord rechazó asignar el rol de silenciado', () =>
+          member.roles.add(rolUsado, reason ? `${reason} — por ${btn.user.tag}` : `por ${btn.user.tag}`)
+        );
 
-    const caso = logAction(interaction.guild, {
-      action: resultado.ok ? 'Silencio (mute)' : 'Silencio (mute) — rechazado',
-      color: resultado.ok ? COLORS.error : COLORS.warn,
-      target: user,
-      moderator: interaction.user,
-      reason,
-      duration: resultado.ok ? 'Indefinido' : undefined,
-      extra: resultado.ok ? undefined : resultado.error,
-    });
+        const caso = logAction(guild, {
+          action: resultado.ok ? 'Silencio (mute)' : 'Silencio (mute) — rechazado',
+          color: resultado.ok ? COLORS.error : COLORS.warn,
+          target: user,
+          moderator: btn.user,
+          reason,
+          duration: resultado.ok ? 'Indefinido' : undefined,
+          extra: resultado.ok ? undefined : resultado.error,
+        });
 
-    if (!resultado.ok) {
-      return interaction.editReply({
-        embeds: [errorEmbed(`No se pudo silenciar a ${user}.\n> ${resultado.error}`, 'La acción no se aplicó')],
-      });
-    }
+        if (!resultado.ok) {
+          return { ok: false, embeds: [errorEmbed(`No se pudo silenciar a ${user}.\n> ${resultado.error}`, 'La acción no se aplicó')] };
+        }
 
-    void avisarPorDM(user, `🔇 Fuiste silenciado en **${interaction.guild.name}**.\n**Motivo:** ${reason || 'no especificado'}`);
+        void avisarPorDM(user, `🔇 Fuiste silenciado en **${guild.name}**.\n**Motivo:** ${reason || 'no especificado'}`);
 
-    return interaction.editReply({
-      embeds: [
-        accionEmbed({
-          titulo: '🔇 Silencio (rol)',
-          detalle: `${user} quedó silenciado con el rol ${role}.`,
-          motivo: reason,
-          duracionTexto: 'Indefinido — hasta que lo quite /unmute',
-          caso,
-          moderador: interaction.member?.displayName ?? interaction.user.username,
-          thumbnail: user.displayAvatarURL({ size: 128 }),
-          footer: 'el bot aplica el rol a los canales nuevos automáticamente',
-        }),
-      ],
+        return {
+          ok: true,
+          embeds: [
+            accionEmbed({
+              titulo: '🔇 Silencio (rol)',
+              detalle: `${user} quedó silenciado con el rol ${rolUsado}.`,
+              motivo: reason,
+              duracionTexto: 'Indefinido — hasta que lo quite /unmute',
+              caso,
+              moderador: btn.member?.displayName ?? btn.user.username,
+              thumbnail: user.displayAvatarURL({ size: 128 }),
+              footer: 'el bot aplica el rol a los canales nuevos automáticamente',
+            }),
+          ],
+        };
+      },
+      deshacer: async (btn) => {
+        const role = rolUsado ?? guild.roles.cache.get(getGuildConfig(guild.id).muteRole);
+        if (!role) {
+          return { embeds: [errorEmbed('No encuentro el rol Silenciado para quitarlo. Usá `/unmute`.')] };
+        }
+        const resultado = await intentar('Discord rechazó quitar el rol de silenciado', () =>
+          member.roles.remove(role, `Deshecho por ${btn.user.tag}`)
+        );
+        const caso = logAction(guild, {
+          action: resultado.ok ? 'Silencio levantado (deshacer)' : 'Silencio levantado (deshacer) — rechazado',
+          color: resultado.ok ? COLORS.success : COLORS.warn,
+          target: user,
+          moderator: btn.user,
+          reason: 'Reversión del silencio',
+          extra: resultado.ok ? undefined : resultado.error,
+        });
+        if (!resultado.ok) {
+          return { embeds: [errorEmbed(`No se pudo quitar el silencio.\n> ${resultado.error}`, 'La acción no se aplicó')] };
+        }
+        rolUsado = null;
+        return {
+          embeds: [
+            accionEmbed({
+              titulo: '↩️ Silencio deshecho',
+              detalle: `${user} ya no tiene el rol Silenciado.`,
+              caso,
+              moderador: btn.member?.displayName ?? btn.user.username,
+              thumbnail: user.displayAvatarURL({ size: 128 }),
+            }),
+          ],
+        };
+      },
     });
   },
 };

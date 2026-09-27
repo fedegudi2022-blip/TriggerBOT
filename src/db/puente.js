@@ -526,6 +526,51 @@ function estadoBot(client) {
   };
 }
 
+// ---------- Deduplicación de comandos ya ejecutados ----------
+// El efecto de un comando (publicar un anuncio, banear…) debe correr UNA sola vez.
+// Si después de aplicarlo falla el UPDATE que sella `procesado_en`, la fila sigue
+// "pendiente" y el próximo tick la volvería a ejecutar: doble anuncio, doble sanción.
+//
+// Estados de una fila `bot_cmd`, desde el punto de vista del bot:
+//   pendiente     → procesado_en NULL, sin entrada en `ejecutados`.
+//   en_ejecucion  → el bot marcó la intención (resultado.estado) y está aplicando el
+//                   efecto; `procesado_en` todavía NULL.
+//   ejecutado     → efecto aplicado, esperando sellar `procesado_en` (entrada en
+//                   `ejecutados`): se reintenta SOLO el marcado, nunca la acción.
+//   procesado     → procesado_en seteado (fuera de `ejecutados`).
+//   indeterminado → el bot se reinició (o descartó el recuerdo) con una fila
+//                   en_ejecucion: no se sabe si el efecto llegó a aplicarse. NO se
+//                   re-ejecuta —se prefiere perder el comando antes que repetir un
+//                   ban/anuncio por error— y se cierra con resultado.estado =
+//                   'indeterminado' para que la web muestre qué pasó.
+const ejecutados = new Map(); // id → { resultado, ts }
+const TTL_EJECUTADOS_MS = 10 * 60 * 1000;
+const MAX_EJECUTADOS = 500;
+
+function limpiarEjecutados(ahora) {
+  for (const [id, dato] of ejecutados) if (ahora - dato.ts > TTL_EJECUTADOS_MS) ejecutados.delete(id);
+  if (ejecutados.size <= MAX_EJECUTADOS) return;
+  // La base lleva mucho tiempo sin aceptar el UPDATE: se descartan los más viejos
+  // para acotar la memoria. No se re-ejecutan: la fila conserva el estado
+  // `en_ejecucion` persistido y el tick siguiente la cierra como `indeterminado`.
+  const viejos = [...ejecutados.entries()].sort((a, b) => a[1].ts - b[1].ts);
+  for (const [id] of viejos.slice(0, ejecutados.size - MAX_EJECUTADOS)) ejecutados.delete(id);
+}
+
+function resetearEjecutados() {
+  ejecutados.clear();
+}
+
+// Marca la intención de ejecución sin sellar procesado_en (opción de mariadb).
+async function marcarEnEjecucion(id) {
+  return actualizar(
+    'bot_cmd',
+    { id },
+    { resultado: { estado: 'en_ejecucion', iniciado_en: new Date().toISOString() } },
+    { marcarProcesado: false }
+  );
+}
+
 // ---------- Tick: procesar comandos + publicar estado ----------
 async function tick(client) {
   if (!estado.configurada) return;
@@ -533,34 +578,62 @@ async function tick(client) {
   // 1) Comandos pendientes de la web.
   try {
     const pendientes = await listarTabla('bot_cmd', {
-      select: 'id,comando,guild_id,argumentos,creado_en',
+      select: 'id,comando,guild_id,argumentos,creado_en,resultado',
       filtros: { procesado_en: 'is.null' },
       orden: 'creado_en.asc',
       limite: MAX_POR_TICK,
     });
     const ahora = Date.now();
+    limpiarEjecutados(ahora);
 
     for (const fila of pendientes) {
+      const id = String(fila.id);
+      const previo = ejecutados.get(id);
       let resultado;
-      const vencido = ahora - new Date(fila.creado_en).getTime() > EDAD_MAXIMA_MS;
-      if (vencido) {
-        resultado = { ok: false, error: 'comando vencido (esperó más de 60 s)' };
+
+      if (previo) {
+        // El efecto YA se aplicó y solo quedó pendiente el marcado: se reintenta
+        // el marcado, jamás la acción.
+        resultado = previo.resultado;
+      } else if (fila.resultado?.estado === 'en_ejecucion') {
+        // El bot se reinició en medio de la ejecución: resultado indeterminado.
+        resultado = {
+          ok: false,
+          error: 'resultado indeterminado: el bot se reinició durante la ejecución del comando; no se repite para no duplicar el efecto',
+          estado: 'indeterminado',
+        };
       } else {
-        try {
-          resultado = await procesarFila(fila, client);
-        } catch (error) {
-          resultado = { ok: false, error: error?.message || String(error) };
-          log.error('Error ejecutando comando de la web', error, { comando: fila.comando, guild: fila.guild_id });
+        const vencido = ahora - new Date(fila.creado_en).getTime() > EDAD_MAXIMA_MS;
+        if (vencido) {
+          resultado = { ok: false, error: 'comando vencido (esperó más de 60 s)', estado: 'vencido' };
+        } else {
+          // Registrar la intención ANTES de aplicar el efecto: si el proceso muere
+          // en medio, el próximo arranque lo detecta y no repite la acción.
+          const intencion = await marcarEnEjecucion(id);
+          if (!intencion) {
+            log.warn(`No se pudo registrar la intención del comando web #${id}; se pospone al próximo tick`);
+            continue;
+          }
+          try {
+            resultado = await procesarFila(fila, client);
+          } catch (error) {
+            resultado = { ok: false, error: error?.message || String(error) };
+            log.error('Error ejecutando comando de la web', error, { comando: fila.comando, guild: fila.guild_id });
+          }
+          ejecutados.set(id, { resultado, ts: ahora });
         }
       }
-      await actualizar('bot_cmd', { id: String(fila.id) }, {
-        procesado_en: new Date().toISOString(),
-        resultado,
-      });
-      log.info(
-        `Comando web "${fila.comando}" → ${resultado.ok ? 'OK' : 'fallo'}` +
-        (resultado.detalle ? `: ${resultado.detalle}` : resultado.error ? `: ${resultado.error}` : '')
-      );
+
+      const marcado = await actualizar('bot_cmd', { id }, { procesado_en: new Date().toISOString(), resultado });
+      if (marcado) {
+        ejecutados.delete(id);
+        log.info(
+          `Comando web "${fila.comando}" → ${resultado.ok ? 'OK' : 'fallo'}` +
+          (resultado.detalle ? `: ${resultado.detalle}` : resultado.error ? `: ${resultado.error}` : '')
+        );
+      } else {
+        log.warn(`No se pudo marcar el comando web #${id} ("${fila.comando}") como procesado; se reintenta el marcado sin repetir la acción`);
+      }
     }
   } catch (error) {
     log.error('No se pudieron leer los comandos de la web', error);
@@ -600,4 +673,4 @@ function detener() {
   }
 }
 
-module.exports = { iniciar, detener, tick, procesarFila, estadoBot };
+module.exports = { iniciar, detener, tick, procesarFila, estadoBot, resetearEjecutados };

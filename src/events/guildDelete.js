@@ -5,7 +5,7 @@ const { subirYa } = require('../db/sync');
 // final en la base y agenda la limpieza de sus datos locales y de la base.
 // La limpieza va con 60 s de delay: si fue un reinicio del host con re-invitación,
 // la restauración del próximo arranque vuelve a traer todo desde la base.
-const ALMACENES = ['config', 'warns', 'niveles', 'afk', 'interacciones'];
+const ALMACENES = ['config', 'warns', 'notas', 'casos', 'niveles', 'afk', 'interacciones'];
 
 module.exports = {
   name: Events.GuildDelete,

@@ -116,14 +116,13 @@ function validarAccionIA(accion, interaction, miembro) {
   }
 
   // 4) El bot debe poder moderar al objetivo y tener el permiso concreto necesario.
-  //    (mute sin rol configurado cae a timeout, así que también exige ModerateMembers.)
-  const permiso = PERMISO_ACCION[accion];
-  const error = validarAccionDelBot(guild, miembro, permiso);
+  //    El mute por IA ejecuta EXACTAMENTE lo mismo que /mute: asegura (lo crea si
+  //    falta) el rol Silenciado y lo asigna, así que exige Gestionar roles, no un
+  //    fallback a timeout. Validación y ejecución tienen que pedir lo mismo: antes
+  //    se exigía ModerateMembers cuando faltaba el rol y eso bloqueaba mutes que el
+  //    comando equivalente sí podía hacer.
+  const error = validarAccionDelBot(guild, miembro, PERMISO_ACCION[accion]);
   if (error) return `El bot no puede ejecutar la acción: ${error}`;
-  if (accion === 'mute' && !guild.roles.cache.get(require('../store').getGuildConfig(guild.id).muteRole)) {
-    const errorTimeout = validarAccionDelBot(guild, miembro, PermissionFlagsBits.ModerateMembers);
-    if (errorTimeout) return `Sin rol de silenciado y ${errorTimeout.toLowerCase()}`;
-  }
 
   return null;
 }

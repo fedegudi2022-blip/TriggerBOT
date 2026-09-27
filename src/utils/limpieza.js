@@ -11,6 +11,8 @@ async function limpiarGuild(guildId, almacenes) {
       const rutas = {
         config: '../store',
         warns: '../warns',
+        notas: '../notas',
+        casos: '../casos',
         niveles: '../niveles',
         afk: '../commands/afk',
         interacciones: './interacciones',

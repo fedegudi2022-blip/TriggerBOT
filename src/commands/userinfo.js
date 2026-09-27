@@ -1,6 +1,9 @@
 const { SlashCommandBuilder, MessageFlags, PermissionFlagsBits } = require('discord.js');
 const { brandEmbed, COLORS } = require('../utils/replies');
 const { getWarns } = require('../warns');
+const { getNotas } = require('../notas');
+const { listar } = require('../casos');
+const { getGuildConfig } = require('../store');
 
 const PERMISOS_INTERESANTES = [
   ['Administrador', PermissionFlagsBits.Administrator],
@@ -10,6 +13,14 @@ const PERMISOS_INTERESANTES = [
   ['Moderar miembros', PermissionFlagsBits.ModerateMembers],
   ['Gestionar mensajes', PermissionFlagsBits.ManageMessages],
 ];
+
+// Mismo criterio de staff que /casos, /nota y /warnings: permiso de moderación o
+// alguno de los roles admin/mod/helper configurados.
+function esStaff(interaction) {
+  if (interaction.member?.permissions?.has?.(PermissionFlagsBits.ModerateMembers)) return true;
+  const config = getGuildConfig(interaction.guildId);
+  return ['admin', 'mod', 'helper'].some((nivel) => interaction.member?.roles?.cache?.has?.(config[`${nivel}Role`]));
+}
 
 // Antigüedad legible: "3 a 2 m" · "5 m 12 d" · "12 d".
 function antiguedad(ts) {
@@ -37,8 +48,7 @@ module.exports = {
 
     // El miembro ya viaja resuelto con la interacción (roles, permisos, apodo y fecha
     // de ingreso incluidos): cero fetch de red para la parte de miembro.
-    const member =
-      interaction.options.getMember('usuario') ?? (user.id === interaction.user.id ? interaction.member : null);
+    const member = interaction.options.getMember('usuario') ?? (user.id === interaction.user.id ? interaction.member : null);
 
     // Único fetch a la API: pide el perfil completo para banner y color de acento.
     const completo = await interaction.client.users.fetch(user.id, { force: true }).catch(() => null);
@@ -53,9 +63,7 @@ module.exports = {
     // Rol más alto (sin @everyone): lo usamos para la insignia de jerarquía.
     const rolTop = member?.roles.highest && member.roles.highest.id !== interaction.guild.id ? member.roles.highest : null;
 
-    const permisos = member
-      ? PERMISOS_INTERESANTES.filter(([, p]) => member.permissions.has(p)).map(([nombre]) => nombre)
-      : [];
+    const permisos = member ? PERMISOS_INTERESANTES.filter(([, p]) => member.permissions.has(p)).map(([nombre]) => nombre) : [];
 
     const rolesLista = member
       ? member.roles.cache
@@ -69,6 +77,57 @@ module.exports = {
 
     const warns = getWarns(interaction.guild.id, user.id).length;
 
+    const fields = [
+      { name: '🆔 ID', value: `\`${user.id}\``, inline: true },
+      { name: '📅 Cuenta creada', value: `<t:${creado}:D>\n<t:${creado}:R> · hace ${antiguedad(user.createdTimestamp)}`, inline: true },
+      {
+        name: '📥 Se unió',
+        value: unido ? `<t:${unido}:D>\n<t:${unido}:R> · hace ${antiguedad(member.joinedTimestamp)}` : '*desconocido*',
+        inline: true,
+      },
+      { name: '🏷️ Apodo', value: member?.nickname ? member.nickname : '—', inline: true },
+      { name: '⚠️ Advertencias', value: warns > 0 ? `**${warns}** warn(s)` : 'Ninguna', inline: true },
+      {
+        name: '🚀 Boost',
+        value: member?.premiumSince ? `desde <t:${Math.floor(member.premiumSinceTimestamp / 1000)}:R>` : 'No es booster',
+        inline: true,
+      },
+      {
+        name: '🔐 Permisos destacados',
+        value: permisos.length ? permisos.map((p) => `\`${p}\``).join(', ') : '*sin permisos destacados*',
+        inline: false,
+      },
+      { name: `Roles (${rolesTotal})`, value: rolesTexto || '*sin roles*', inline: false },
+    ];
+
+    // Ficha completa para el staff: notas internas y últimos casos en el mismo embed.
+    // Un embed aguanta 25 campos; se muestran 3 notas y 5 casos como máximo.
+    if (esStaff(interaction)) {
+      const notas = getNotas(interaction.guildId, user.id);
+      const casos = listar(interaction.guildId, { usuarioId: user.id, limite: 5 });
+      const ultimas = notas.slice(-3).reverse();
+
+      fields.push({
+        name: `📝 Notas del staff (${notas.length})`,
+        value: ultimas.length
+          ? ultimas.map((n) => `<t:${Math.floor(n.timestamp / 1000)}:d> · <@${n.moderatorId}>\n> ${String(n.texto).slice(0, 150)}`).join('\n')
+          : 'Sin notas internas.',
+        inline: false,
+      });
+      fields.push({
+        name: `📁 Últimos casos (${casos.length})`,
+        value: casos.length
+          ? casos
+              .map(
+                (c) =>
+                  `\`#${c.numero}\` ${c.action} — <t:${Math.floor(c.timestamp / 1000)}:d>${c.reason ? ` · ${String(c.reason).slice(0, 90)}` : ''}`
+              )
+              .join('\n')
+          : 'Sin casos registrados.',
+        inline: false,
+      });
+    }
+
     const embed = brandEmbed({
       color,
       title: user.tag,
@@ -77,24 +136,7 @@ module.exports = {
         (member ? `<@${user.id}>` : `**${user.tag}** (no está en el server)`) +
         (rolTop ? ` · máximo rol: <@&${rolTop.id}>` : '') +
         (user.bot ? '\n🤖 Esta cuenta es un bot' : ''),
-      fields: [
-        { name: '🆔 ID', value: `\`${user.id}\``, inline: true },
-        { name: '📅 Cuenta creada', value: `<t:${creado}:D>\n<t:${creado}:R> · hace ${antiguedad(user.createdTimestamp)}`, inline: true },
-        { name: '📥 Se unió', value: unido ? `<t:${unido}:D>\n<t:${unido}:R> · hace ${antiguedad(member.joinedTimestamp)}` : '*desconocido*', inline: true },
-        { name: '🏷️ Apodo', value: member?.nickname ? member.nickname : '—', inline: true },
-        { name: '⚠️ Advertencias', value: warns > 0 ? `**${warns}** warn(s)` : 'Ninguna', inline: true },
-        {
-          name: '🚀 Boost',
-          value: member?.premiumSince ? `desde <t:${Math.floor(member.premiumSinceTimestamp / 1000)}:R>` : 'No es booster',
-          inline: true,
-        },
-        {
-          name: '🔐 Permisos destacados',
-          value: permisos.length ? permisos.map((p) => `\`${p}\``).join(', ') : '*sin permisos destacados*',
-          inline: false,
-        },
-        { name: `Roles (${rolesTotal})`, value: rolesTexto || '*sin roles*', inline: false },
-      ],
+      fields,
       footer: `TriggerBOT • /avatar para ver su avatar en grande • en el server hace ${antiguedad(member?.joinedTimestamp ?? user.createdTimestamp)}`,
     });
 

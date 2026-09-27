@@ -317,7 +317,10 @@ async function eliminar(clave) {
 
 // Actualiza campos de una fila de una tabla (lo usa el puente web para marcar
 // comandos como procesados con su resultado). Devuelve true si fue OK.
-async function actualizar(tabla, filtros, campos) {
+// `opciones.marcarProcesado === false` permite escribir el estado "en ejecución"
+// SIN sellar `procesado_en`: así el bot registra la intención antes de aplicar un
+// efecto y un reinicio en medio queda detectable como resultado indeterminado.
+async function actualizar(tabla, filtros, campos, opciones = {}) {
   if (!configurada) return false;
   try {
     await asegurarTablas();
@@ -329,7 +332,7 @@ async function actualizar(tabla, filtros, campos) {
     if (tabla === 'bot_cmd' && valores.resultado !== undefined) valores.resultado = aJson(valores.resultado);
     if (tabla === 'bot_data' && valores.datos !== undefined) valores.datos = aJson(valores.datos);
     if (tabla === 'bot_stats' && valores.valor !== undefined) valores.valor = aJson(valores.valor);
-    if (tabla === 'bot_cmd') valores.procesado_en = valores.procesado_en ?? new Date();
+    if (tabla === 'bot_cmd' && opciones.marcarProcesado !== false) valores.procesado_en = valores.procesado_en ?? new Date();
     for (const [col, valor] of Object.entries(valores)) {
       if (!/^[a-z_]+$/.test(col)) throw new Error(`Columna inválida: ${col}`);
       sets.push(`${col} = ?`);

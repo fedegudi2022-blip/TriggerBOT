@@ -210,7 +210,11 @@ echo json_encode(['id' => (int)$pdo->lastInsertId()]);
 
 ### Para saber si funcionó
 
-El bot procesa la fila en ≤ 5 s y llena `procesado_en` y `resultado`:
+El bot procesa la fila en ≤ 5 s y llena `procesado_en` y `resultado`. Además del `ok`/`detalle`/`error` normal, `resultado.estado` puede valer:
+
+- `en_ejecucion` → el bot ya tomó el comando y está aplicando el efecto; `procesado_en` todavía es NULL. Mostralo como *en curso*, no como pendiente ni como listo.
+- `indeterminado` → el bot se reinició durante la ejecución: el efecto pudo aplicarse o no, y **no se repite** para no duplicar un ban o un anuncio. Mostralo como "revisar a mano".
+- `vencido` → esperó más de 60 s (el bot estaba apagado) y no se ejecutó.
 
 ```php
 <?php
@@ -270,6 +274,7 @@ Todos se insertan igual que en la sección 4, cambiando `comando` y `argumentos`
 
 ## 6. Notas de operación
 
+- **Un comando se aplica una sola vez.** El bot registra la intención (`resultado.estado = 'en_ejecucion'`) antes de aplicar el efecto y, si el sellado de `procesado_en` falla, reintenta **solo el marcado** sin repetir la acción. La web **no** debería reinsertar el mismo comando si no ve resultado: mostrá el estado (`en_ejecucion` / `indeterminado`) en vez de reencolarlo.
 - **Latencia:** cambios y estado viajan en 3–5 s (el tick del puente). Es un panel de administración, no chat en vivo.
 - **Comandos vencidos:** si el bot está apagado, las filas de `bot_cmd` sin procesar tras 60 s se marcan con `resultado = { ok: false, error: "comando vencido..." }` cuando vuelva. Mostrá ese estado en la UI.
 - **Limpieza:** de vez en cuando conviene `DELETE FROM bot_cmd WHERE procesado_en IS NOT NULL AND procesado_en < NOW() - INTERVAL 7 DAY`.

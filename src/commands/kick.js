@@ -3,7 +3,8 @@ const { logAction } = require('../utils/modlog');
 const { errorEmbed, accionEmbed, COLORS } = require('../utils/replies');
 const { motivoNoModerable, avisarPorDM } = require('../utils/moderation');
 const { autocompletar } = require('../utils/plantillas');
-const { quiereSilencioso, diferir, resolverMiembro, intentar } = require('../utils/acciones');
+const { quiereSilencioso, resolverMiembro, intentar } = require('../utils/acciones');
+const { pedir } = require('../utils/confirmaciones');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -24,10 +25,11 @@ module.exports = {
     const user = interaction.options.getUser('usuario', true);
     const reason = interaction.options.getString('razon');
     const silencioso = quiereSilencioso(interaction);
+    const guild = interaction.guild;
 
     const member = await resolverMiembro(interaction);
 
-    // Validaciones antes de diferir: el error sale al instante y como efímero.
+    // Validaciones antes de mostrar el panel: el error sale al instante y como efímero.
     const error =
       motivoNoModerable(interaction, member) ??
       (member?.kickable ? null : 'No puedo expulsarlo: su rol está por encima del mío (o es el dueño del servidor).');
@@ -35,45 +37,49 @@ module.exports = {
       return interaction.reply({ embeds: [errorEmbed(error)], flags: MessageFlags.Ephemeral });
     }
 
-    // Diferimos ANTES de tocar la API de Discord: la ventana de 3 segundos no
-    // depende de cuánto tarde la expulsión.
-    await diferir(interaction, silencioso);
+    // Un kick es irreversible desde el lado del usuario: se confirma antes de tocar la API.
+    return pedir(interaction, {
+      titulo: '👢 Confirmar expulsión',
+      color: COLORS.error,
+      silencioso,
+      detalle: `Vas a expulsar a **${user.tag}** (${user}).\n**Motivo:** ${reason || '*no especificado*'}`,
+      ejecutar: async (btn) => {
+        const resultado = await intentar('Discord rechazó la expulsión', () =>
+          member.kick(reason ? `${reason} — por ${btn.user.tag}` : `por ${btn.user.tag}`)
+        );
 
-    const resultado = await intentar('Discord rechazó la expulsión', () =>
-      member.kick(reason ? `${reason} — por ${interaction.user.tag}` : `por ${interaction.user.tag}`)
-    );
+        const caso = logAction(guild, {
+          action: resultado.ok ? 'Expulsión (kick)' : 'Expulsión (kick) — rechazada',
+          color: resultado.ok ? COLORS.error : COLORS.warn,
+          target: user,
+          moderator: btn.user,
+          reason,
+          extra: resultado.ok ? undefined : resultado.error,
+        });
 
-    const caso = logAction(interaction.guild, {
-      action: resultado.ok ? 'Expulsión (kick)' : 'Expulsión (kick) — rechazada',
-      color: resultado.ok ? COLORS.error : COLORS.warn,
-      target: user,
-      moderator: interaction.user,
-      reason,
-      extra: resultado.ok ? undefined : resultado.error,
-    });
+        if (!resultado.ok) {
+          return { ok: false, embeds: [errorEmbed(`No se pudo expulsar a ${user}.\n> ${resultado.error}`, 'La acción no se aplicó')] };
+        }
 
-    if (!resultado.ok) {
-      return interaction.editReply({
-        embeds: [errorEmbed(`No se pudo expulsar a ${user}.\n> ${resultado.error}`, 'La acción no se aplicó')],
-      });
-    }
+        // El DM va DESPUÉS de la acción: avisar antes deja al usuario con una
+        // notificación de algo que puede haber fallado. Sin await: es una cortesía y
+        // no debe demorar la confirmación.
+        void avisarPorDM(user, `👢 Fuiste expulsado de **${guild.name}**.\n**Motivo:** ${reason || 'no especificado'}`);
 
-    // El DM va DESPUÉS de la acción: avisar antes deja al usuario con una
-    // notificación de algo que puede haber fallado. Sin await: es una cortesía y
-    // no debe demorar la confirmación.
-    void avisarPorDM(user, `👢 Fuiste expulsado de **${interaction.guild.name}**.\n**Motivo:** ${reason || 'no especificado'}`);
-
-    return interaction.editReply({
-      embeds: [
-        accionEmbed({
-          titulo: '👢 Expulsión',
-          detalle: `${user} fue expulsado del servidor.`,
-          motivo: reason,
-          caso,
-          moderador: interaction.member?.displayName ?? interaction.user.username,
-          thumbnail: user.displayAvatarURL({ size: 128 }),
-        }),
-      ],
+        return {
+          ok: true,
+          embeds: [
+            accionEmbed({
+              titulo: '👢 Expulsión',
+              detalle: `${user} fue expulsado del servidor.`,
+              motivo: reason,
+              caso,
+              moderador: btn.member?.displayName ?? btn.user.username,
+              thumbnail: user.displayAvatarURL({ size: 128 }),
+            }),
+          ],
+        };
+      },
     });
   },
 };

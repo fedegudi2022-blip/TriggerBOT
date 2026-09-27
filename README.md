@@ -12,6 +12,8 @@ src/
 ├── logger.js           # Logger estructurado con sanitización de secretos
 ├── store.js            # Config por servidor en data/config.json
 ├── warns.js            # Historial de warns en data/warns.json
+├── notas.js            # Notas internas del staff en data/notas.json (separadas de los warns)
+├── casos.js            # Registro persistente de casos del mod-log en data/casos.json (lo lee /casos)
 ├── niveles.js          # XP, niveles y logros en data/niveles.json (escritura con debounce)
 ├── db/
 │   ├── mariadb.js      # Cliente MySQL/MariaDB (pool + tablas bot_ autogestionadas)
@@ -21,6 +23,8 @@ src/
 ├── events/             # Un archivo por evento (ready, logs, ...)
 └── utils/
     ├── moderation.js   # Validaciones de jerarquía compartidas (comandos + IA + protección)
+    ├── confirmaciones.js # Confirmar/deshacer reutilizable para acciones destructivas
+    ├── guia.js         # Guía de /help armada desde los comandos + detalle por comando
     ├── proteccion.js   # Anti-spam y anti-raid automáticos
     ├── accionesIA.js   # Acciones de moderación pedidas por IA (confirmación del staff)
     ├── contexto.js     # Datos en vivo para el prompt de la IA (nivel, servidores CS, comandos)
@@ -59,48 +63,54 @@ Los comandos además se validan con un **smoke test de registro** (`tests/regist
 ## Comandos
 
 ### General
-| Comando | Qué hace | Quién lo usa |
-|---|---|---|
-| `/ping` | Latencia del bot con indicador de calidad y botón de refresco | Todos |
-| `/status` | Estado del bot: modelos de IA, latencia, tiempo encendido, uso — con botón de refresco | Todos |
-| `/redes` | Redes oficiales de la comunidad (WhatsApp, Steam, Instagram) con botones de link directo | Todos |
-| `/web` | Link del sitio oficial [triggerarena.pro](https://triggerarena.pro/) con botón directo | Todos |
-| `/voz activar/hub/categoria/formato/contador/logs/estado` | Staff: activa los **canales de voz temporales** (ver abajo) | Staff (config) |
-| `/servidores` | Estado en vivo de los servers CS 1.6 (jugadores, mapa, IP). Staff: `publicar:true` fija un panel que se actualiza solo | Todos |
-| `/ip [servidor]` | IP para conectarte, lista para copiar. Con filtro por nombre muestra mapa y jugadores de ahora | Todos |
-| `/ticket publicar/categoria/logs/mensaje` | Panel de soporte con botón, canales privados por ticket y transcript al cerrar | Staff (config) |
-| `/diag` | Diagnóstico operativo: qué está roto y qué hacer, incluida la salida a internet del host | Staff |
-| `/buscar consulta` | Búsqueda web a mano: resultados crudos con su fuente, y cómo clasificaría el bot esa pregunta | Staff |
-| `/help user` | Guía de comandos para usuarios, por categorías | Todos |
-| `/help staff` | Guía completa (incluye moderación y configuración); respuesta de staff, no visible en canales públicos | Staff |
-| Guía de comandos: `/help user` y `/help staff` | Se arma sola desde los comandos cargados (nunca queda desactualizada) | Todos / Staff |
-| `/userinfo [usuario]` | Ficha de usuario: fechas, roles, permisos, warns | Todos |
-| `/serverinfo` | Ficha del server: dueño, canales, roles, boosts | Todos |
-| `/avatar [usuario]` | Avatar en grande con link de descarga | Todos |
-| Mencionar al bot (`@TriggerBOT`) | Charla con IA, con indicador de escribiendo y contexto | Todos |
-| `@TriggerBOT muteá a @fulano por spam` | La IA interpreta el pedido y el staff lo confirma con botones | Todos (confirma staff) |
-| `@TriggerBOT ping` | Ping rápido por mención | Todos |
+
+| Comando                                                   | Qué hace                                                                                                               | Quién lo usa           |
+| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ---------------------- |
+| `/ping`                                                   | Latencia del bot con indicador de calidad y botón de refresco                                                          | Todos                  |
+| `/status`                                                 | Estado del bot: modelos de IA, latencia, tiempo encendido, uso — con botón de refresco                                 | Todos                  |
+| `/redes`                                                  | Redes oficiales de la comunidad (WhatsApp, Steam, Instagram) con botones de link directo                               | Todos                  |
+| `/web`                                                    | Link del sitio oficial [triggerarena.pro](https://triggerarena.pro/) con botón directo                                 | Todos                  |
+| `/voz activar/hub/categoria/formato/contador/logs/estado` | Staff: activa los **canales de voz temporales** (ver abajo)                                                            | Staff (config)         |
+| `/servidores`                                             | Estado en vivo de los servers CS 1.6 (jugadores, mapa, IP). Staff: `publicar:true` fija un panel que se actualiza solo | Todos                  |
+| `/ip [servidor]`                                          | IP para conectarte, lista para copiar. Con filtro por nombre muestra mapa y jugadores de ahora                         | Todos                  |
+| `/ticket publicar/categoria/logs/mensaje`                 | Panel de soporte con botón, canales privados por ticket y transcript al cerrar                                         | Staff (config)         |
+| `/diag`                                                   | Diagnóstico operativo: qué está roto y qué hacer, incluida la salida a internet del host                               | Staff                  |
+| `/buscar consulta`                                        | Búsqueda web a mano: resultados crudos con su fuente, y cómo clasificaría el bot esa pregunta                          | Staff                  |
+| `/help user [comando]`                                    | Guía de comandos para usuarios, por categorías; con `comando` muestra el detalle y el permiso que exige                | Todos                  |
+| `/help staff [comando]`                                   | Guía completa (incluye moderación y configuración); respuesta de staff, no visible en canales públicos                 | Staff                  |
+| Guía de comandos: `/help user` y `/help staff`            | Se arma sola desde los comandos cargados (nunca queda desactualizada)                                                  | Todos / Staff          |
+| `/userinfo [usuario]`                                     | Ficha de usuario: fechas, roles, permisos y warns. **El staff** ve además sus notas internas y sus últimos casos       | Todos (extras: Staff)  |
+| `/serverinfo`                                             | Ficha del server: dueño, canales, roles, boosts                                                                        | Todos                  |
+| `/avatar [usuario]`                                       | Avatar en grande con link de descarga                                                                                  | Todos                  |
+| Mencionar al bot (`@TriggerBOT`)                          | Charla con IA, con indicador de escribiendo y contexto                                                                 | Todos                  |
+| `@TriggerBOT muteá a @fulano por spam`                    | La IA interpreta el pedido y el staff lo confirma con botones                                                          | Todos (confirma staff) |
+| `@TriggerBOT ping`                                        | Ping rápido por mención                                                                                                | Todos                  |
 
 ### Moderación
-| Comando | Qué hace | Permisos |
-|---|---|---|
-| `/warn usuario [razon]` | Advierte a un usuario. **Al 3er warn: timeout de 1 h automático** | Mods |
-| `/warnings usuario` | Historial de advertencias, paginado con botones (aguanta historiales largos) | Mods |
-| `/quitarnota usuario numero [razon]` | Elimina una advertencia del historial | Mods |
-| `/kick usuario [razon]` | Expulsa a un usuario | Mods |
-| `/ban usuario [razon] [borrar_dias]` | Banea y opcionalmente borra mensajes | Mods |
-| `/unban usuario_id [razon]` | Revoca un baneo por ID | Mods |
-| `/softban usuario [borrar_dias] [razon]` | Expulsa borrando sus mensajes (ban + unban) | Mods |
-| `/timeout usuario duracion [razon]` | Silencia de 5 min a 28 días, o **levanta el silencio** con *Quitarlo ahora* | Mods |
-| `/mute usuario [razon]` | Silencia con rol (crea el rol *Silenciado* solo) | Mods |
-| `/unmute usuario [razon]` | Quita el silencio | Mods |
-| `/clear cantidad [usuario] [razon]` | Borra hasta 100 mensajes recientes | Mods |
-| `/lockdown bloquear/desbloquear [canal]` | Cierra o reabre un canal | Mods |
-| `/slowmode segundos [canal]` | Modo lento de 0 s a 6 h | Mods |
+
+| Comando                                  | Qué hace                                                                                        | Permisos |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------- | -------- |
+| `/warn usuario [razon]`                  | Advierte a un usuario. **Al 3er warn: timeout de 1 h automático**                               | Mods     |
+| `/warnings usuario`                      | Historial de advertencias, paginado con botones (aguanta historiales largos)                    | Mods     |
+| `/quitarnota usuario numero [razon]`     | Elimina una advertencia del historial                                                           | Mods     |
+| `/nota agregar/ver/quitar`               | Notas internas sobre un usuario. **No cuentan** para el silencio automático de 3 warn           | Mods     |
+| `/casos [caso] [usuario]`                | Consulta el registro de casos del mod-log: uno puntual por número o el historial de una persona | Mods     |
+| `/kick usuario [razon]`                  | Expulsa a un usuario                                                                            | Mods     |
+| `/ban usuario [razon] [borrar_dias]`     | Banea y opcionalmente borra mensajes                                                            | Mods     |
+| `/unban usuario_id [razon]`              | Revoca un baneo por ID                                                                          | Mods     |
+| `/softban usuario [borrar_dias] [razon]` | Expulsa borrando sus mensajes (ban + unban)                                                     | Mods     |
+| `/timeout usuario duracion [razon]`      | Silencia de 5 min a 28 días, o **levanta el silencio** con _Quitarlo ahora_                     | Mods     |
+| `/mute usuario [razon]`                  | Silencia con rol (crea el rol _Silenciado_ solo)                                                | Mods     |
+| `/unmute usuario [razon]`                | Quita el silencio                                                                               | Mods     |
+| `/clear cantidad [usuario] [razon]`      | Borra hasta 100 mensajes recientes                                                              | Mods     |
+| `/lockdown bloquear/desbloquear [canal]` | Cierra o reabre un canal                                                                        | Mods     |
+| `/slowmode segundos [canal]`             | Modo lento de 0 s a 6 h                                                                         | Mods     |
+
+> **Confirmación y deshacer:** `/ban`, `/softban`, `/kick`, `/mute`, `/clear` y `/lockdown bloquear` piden confirmación con botones antes de tocar Discord (nada se aplica hasta que confirmás). Después traen un botón **Deshacer** para revertir lo reversible: desbanear (`/ban`) y quitar el rol Silenciado (`/mute`). Un kick o un borrado de mensajes no se pueden deshacer con la API; ahí solo se confirma.
 
 > Todos los comandos de moderación validan jerarquía (no podés moderar a alguien con rol igual o superior), avisan al usuario por DM **solo si la sanción se aplicó** y quedan registrados en el mod-log con número de caso (que también aparece en la confirmación).
 
-**Cómo responden:** la confirmación es pública (transparencia) y suma la opción `silencioso:true` para que la veas solo vos; el motivo se muestra siempre (o *No especificado*), los silencios indican **cuándo terminan** con la hora local de cada persona, y si Discord rechaza una acción el bot lo dice con el motivo real y registra el caso como rechazado — nunca confirma algo que no pasó.
+**Cómo responden:** la confirmación es pública (transparencia) y suma la opción `silencioso:true` para que la veas solo vos; el motivo se muestra siempre (o _No especificado_), los silencios indican **cuándo terminan** con la hora local de cada persona, y si Discord rechaza una acción el bot lo dice con el motivo real y registra el caso como rechazado — nunca confirma algo que no pasó.
 
 > Los errores de Discord se reportan tal cual (permisos, jerarquía, límites) y **todo intento queda en el mod-log**, aplicado o no: es lo que permite auditar el servidor después.
 
@@ -151,32 +161,35 @@ Se configura desde `/config → Servidores CS 1.6`: cargás cada server con nomb
 El monitoreo hace 2 intentos con timeout de 2,5 s antes de dar un server por caído (UDP pierde paquetes), y los comandos consultan en paralelo con la caché del monitoreo para responder al instante.
 
 ### Niveles y logros
-| Comando | Qué hace |
-|---|---|
-| `/estadisticas [usuario]` | Perfil completo: rango, nivel, XP con barra, bonus activos, racha, puesto y logros con premios |
-| `/logros [usuario]` | Progreso logro por logro: barra, cuánto falta para cada uno y XP pendiente de cobro |
-| `/rolnivel definir/quitar/lista` | Staff: roles que se otorgan automáticamente al alcanzar un nivel |
-| `/top [pagina]` | Ranking con podio y navegación por botones ◀️ ▶️ |
+
+| Comando                          | Qué hace                                                                                       |
+| -------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `/estadisticas [usuario]`        | Perfil completo: rango, nivel, XP con barra, bonus activos, racha, puesto y logros con premios |
+| `/logros [usuario]`              | Progreso logro por logro: barra, cuánto falta para cada uno y XP pendiente de cobro            |
+| `/rolnivel definir/quitar/lista` | Staff: roles que se otorgan automáticamente al alcanzar un nivel                               |
+| `/top [pagina]`                  | Ranking con podio y navegación por botones ◀️ ▶️                                               |
 
 XP por escribir (15-25 por mensaje, máximo 1 por minuto para evitar farmeo) con **bonus acumulables**: +1% por día de racha (tope +35%), **x2 los fines de semana** y +10% de madrugada (00-06 h Argentina). **16 logros desbloqueables con recompensa de XP** (se pagan solos al cumplirlos), rangos por nivel (Novato → Activo → Experto → Veterano → Leyenda) y **roles por nivel**: el staff define con `/rolnivel` qué rol se otorga automáticamente al alcanzar cada nivel. El staff configura el canal de anuncios en el panel `/config → Niveles y XP`.
 
 ### Utilidades
-| Comando | Qué hace |
-|---|---|
-| `/afk [motivo]` | Te marca ausente; al mencionarte, el bot avisa. Se saca solo al volver a hablar |
-| `/encuesta tema [opciones]` | Encuesta con reacciones (Sí/No o hasta 6 opciones propias) |
-| `/embed titulo texto [color] [imagen] [canal]` | Anuncios profesionales con embeds (staff) |
-| `/plantillas agregar/quitar/lista` | Razones rápidas que autocompletan `/warn`, `/ban`, `/kick`, etc. (staff) |
-| `/frases configurar/agregar/publicar/lista/quitar` | Frase del día publicada automáticamente a la hora elegida (staff) |
+
+| Comando                                            | Qué hace                                                                        |
+| -------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `/afk [motivo]`                                    | Te marca ausente; al mencionarte, el bot avisa. Se saca solo al volver a hablar |
+| `/encuesta tema [opciones]`                        | Encuesta con reacciones (Sí/No o hasta 6 opciones propias)                      |
+| `/embed titulo texto [color] [imagen] [canal]`     | Anuncios profesionales con embeds (staff)                                       |
+| `/plantillas agregar/quitar/lista`                 | Razones rápidas que autocompletan `/warn`, `/ban`, `/kick`, etc. (staff)        |
+| `/frases configurar/agregar/publicar/lista/quitar` | Frase del día publicada automáticamente a la hora elegida (staff)               |
 
 ### Diversión y comunidad
-| Comando | Qué hace |
-|---|---|
+
+| Comando                                                                            | Qué hace                                                                                |
+| ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
 | `/beso` `/abrazo` `/caricia` `/abofetear` `/morder` `/pellizco` `/chocar` `/guino` | Interacciones con GIF animado y contadores persistentes (uno por comando, con @usuario) |
-| `/meme` | Meme al azar de Reddit (r/memes, r/memesesp y más) con botón Otro |
-| `/8ball pregunta` | La bola 8 mágica responde con 20 veredictos |
-| `/dado [caras]` | Tira un dado (1-6 o hasta 100 caras) |
-| `/moneda` | Cara o ceca |
+| `/meme`                                                                            | Meme al azar de Reddit (r/memes, r/memesesp y más) con botón Otro                       |
+| `/8ball pregunta`                                                                  | La bola 8 mágica responde con 20 veredictos                                             |
+| `/dado [caras]`                                                                    | Tira un dado (1-6 o hasta 100 caras)                                                    |
+| `/moneda`                                                                          | Cara o ceca                                                                             |
 
 ### Configuración (solo staff)
 
@@ -198,7 +211,7 @@ Si la pregunta es **de la comunidad** y no está en esos datos, el bot **lo dice
 - **Fuentes:** resumen de **Wikipedia en español** (y en inglés si en español no hay nada), **DuckDuckGo Instant Answer** y, como extra, el HTML público de DuckDuckGo Lite (DDG suele bloquear clientes automatizados, así que aporta cuando quiere y si viene vacío no pasa nada).
 - **Datos vivos que ningún modelo tiene al día:** cotización del **dólar y el euro** (API pública de Bluelytics) y **clima** de una ciudad (Open-Meteo, con geocodificación). Se consultan solos cuando la pregunta es de ese tema, siempre antes de responder, y en el clima hace falta que la ciudad esté clara: si no, no se responde nada en vez de dar el clima de otra ciudad.
 - **Investiga en rondas:** si la primera ronda no trae nada, reintenta con la Wikipedia en inglés y, si tampoco, con la **consulta reducida a sus palabras con contenido** ("¿cuántos años tiene Messi?" → `anos messi`). Cada ronda solo cuesta cuando la anterior vino vacía, y dos pedidos simultáneos de la misma consulta salen a internet una sola vez.
-- **La base de la comunidad no viaja en preguntas generales:** el bot clasifica la consulta (comunidad / general / charla) y, si es de cultura general, **no le inyecta al prompt las secciones de `docs/conocimiento`** — solo las usa si la coincidencia tocó el *título* de una sección (señal de que el tema está cargado de verdad). Así una pregunta por la edad de Messi no arrastra las reglas del server.
+- **La base de la comunidad no viaja en preguntas generales:** el bot clasifica la consulta (comunidad / general / charla) y, si es de cultura general, **no le inyecta al prompt las secciones de `docs/conocimiento`** — solo las usa si la coincidencia tocó el _título_ de una sección (señal de que el tema está cargado de verdad). Así una pregunta por la edad de Messi no arrastra las reglas del server.
 - **Cuándo busca:** nunca en charla social; nunca para datos de la comunidad (ahí manda la base del server); sí para preguntas de cultura general, y **antes de responder** si el usuario lo pide ("buscame…") o si el dato cambia con el tiempo (precios, resultados, noticias, clima).
 - **Rescate:** si la IA contesta que no tiene la información en una pregunta de cultura general, el bot busca en la web y **le hace contestar de nuevo** con los resultados a la vista. Es exactamente el caso "@Trigger messi cuántos años tiene" que antes terminaba en "eso no lo tengo cargado".
 - **Sin claves de IA** (o con todos los proveedores caídos) las preguntas generales igual se responden: se devuelve el dato de la búsqueda citando la fuente.
@@ -209,12 +222,14 @@ Si la pregunta es **de la comunidad** y no está en esos datos, el bot **lo dice
 **Presupuesto diario (`utils/presupuesto.js`):** los planes gratuitos tienen cuota diaria, y el cooldown de 3 s por mención no alcanza: una ráfaga de menciones se comía la cuota y dejaba al bot sin IA el resto del día. Ahora hay un **tope de respuestas por día** (`IA_LIMITE_DIARIO`, 300 por defecto): al agotarse, el bot deja de llamar al modelo —y de buscar en internet— hasta la medianoche (hora de Argentina) y contesta con su repertorio local, mientras la vigilancia avisa al staff **una vez por jornada**. El contador se respalda en `bot_stats` y se restaura al arrancar, así un reinicio no regala cupo. `/status` y `/diag` muestran `usadas/límite` y cuántas respuestas salieron de la caché.
 
 **Acciones de moderación por chat:** el staff le da órdenes en lenguaje natural y la IA prepara la acción, siempre con un embed de confirmación. Hay dos familias:
+
 - **Sobre una persona:** `@TriggerBOT banear a @fulano por flodeo`, "mutealo", "advertile", "dale 1 hora de silencio".
 - **Sobre el canal:** "borrá todos los mensajes de este canal" (hasta 100 por vez; los de más de 14 días no se pueden borrar en bloque), "poné modo lento de 30 segundos", "cerrá el canal", "abrilo".
 
-**Solo el staff** puede apretar **Ejecutar**: el dueño y los roles admin/mod/helper de `/config`, y para cualquier otro vale el mismo permiso que exige el comando equivalente —moderar miembros para las acciones sobre personas, Gestionar mensajes para `/clear`, Gestionar canales para `/slowmode` y `/lockdown`—. Así, por chat nadie puede hacer algo que por comando no podría. Las órdenes sobre el canal solo las puede *pedir* el staff. La acción queda registrada en el mod-log. Hay cooldown de 20 s por usuario para evitar abusos y las solicitudes expiran a los 5 minutos.
+**Solo el staff** puede apretar **Ejecutar**: el dueño y los roles admin/mod/helper de `/config`, y para cualquier otro vale el mismo permiso que exige el comando equivalente —moderar miembros para las acciones sobre personas, Gestionar mensajes para `/clear`, Gestionar canales para `/slowmode` y `/lockdown`—. Así, por chat nadie puede hacer algo que por comando no podría. Las órdenes sobre el canal solo las puede _pedir_ el staff. La acción queda registrada en el mod-log. Hay cooldown de 20 s por usuario para evitar abusos y las solicitudes expiran a los 5 minutos.
 
 **Cadena de respaldo automática (optimizada por velocidad):** los proveedores viven en una **tabla** (`PROVEEDORES` en `utils/ia.js`): sumar uno nuevo es agregar su clave, sin escribir código.
+
 1. **Groq** (principal) — chips LPU: responde en ~0,3-0,8 s, 5-10x más rápido que Gemini. Modelos del plan gratuito: `openai/gpt-oss-120b` (calidad) y `openai/gpt-oss-20b` (1000 tps, el más rápido).
 2. **Cerebras** — inferencia en silicio propio: el más rápido de la lista y un respaldo ideal cuando Groq se queda sin cuota.
 3. **Gemini** (respaldo de calidad) — si los anteriores no tienen clave, fallan o se quedan sin cuota; si Google retira un modelo, el bot lo descarta solo.
@@ -225,17 +240,19 @@ Si la pregunta es **de la comunidad** y no está en esos datos, el bot **lo dice
 Cada proveedor entra solo si tiene clave: sin `CEREBRAS_API_KEY`, por ejemplo, el bot ni lo intenta ni lo muestra en `/status`. Si uno se cae (clave inválida, cuota agotada o un modelo retirado), se aparta por un rato —según el error— y el mensaje siguiente sale por el que siga, sin que el usuario espere nada.
 
 **Optimizado para responder rápido:**
+
 - **Respuestas instantáneas (0 ms):** preguntas canónicas (quién te creó, cuál es la web, las redes, saludos de identidad) se responden sin llamar a la IA — funcionan siempre, incluso sin claves o con los proveedores caídos.
 - **Carrera con respaldo (hedged request):** el proveedor preferido arranca al instante y, si no contestó en 1,4 s, el respaldo sale **en paralelo** y gana el primero que responda. Cuando Groq va rápido no cuesta ninguna llamada extra; cuando está lento, la respuesta llega igual en ~1,5 s en vez de esperar la cadena completa.
 - **Memoria de fallos:** un modelo retirado o sin permiso se descarta por horas y una clave inválida aparta al proveedor según el error (1 h si la clave no sirve, 1 min si se agotó la cuota). Sin esto, un modelo muerto costaba un viaje de red fallido en **cada** mensaje.
 - **Prueba de modelos al arrancar:** el bot prueba el modelo elegido con una petición mínima antes de que llegue el primer mensaje, así el usuario nunca paga el descubrimiento de un modelo caído.
 - **Enrutado por complejidad:** los mensajes sociales cortos ("hola", "todo bien?", "gracias", "jaja") van al modelo chico `openai/gpt-oss-20b` (~2x más rápido que el grande) y el `120b` queda para preguntas que sí requieren pensar.
-- **Dos perfiles:** *charla* (temperatura 0,75, respuestas de 1-3 frases) y *consulta* (temperatura 0,3, respuestas completas). Es lo que hace que no invente cuando le preguntan algo concreto.
+- **Dos perfiles:** _charla_ (temperatura 0,75, respuestas de 1-3 frases) y _consulta_ (temperatura 0,3, respuestas completas). Es lo que hace que no invente cuando le preguntan algo concreto.
 - **Respuestas largas:** si el modelo se queda sin tokens, reintenta con más margen; al publicar, el texto se parte en varios mensajes sin cortar palabras al medio.
 - **Precalentamiento:** el bot consulta la lista de modelos al arrancar, no en el primer mensaje: la primera respuesta tras un reinicio no se come la demora del listado. Si el listado falla, no lo reintenta en cada mensaje (antes costaba hasta 5 s por respuesta).
 - Los modelos con **thinking** (razonamiento previo) están excluidos: solo chat directo.
 
 Para activarlo alcanza **una** clave (más claves = más respaldo):
+
 1. Clave gratis de Groq en [console.groq.com/keys](https://console.groq.com/keys) (la principal).
 2. Clave gratis de Gemini en [aistudio.google.com/apikey](https://aistudio.google.com/apikey) (cuenta Google, 2 min, sin tarjeta).
 3. Agregá `GROQ_API_KEY` y `GEMINI_API_KEY` en el panel de Wispbyte (Startup → Variables) o en tu `.env` local.
@@ -250,11 +267,11 @@ Con `/status` ves qué modelo usa cada IA, su **latencia real** (mediana y peor 
 
 El bot comparte la base de datos de la web TriGGer.Arena (`trigger-arena-db` en MariaDB). Usa **sus propias tablas con prefijo `bot_`** y nunca toca las tablas de la web:
 
-| Tabla del bot | Para qué |
-|---|---|
-| `bot_data` | Respaldo maestro: config, warns, niveles, afk e interacciones (un snapshot JSON por servidor y almacén) |
-| `bot_stats` | Estadísticas globales sueltas |
-| `bot_cmd` | Bus de comandos web ↔ bot: la web encola comandos y el bot los ejecuta cada 5 s |
+| Tabla del bot | Para qué                                                                                                |
+| ------------- | ------------------------------------------------------------------------------------------------------- |
+| `bot_data`    | Respaldo maestro: config, warns, niveles, afk e interacciones (un snapshot JSON por servidor y almacén) |
+| `bot_stats`   | Estadísticas globales sueltas                                                                           |
+| `bot_cmd`     | Bus de comandos web ↔ bot: la web encola comandos y el bot los ejecuta cada 5 s                         |
 
 - Cada cambio local se sube a la base 3 segundos después (agrupa ráfagas de escrituras).
 - Al arrancar, el bot compara local vs base y aplica la copia más nueva: si el host borra `data/`, todo se restaura solo desde MariaDB.
@@ -263,6 +280,7 @@ El bot comparte la base de datos de la web TriGGer.Arena (`trigger-arena-db` en 
 
 **Configuración:**
 En Wispbyte (Startup → Variables) o en tu `.env` local:
+
 ```
 DB_HOST=127.0.0.1
 DB_PORT=3306
@@ -270,6 +288,7 @@ DB_NAME=trigger-arena-db
 DB_USER=trigger-user
 DB_PASSWORD=••••••••
 ```
+
 Son las mismas credenciales que usa la web. El usuario necesita permisos de `SELECT/INSERT/UPDATE/DELETE` (+ `CREATE` la primera vez, o importá `sql/schema.sql` desde phpMyAdmin).
 
 Restart. En el log vas a ver `Base de datos conectada: ...` y `/status` muestra el estado de la BD.
@@ -321,15 +340,17 @@ El bot está pensado para **un solo servidor**: la comunidad Trigger.
 
 **Qué guarda y dónde:**
 
-| Dato | Dónde vive |
-|---|---|
-| Configuración del server (`data/config.json`) | Disco local + respaldo en MariaDB (`bot_data`) |
-| Historial de warns | Disco + MariaDB (`bot_data`) |
-| XP, niveles, logros | Disco + MariaDB (`bot_data`) |
-| Estado AFK y contadores de interacciones | Disco + MariaDB (`bot_data`) |
-| Transcripts de tickets (.txt) | Canal de logs y DM del usuario; no se persiste en el bot |
-| Logs de mensajes borrados/editados | Canal de logs del server; no se persiste en el bot |
-| Ventanas de anti-spam/anti-raid, cooldowns, memoria de IA | Solo memoria; se pierden al reiniciar (intencional) |
+| Dato                                                      | Dónde vive                                               |
+| --------------------------------------------------------- | -------------------------------------------------------- |
+| Configuración del server (`data/config.json`)             | Disco local + respaldo en MariaDB (`bot_data`)           |
+| Historial de warns                                        | Disco + MariaDB (`bot_data`)                             |
+| XP, niveles, logros                                       | Disco + MariaDB (`bot_data`)                             |
+| Estado AFK y contadores de interacciones                  | Disco + MariaDB (`bot_data`)                             |
+| Notas internas del staff                                  | Disco + MariaDB (`bot_data`)                             |
+| Casos de moderación (lo que muestra `/casos`)             | Disco + MariaDB (`bot_data`)                             |
+| Transcripts de tickets (.txt)                             | Canal de logs y DM del usuario; no se persiste en el bot |
+| Logs de mensajes borrados/editados                        | Canal de logs del server; no se persiste en el bot       |
+| Ventanas de anti-spam/anti-raid, cooldowns, memoria de IA | Solo memoria; se pierden al reiniciar (intencional)      |
 
 **Servicios externos:**
 

@@ -47,20 +47,29 @@ const ventanaRaid = new Map();
 const castigadoHasta = new Map();
 const ultimaAlertaRaid = new Map();
 
-const MSJ_SPAM = 10; // mensajes por usuario guardados como máximo
+// Tope del rango configurable de spamMensajes (3-20 en /config y en el esquema web).
+// Antes era 10 fijo: con spamMensajes > 10 el umbral NUNCA se alcanzaba.
+const MAX_MENSAJES_VENTANA = 20;
+// Tope del rango configurable de spamSegundos (2-120): una entrada sin actividad
+// dentro de esa ventana ya no puede aportar a ninguna detección.
+const VENTANA_MAXIMA_MS = 120_000;
 const COOLDOWN_CASTIGO_MS = 30_000; // entre castigos al mismo usuario
 const COOLDOWN_ALERTA_RAID_MS = 60_000; // entre alertas de raid del mismo server
+const LIMPIEZA_MIN_MS = 30_000; // como máximo una limpieza completa cada 30 s
+const LIMPIEZA_FORZADA = 5000; // …salvo que el mapa ya sea enorme
 
-function limpiarViejo() {
-  const ahora = Date.now();
-  if (ventanaSpam.size > 1000) {
-    for (const [k, v] of ventanaSpam) {
-      if (!v.stamps.length || ahora - v.stamps[v.stamps.length - 1] > COOLDOWN_CASTIGO_MS) ventanaSpam.delete(k);
-    }
+// Poda ventanaSpam/castigadoHasta sin recorrer el mapa entero en cada mensaje.
+// Se llama en cada mensaje (el throttle la hace barata) y en cada castigo.
+let ultimaLimpieza = 0;
+function limpiarViejo(ahora = Date.now()) {
+  if (ahora - ultimaLimpieza < LIMPIEZA_MIN_MS && ventanaSpam.size < LIMPIEZA_FORZADA) return;
+  ultimaLimpieza = ahora;
+  const edadMaxima = VENTANA_MAXIMA_MS + COOLDOWN_CASTIGO_MS;
+  for (const [k, v] of ventanaSpam) {
+    const ultimo = v.stamps[v.stamps.length - 1];
+    if (!ultimo || ahora - ultimo > edadMaxima) ventanaSpam.delete(k);
   }
-  if (castigadoHasta.size > 500) {
-    for (const [k, hasta] of castigadoHasta) if (hasta < ahora) castigadoHasta.delete(k);
-  }
+  for (const [k, hasta] of castigadoHasta) if (hasta < ahora) castigadoHasta.delete(k);
 }
 
 // ---------- Alertas ----------
@@ -193,32 +202,49 @@ async function procesarMensajeParaSpam(message) {
 
   const ahora = Date.now();
   const clave = `${message.guild.id}:${message.author.id}`;
+  const ventanaMs = config.spamSegundos * 1000;
   const registro = ventanaSpam.get(clave) ?? { stamps: [], mensajes: [] };
 
   registro.stamps.push(ahora);
   registro.mensajes.push({ id: message.id, channelId: message.channelId });
-  if (registro.stamps.length > MSJ_SPAM) {
+
+  // Poda por ventana + tope: solo se conservan los mensajes que cuentan para el
+  // umbral (los de dentro de spamSegundos). Antes se guardaban "los últimos 10" a
+  // secas: con spamMensajes > 10 el umbral no se alcanzaba y la ráfaga borraba
+  // mensajes de fuera de la ventana.
+  const tope = Math.max(MAX_MENSAJES_VENTANA, config.spamMensajes);
+  while (registro.stamps.length && (ahora - registro.stamps[0] > ventanaMs || registro.stamps.length > tope)) {
     registro.stamps.shift();
     registro.mensajes.shift();
   }
   ventanaSpam.set(clave, registro);
+  limpiarViejo(ahora);
 
   // ¿Superó el umbral dentro de la ventana?
-  const enVentana = registro.stamps.filter((t) => ahora - t <= config.spamSegundos * 1000);
+  const enVentana = registro.stamps;
   if (enVentana.length < config.spamMensajes) return false;
   if ((castigadoHasta.get(clave) ?? 0) > ahora) return false; // ya se lo castigó hace poco
 
   castigadoHasta.set(clave, ahora + COOLDOWN_CASTIGO_MS);
-  limpiarViejo();
 
   const razon = `Anti-spam: ${enVentana.length} mensajes en ${config.spamSegundos} s`;
+  const pudoBorrar = puede(message.guild, PermissionFlagsBits.ManageMessages);
   const borrados = await borrarRafaga(message.guild, registro.mensajes);
-  const resultadoAccion = config.accionSpam === 'aviso' ? 'solo borrado de mensajes' : await ejecutarAccion(member, config.accionSpam, razon, 'spam');
+  // El texto refleja lo que REALMENTE pasó: si la acción se rechazó o no se pudo
+  // borrar, lo dice; nunca anuncia la acción configurada como si se hubiera aplicado.
+  const resultadoAccion =
+    config.accionSpam === 'aviso'
+      ? borrados > 0
+        ? `borré ${borrados} mensaje(s)`
+        : pudoBorrar
+          ? 'no encontré mensajes para borrar'
+          : '⚠️ no pude borrar los mensajes (me falta Gestionar mensajes)'
+      : await ejecutarAccion(member, config.accionSpam, razon, 'spam');
 
   await avisarPorDM(
     message.author,
     `⚠️ En **${message.guild.name}** se detectó que escribiste demasiado rápido (${enVentana.length} mensajes en ${config.spamSegundos} s).\n` +
-      `Acción aplicada: **${ETIQUETA_ACCION_SPAM[config.accionSpam]}**. Escribí con calma para evitar sanciones.`
+      `Resultado: **${resultadoAccion}**. Escribí con calma para evitar sanciones.`
   );
 
   alertar(
@@ -310,6 +336,7 @@ function resetear() {
   ventanaRaid.clear();
   castigadoHasta.clear();
   ultimaAlertaRaid.clear();
+  ultimaLimpieza = 0;
 }
 
-module.exports = { procesarMensajeParaSpam, registrarIngreso, configDe, resetear, POR_DEFECTO, ETIQUETA_ACCION_SPAM, ETIQUETA_ACCION_RAID, borrarRafaga, ejecutarAccion, aplicarMute, aplicarTimeout };
+module.exports = { procesarMensajeParaSpam, registrarIngreso, configDe, resetear, POR_DEFECTO, ETIQUETA_ACCION_SPAM, ETIQUETA_ACCION_RAID, borrarRafaga, ejecutarAccion, aplicarMute, aplicarTimeout, MAX_MENSAJES_VENTANA };
