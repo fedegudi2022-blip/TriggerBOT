@@ -3,7 +3,6 @@ const { logAction } = require('./modlog');
 const { successEmbed, errorEmbed, brandEmbed, COLORS } = require('./replies');
 const { validarAccionDelBot } = require('./moderation');
 const { LIMITE_14_DIAS_MS } = require('./acciones');
-const { getGuildConfig } = require('../store');
 const { esStaffDe } = require('./permisos');
 
 const LABELS = {
