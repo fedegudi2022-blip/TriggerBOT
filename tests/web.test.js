@@ -385,10 +385,9 @@ describe('buscar — fuentes reales y costos', () => {
     let llamadas = 0;
     web.usarFetch(async (url) => {
       llamadas += 1;
-      await new Promise((r) => {
-        const t = setTimeout(r, 10);
-        t.unref?.();
-      });
+      // Sin unref: el timer tiene que mantener vivo el event loop hasta resolver,
+      // si no el runner de node cancela el test ("event loop has already resolved").
+      await new Promise((r) => setTimeout(r, 10));
       return String(url).includes('es.wikipedia.org') ? json(PAGINA_WIKI) : json({}, 500);
     });
 
