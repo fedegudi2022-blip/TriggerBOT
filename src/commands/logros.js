@@ -46,11 +46,11 @@ module.exports = {
     const lineaPendiente = ({ logro, actual, objetivo, progreso }) => {
       const faltan = Math.max(objetivo - actual, 0);
       const unidad = UNIDADES[logro.meta.campo] ?? 'puntos';
-      return `${logro.emoji} **${logro.nombre}** — ${miles(logro.premio)} XP\n\`${barraLogro(progreso)}\` faltan **${miles(faltan)} ${unidad}**`;
+      return `**${logro.nombre}** — ${miles(logro.premio)} XP\n\`${barraLogro(progreso)}\` faltan **${miles(faltan)} ${unidad}**`;
     };
 
     // Los de una sola vez (madrugador, búho) van al final, sin barra.
-    const sinMeta = pendientes.filter((l) => !l.meta).map((l) => `${l.emoji} **${l.nombre}** — ${miles(l.premio)} XP · *se desbloquea al cumplirlo*`);
+    const sinMeta = pendientes.filter((l) => !l.meta).map((l) => `**${l.nombre}** — ${miles(l.premio)} XP · *se desbloquea al cumplirlo*`);
 
     // Próximo más cercano: primero de la lista de progreso.
     const proximo = conMeta[0];
@@ -63,21 +63,21 @@ module.exports = {
       title: `Logros de ${user.username}`,
       thumbnail: user.displayAvatarURL({ size: 256 }),
       description:
-        `🏅 **${desbloqueados.length}/${LOGROS.length}** desbloqueados · **${miles(xpCobrado)} XP** cobrados\n` +
+        `**${desbloqueados.length}/${LOGROS.length}** desbloqueados · **${miles(xpCobrado)} XP** cobrados\n` +
         (proximo
-          ? `Próximo más cercano: ${proximo.logro.emoji} **${proximo.logro.nombre}** — te faltan **${miles(Math.max(proximo.objetivo - proximo.actual, 0))} ${UNIDADES[proximo.logro.meta.campo] ?? 'puntos'}**`
-          : '¡Los tenés todos! 👑'),
+          ? `Próximo más cercano: **${proximo.logro.nombre}** — te faltan **${miles(Math.max(proximo.objetivo - proximo.actual, 0))} ${UNIDADES[proximo.logro.meta.campo] ?? 'puntos'}**`
+          : '¡Los tenés todos!'),
       fields: [
         ...(desbloqueados.length
-          ? [{ name: `✅ Desbloqueados (${desbloqueados.length})`, value: desbloqueados.map((l) => `${l.emoji} **${l.nombre}** · +${miles(l.premio)} XP`).join('\n'), inline: false }]
+          ? [{ name: `Desbloqueados (${desbloqueados.length})`, value: desbloqueados.map((l) => `**${l.nombre}** · +${miles(l.premio)} XP`).join('\n'), inline: false }]
           : []),
         ...(quedanPendientes && conMeta.length
           ? [
-              { name: `🎯 En progreso (${conMeta.length})`, value: conMeta.map(lineaPendiente).join('\n\n'), inline: false },
-              { name: '⏳ Sin progreso medible', value: sinMeta.join('\n') || '*—*', inline: false },
+              { name: `En progreso (${conMeta.length})`, value: conMeta.map(lineaPendiente).join('\n\n'), inline: false },
+              { name: 'Sin progreso medible', value: sinMeta.join('\n') || '*—*', inline: false },
             ]
           : quedanPendientes
-            ? [{ name: '🎯 En progreso', value: sinMeta.join('\n') || '*—*', inline: false }]
+            ? [{ name: 'En progreso', value: sinMeta.join('\n') || '*—*', inline: false }]
             : []),
       ],
       footer: `TriggerBOT • quedan ${miles(xpPendiente)} XP por cobrar • puesto #${posicion(guildId, user.id) || '—'} de ${miles(totalUsuarios(guildId))} en el ranking`,

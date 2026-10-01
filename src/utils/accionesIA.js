@@ -4,17 +4,18 @@ const { successEmbed, errorEmbed, brandEmbed, COLORS } = require('./replies');
 const { validarAccionDelBot } = require('./moderation');
 const { LIMITE_14_DIAS_MS } = require('./acciones');
 const { getGuildConfig } = require('../store');
+const { esStaffDe } = require('./permisos');
 
 const LABELS = {
-  warn: { titulo: '⚠️ Advertencia', verbo: 'advertir' },
-  timeout: { titulo: '🔇 Silencio temporal', verbo: 'silenciar' },
-  mute: { titulo: '🔇 Silencio (rol)', verbo: 'mutear' },
-  kick: { titulo: '👢 Expulsión', verbo: 'expulsar' },
-  ban: { titulo: '🔨 Baneo', verbo: 'banear' },
-  limpiar: { titulo: '🧹 Limpieza del canal', verbo: 'borrar mensajes de este canal' },
-  slowmode: { titulo: '⏱️ Modo lento', verbo: 'poner modo lento en este canal' },
-  bloquear: { titulo: '🔒 Bloqueo del canal', verbo: 'cerrar este canal' },
-  desbloquear: { titulo: '🔓 Desbloqueo del canal', verbo: 'abrir este canal' },
+  warn: { titulo: 'Advertencia', verbo: 'advertir' },
+  timeout: { titulo: 'Silencio temporal', verbo: 'silenciar' },
+  mute: { titulo: 'Silencio (rol)', verbo: 'mutear' },
+  kick: { titulo: 'Expulsión', verbo: 'expulsar' },
+  ban: { titulo: 'Baneo', verbo: 'banear' },
+  limpiar: { titulo: 'Limpieza del canal', verbo: 'borrar mensajes de este canal' },
+  slowmode: { titulo: 'Modo lento', verbo: 'poner modo lento en este canal' },
+  bloquear: { titulo: 'Bloqueo del canal', verbo: 'cerrar este canal' },
+  desbloquear: { titulo: 'Desbloqueo del canal', verbo: 'abrir este canal' },
 };
 
 // Las órdenes por chat son de dos familias:
@@ -73,10 +74,7 @@ function puedeConfirmar(interaction, accion) {
   const member = interaction.member;
   const usuario = interaction.user ?? interaction.author;
   if (!member || !usuario) return false;
-  if (interaction.guild.ownerId === usuario.id) return true;
-
-  const config = getGuildConfig(interaction.guild.id);
-  if (['admin', 'mod', 'helper'].some((nivel) => member.roles?.cache?.has?.(config[`${nivel}Role`]))) return true;
+  if (esStaffDe(interaction.guild, member)) return true;
 
   const permiso = PERMISO_CONFIRMAR[accion] ?? PermissionFlagsBits.ModerateMembers;
   return Boolean(member.permissions?.has?.(permiso));
@@ -173,7 +171,7 @@ async function ejecutarAccion(interaction, accion, miembro, motivo, duracionMin)
       reason: motivo,
       extra: `Solicitada por chat con IA. Total: ${total} advertencia(s).`,
     });
-    return `⚠️ ${etiqueta} fue advertido (${total} advertencia(s) en total).${escalado}`;
+    return `${etiqueta} fue advertido (${total} advertencia(s) en total).${escalado}`;
   }
 
   if (accion === 'timeout') {
@@ -191,7 +189,7 @@ async function ejecutarAccion(interaction, accion, miembro, motivo, duracionMin)
       duration: `${minutos} min`,
       extra: 'Solicitada por chat con IA.',
     });
-    return `🔇 ${etiqueta} quedó silenciado por **${minutos} minutos**.`;
+    return `${etiqueta} quedó silenciado por **${minutos} minutos**.`;
   }
 
   if (accion === 'mute') {
@@ -215,7 +213,7 @@ async function ejecutarAccion(interaction, accion, miembro, motivo, duracionMin)
       duration: 'Indefinido',
       extra: 'Solicitada por chat con IA.',
     });
-    return `🔇 ${etiqueta} quedó muteado (rol Silenciado).`;
+    return `${etiqueta} quedó muteado (rol Silenciado).`;
   }
 
   if (accion === 'kick') {
@@ -231,7 +229,7 @@ async function ejecutarAccion(interaction, accion, miembro, motivo, duracionMin)
       reason: motivo,
       extra: 'Solicitada por chat con IA.',
     });
-    return `👢 ${etiqueta} fue expulsado.`;
+    return `${etiqueta} fue expulsado.`;
   }
 
   if (accion === 'ban') {
@@ -249,7 +247,7 @@ async function ejecutarAccion(interaction, accion, miembro, motivo, duracionMin)
       reason: motivo,
       extra: 'Solicitada por chat con IA.',
     });
-    return `🔨 ${etiqueta} fue baneado.`;
+    return `${etiqueta} fue baneado.`;
   }
 
   throw new Error(`Acción desconocida: ${accion}`);
@@ -299,7 +297,7 @@ async function ejecutarAccionCanal(interaction, datos, canal) {
         (viejos ? ` · ${viejos} con más de 14 días quedaron afuera` : '') +
         ' · pedido por chat con IA',
     });
-    return `🧹 Borré **${borrados}** mensaje(s) de <#${canal.id}>.` + (viejos ? ` ${viejos} tenían más de 14 días y quedaron afuera.` : '');
+    return `Borré **${borrados}** mensaje(s) de <#${canal.id}>.` + (viejos ? ` ${viejos} tenían más de 14 días y quedaron afuera.` : '');
   }
 
   if (datos.accion === 'slowmode') {
@@ -317,7 +315,7 @@ async function ejecutarAccionCanal(interaction, datos, canal) {
       reason: motivo,
       extra: `Canal: <#${canal.id}> — ${segundos === 0 ? 'desactivado' : `${segundos}s de espera`} · pedido por chat con IA`,
     });
-    return segundos === 0 ? `⏱️ Modo lento **desactivado** en <#${canal.id}>.` : `⏱️ Modo lento de **${segundos}s** activado en <#${canal.id}>.`;
+    return segundos === 0 ? `Modo lento **desactivado** en <#${canal.id}>.` : `Modo lento de **${segundos}s** activado en <#${canal.id}>.`;
   }
 
   const bloquear = datos.accion === 'bloquear';
@@ -339,8 +337,8 @@ async function ejecutarAccionCanal(interaction, datos, canal) {
     extra: `Canal: <#${canal.id}> · pedido por chat con IA`,
   });
   return bloquear
-    ? `🔒 <#${canal.id}> quedó cerrado: nadie de @everyone puede escribir hasta que lo abran.`
-    : `🔓 <#${canal.id}> quedó abierto: ya se puede volver a escribir.`;
+    ? `<#${canal.id}> quedó cerrado: nadie de @everyone puede escribir hasta que lo abran.`
+    : `<#${canal.id}> quedó abierto: ya se puede volver a escribir.`;
 }
 
 // Muestra el pedido de la IA con botones de confirmación (solo staff puede tocar).
@@ -391,8 +389,8 @@ async function pedirConfirmacion(message, solicitud) {
     });
 
     const fila = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('ia_accion:si').setLabel('Ejecutar').setStyle(ButtonStyle.Danger).setEmoji('✅'),
-      new ButtonBuilder().setCustomId('ia_accion:no').setLabel('Cancelar').setStyle(ButtonStyle.Secondary).setEmoji('❌')
+      new ButtonBuilder().setCustomId('ia_accion:si').setLabel('Ejecutar').setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId('ia_accion:no').setLabel('Cancelar').setStyle(ButtonStyle.Secondary)
     );
 
     cooldowns.set(message.author.id, Date.now());
@@ -446,8 +444,8 @@ async function pedirConfirmacion(message, solicitud) {
   });
 
   const botones = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('ia_accion:si').setLabel('Ejecutar').setStyle(ButtonStyle.Danger).setEmoji('✅'),
-    new ButtonBuilder().setCustomId('ia_accion:no').setLabel('Cancelar').setStyle(ButtonStyle.Secondary).setEmoji('❌')
+    new ButtonBuilder().setCustomId('ia_accion:si').setLabel('Ejecutar').setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId('ia_accion:no').setLabel('Cancelar').setStyle(ButtonStyle.Secondary)
   );
 
   cooldowns.set(message.author.id, Date.now());
@@ -488,7 +486,7 @@ async function manejarBoton(interaction) {
 
   if (interaction.customId.endsWith('no')) {
     return interaction.update({
-      embeds: [brandEmbed({ color: COLORS.gris, title: '❌ Solicitud cancelada', description: `Cancelada por ${interaction.user}.` })],
+      embeds: [brandEmbed({ color: COLORS.gris, title: 'Solicitud cancelada', description: `Cancelada por ${interaction.user}.` })],
       components: [],
     });
   }

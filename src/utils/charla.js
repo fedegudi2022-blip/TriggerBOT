@@ -21,99 +21,99 @@ function elegir(lista) {
 
 const RESPUESTAS = {
   vacio: [
-    '¡Hola! 👋 ¿Necesitás algo? Si querés ver mis comandos, usá /help',
-    'Acá estoy 👀 ¿Qué se te ofrece? (usá /help para ver la guía)',
-    '¿Me mencionaste? 😄 Estoy para servir, cualquier duda usá /help',
+    '¡Hola! ¿Necesitás algo? Si querés ver mis comandos, usá /help',
+    'Acá estoy. ¿Qué se te ofrece? (usá /help para ver la guía)',
+    '¿Me mencionaste? Estoy para servir, cualquier duda usá /help',
   ],
   saludo: [
-    '¡Hola! ¿Cómo andas? 👋',
-    '¡Hola! ¿Todo bien por acá? 😄',
+    '¡Hola! ¿Cómo andas?',
+    '¡Hola! ¿Todo bien por acá?',
     '¡Ey! Bienvenido, ¿qué se cuenta?',
-    '¡Hola! Acá ando, atento a todo 👀',
+    '¡Hola! Acá ando, atento a todo',
   ],
   comoestas: [
-    '¡Todo bien, moderando un poco el server! ¿Y vos? 😄',
+    '¡Todo bien, moderando un poco el server! ¿Y vos?',
     'De 10, gracias por preguntar. ¿Vos cómo estás?',
-    '¡Full energía! ⚡ ¿Necesitás ayuda con algo?',
-    'Bien, vigilando que nadie haga desastres 😎 ¿Y vos?',
+    '¡Todo bien! ¿Necesitás ayuda con algo?',
+    'Bien, vigilando que nadie haga desastres. ¿Y vos?',
   ],
   gracias: [
-    '¡De nada! Para eso estoy 😎',
+    '¡De nada! Para eso estoy',
     '¡No hay de qué!',
-    '¡Un gusto ayudar! 🙌',
-    '¡Siempre! Cualquier cosa avisame 👌',
+    '¡Un gusto ayudar!',
+    '¡Siempre! Cualquier cosa avisame',
   ],
   despedida: [
-    '¡Chau! Acá voy a estar si me necesitás 👋',
-    '¡Nos vemos! Que andes bien 🙌',
-    '¡Hasta luego! No rompas nada 😄',
+    '¡Chau! Acá voy a estar si me necesitás',
+    '¡Nos vemos! Que andes bien',
+    '¡Hasta luego! No rompas nada',
   ],
   piropo: [
-    'Ay, me sonrojo... 🤖❤️ ¡Gracias!',
-    'Lo sé, soy adorable ✨ Pero shh, no quiero celos del resto de los bots',
-    '¡Crack vos! 🙌',
-    'Gracias, hago lo que puedo entre moderar y responder 😎',
+    'Gracias, me alegra que te guste.',
+    'Lo sé, pero shh, no quiero celos del resto de los bots',
+    '¡Crack vos!',
+    'Gracias, hago lo que puedo entre moderar y responder',
   ],
   insulto: [
-    'Tranquilo 😅 Acá todos respetamos; las reglas están para algo.',
-    'Los insultos me rebotan 🛡️ Mejor charlamos de otra cosa.',
-    'Mmm... te recomiendo bajar un cambio, el staff ve todo 👀',
-    'Sigo siendo tu bot favorito, negarlo no te va a hacer feliz 😌',
+    'Tranquilo, acá todos respetamos; las reglas están para algo.',
+    'Los insultos no me afectan. Mejor charlamos de otra cosa.',
+    'Mmm... te recomiendo bajar un cambio, el staff ve todo.',
+    'Sigo siendo tu bot favorito, negarlo no te va a hacer feliz.',
   ],
   risa: [
-    'JAJAJA 😂',
-    'Jaja, me alegra hacerte reír 😄',
+    'JAJAJA',
+    'Jaja, me alegra hacerte reír',
     'xDDD buenísimo',
   ],
   comunidad: [
-    '¡Trigger presente! 💪 El mejor server, sin discusión.',
-    '¡GG! 🔥 Buenísima esa.',
-    'Trigger.Arena no duerme 🏆 Acá moderando siempre.',
-    'Este server es una familia (ruidosa, pero familia) 😄',
+    '¡Trigger presente! El mejor server, sin discusión.',
+    '¡GG! Buenísima esa.',
+    'Trigger.Arena no duerme. Acá moderando siempre.',
+    'Este server es una familia (ruidosa, pero familia)',
   ],
   moderacion: [
-    'Es mi especialidad 🛡️ Todo mi arsenal está en /help: warn, ban, kick, timeout, mute, lockdown y más.',
-    'Moderar es mi pasión 🛡️ Mirá /help para ver todo lo que puedo hacer.',
+    'Es mi especialidad. Todo mi arsenal está en /help: warn, ban, kick, timeout, mute, lockdown y más.',
+    'Moderar es parte de lo que hago. Mirá /help para ver todo lo que puedo hacer.',
   ],
   ayuda: [
-    'Si querés ver la guía completa de comandos, usá /help ✨',
-    'Todo lo que sé hacer está en /help, dale un vistazo 😄',
+    'Si querés ver la guía completa de comandos, usá /help',
+    'Todo lo que sé hacer está en /help, dale un vistazo',
   ],
   fallo: [
-    'Mmm, no entendí eso 😅 Si querés ver todo lo que sé hacer, usá /help',
+    'Mmm, no entendí eso. Si querés ver todo lo que sé hacer, usá /help',
     'Eso no lo capto... probá con /help, ahí está la guía completa',
-    'Todavía no aprendí a responder eso 😅 pero en /help tenés mis comandos',
+    'Todavía no aprendí a responder eso, pero en /help tenés mis comandos',
   ],
 };
 
 // Respuestas puntuales a preguntas de moderación. Devuelve el texto o null.
 function responderPreguntaModeracion(texto) {
   if (/\b(banear|banea|baneo|banneo|expulsar|expulsa|expulso|kickear|kickeo|ban|kick)\b/.test(texto)) {
-    return 'Fácil: `/ban usuario [razón]` o `/kick usuario [razón]`. Necesitás permisos de mod o un rol de staff 🛡️';
+    return 'Fácil: `/ban usuario [razón]` o `/kick usuario [razón]`. Necesitás permisos de mod o un rol de staff.';
   }
   if (/\b(silenciar|silencia|silencio|muteo|mutear|mute|timeout|timear)\b/.test(texto)) {
-    return 'Usá `/timeout usuario duración` (temporal) o `/mute usuario` (con rol, hasta que lo quiten) 🔇';
+    return 'Usá `/timeout usuario duración` (temporal) o `/mute usuario` (con rol, hasta que lo quiten).';
   }
   if (/\b(warns?|advertencias?|quitarnota)\b/.test(texto)) {
-    return 'Al **3er `/warn`** el usuario queda silenciado 1 hora automático. Con `/warnings` ves el historial y con `/quitarnota` borrás una ⚠️';
+    return 'Al **3er `/warn`** el usuario queda silenciado 1 hora automático. Con `/warnings` ves el historial y con `/quitarnota` borrás una.';
   }
   if (/\b(desbanear|desbaneo|desbanes|unban)\b/.test(texto)) {
-    return 'Con `/unban usuario_id` revocás un baneo (la ID se copia con clic derecho sobre el usuario) 🔓';
+    return 'Con `/unban usuario_id` revocás un baneo (la ID se copia con clic derecho sobre el usuario).';
   }
   if (/\b(lockdown|lock|bloque(a|o|ar|ando)|desbloque(a|o|ar|ando))\b/.test(texto) && /\bcanal\b/.test(texto)) {
-    return 'Para cerrar o reabrir un canal usá `/lockdown` con la acción `bloquear` o `desbloquear` 🔒';
+    return 'Para cerrar o reabrir un canal usá `/lockdown` con la acción `bloquear` o `desbloquear`.';
   }
   if (
     /\b(borr(a|o|ar|ando)|limpi(a|o|ar|ando)|purg(a|o|ar|ando))\b/.test(texto) &&
     /\b(mensajes?|chat|canal)\b/.test(texto)
   ) {
-    return 'Con `/clear cantidad` borro hasta 100 mensajes recientes de un canal 🧹';
+    return 'Con `/clear cantidad` borro hasta 100 mensajes recientes de un canal.';
   }
   if (/\b(staff|admins?|moderadores?|helper)\b/.test(texto) && /\b(como|quien|que|configurar|definir)\b/.test(texto)) {
-    return 'El staff se define con `/config staff` (roles admin, mod y helper) 👑';
+    return 'El staff se define con `/config staff` (roles admin, mod y helper).';
   }
   if (/\bdueno\b/.test(texto)) {
-    return 'El dueño se reconoce por la corona 👑 y el staff se configura con `/config staff`.';
+    return 'El dueño es quien figura como propietario del servidor y el staff se configura con `/config staff`.';
   }
   return null;
 }
@@ -131,11 +131,11 @@ function respuestaInstantanea(texto) {
   }
   // ¿Quién es el dueño del bot/server?
   if (/\b(dueno|duena|owner|creador)\b/.test(texto) && /\b(bot|server|servidor|comunidad|trigger)\b/.test(texto)) {
-    return `El dueño y creador del bot es ${DUENO_MENCION} 👑`;
+    return `El dueño y creador del bot es ${DUENO_MENCION}`;
   }
   // ¿Cuál es la web / página? (texto ya normalizado: sin tildes ni mayúsculas)
   if (/\b(web|pagina|sitio|oficial)\b/.test(texto) && /\b(web|pagina|sitio|cual|dame|link|url)\b/.test(texto)) {
-    return `La web oficial es ${WEB} 🌐 (también podés usar /web)`;
+    return `La web oficial es ${WEB} (también podés usar /web)`;
   }
   // Redes sociales.
   if (
@@ -147,7 +147,7 @@ function respuestaInstantanea(texto) {
   }
   // Frases directas de identidad.
   if (/\b(quien sos|quien eres|que sos|que eres|presentate)\b/.test(texto)) {
-    return `Soy TriggerBOT 🤖 el bot de la comunidad Trigger.Arena, creado por ${DUENO_MENCION}. Usá /help para ver todo lo que sé hacer.`;
+    return `Soy TriggerBOT, el bot de la comunidad Trigger.Arena, creado por ${DUENO_MENCION}. Usá /help para ver todo lo que sé hacer.`;
   }
   return null;
 }

@@ -8,12 +8,12 @@ const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags } = 
 const { successEmbed, errorEmbed } = require('../utils/replies');
 const { panel } = require('../utils/tickets');
 const { setGuildConfig } = require('../store');
+const { exigirStaff } = require('../utils/permisos');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('ticket')
     .setDescription('Sistema de tickets de soporte')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .addSubcommand((s) => s.setName('publicar').setDescription('Publicar el panel de soporte en este canal'))
     .addSubcommand((s) =>
       s
@@ -35,6 +35,8 @@ module.exports = {
     ),
 
   async execute(interaction) {
+    if (!(await exigirStaff(interaction, PermissionFlagsBits.ManageGuild))) return;
+
     const sub = interaction.options.getSubcommand();
     const guild = interaction.guild;
 

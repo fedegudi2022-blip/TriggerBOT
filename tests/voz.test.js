@@ -259,7 +259,7 @@ describe('manejarCambio — ciclo de vida', () => {
     assert.ok(canalId, 'se creó el canal temporal');
     const canal = g.channels.cache.get(canalId);
     assert.equal(canal.parentId, 'cat-voz', 'se creó en la categoría del staff, no en la del hub');
-    assert.equal(voz.nombreBaseDe(canal.name), '🔊 Canal de Voz de Federico', 'nombre con formato por defecto (con emoji)');
+    assert.equal(voz.nombreBaseDe(canal.name), 'Canal de Voz de Federico', 'nombre con formato por defecto (con emoji)');
   });
 
   test('los registros muertos (canales borrados a mano) no bloquean la creación', async () => {
@@ -512,7 +512,7 @@ describe('contador de usuarios en el nombre', () => {
 
     const canalId = voz.canalDeDueno(GUILD_ID, DUENO_ID);
     const canal = g.channels.cache.get(canalId);
-    assert.equal(canal.name, '🔊 Canal de Voz de Federico · 1', 'nace con el contador en 1 (el dueño está por aterrizar)');
+    assert.equal(canal.name, 'Canal de Voz de Federico · 1', 'nace con el contador en 1 (el dueño está por aterrizar)');
 
     // El dueño aterriza en su canal y entra otro: el contador sube a 2.
     stateFake(g, dueno, canalId);
@@ -520,7 +520,7 @@ describe('contador de usuarios en el nombre', () => {
     stateFake(g, otro, canalId);
     await voz.manejarCambio({ guild: g, channelId: 'hub-1' }, { guild: g, channelId: canalId, member: otro });
     await new Promise((r) => setImmediate(r));
-    assert.equal(canal.name, '🔊 Canal de Voz de Federico · 2', 'se actualiza al entrar otro');
+    assert.equal(canal.name, 'Canal de Voz de Federico · 2', 'se actualiza al entrar otro');
   });
 
   test('con /voz contador apagado, los nombres quedan sin cantidad', async () => {
@@ -533,14 +533,14 @@ describe('contador de usuarios en el nombre', () => {
 
     const canalId = voz.canalDeDueno(GUILD_ID, DUENO_ID);
     const canal = g.channels.cache.get(canalId);
-    assert.equal(canal.name, '🔊 Canal de Voz de Federico', 'sin sufijo');
+    assert.equal(canal.name, 'Canal de Voz de Federico', 'sin sufijo');
 
     stateFake(g, dueno, canalId);
     const otro = miembroFake(OTRO_ID);
     stateFake(g, otro, canalId);
     await voz.manejarCambio({ guild: g, channelId: 'hub-1' }, { guild: g, channelId: canalId, member: otro });
     await new Promise((r) => setImmediate(r));
-    assert.equal(canal.name, '🔊 Canal de Voz de Federico', 'sigue sin sufijo');
+    assert.equal(canal.name, 'Canal de Voz de Federico', 'sigue sin sufijo');
   });
 
   test('respeta el límite de Discord: 2 renombres por 10 min, el resto espera la ventana', async () => {
@@ -562,7 +562,7 @@ describe('contador de usuarios en el nombre', () => {
       await new Promise((r) => setImmediate(r));
     }
     // Nació en ·1, usó los 2 renombres del cupo (·2, ·3) y el ·4 queda esperando la ventana.
-    assert.equal(canal.name, '🔊 Canal de Voz de Federico · 3', 'el excedente se encola, no dispara 429');
+    assert.equal(canal.name, 'Canal de Voz de Federico · 3', 'el excedente se encola, no dispara 429');
   });
 });
 
@@ -1334,6 +1334,8 @@ describe('/voz estado — diagnóstico operativo', () => {
       options: { getSubcommand: () => 'estado' },
       guildId: GUILD_ID,
       guild: g,
+      // /voz valida con exigirStaff(): sin permisos nativos, hace falta un miembro de staff.
+      member: { id: 'staff-voz', permissions: { has: () => true }, roles: { cache: { has: () => false } } },
       reply: async (p) => replies.push(p),
     });
 
@@ -1364,6 +1366,8 @@ describe('/voz estado — diagnóstico operativo', () => {
       options: { getSubcommand: () => 'estado' },
       guildId: GUILD_ID,
       guild: g,
+      // /voz valida con exigirStaff(): sin permisos nativos, hace falta un miembro de staff.
+      member: { id: 'staff-voz', permissions: { has: () => true }, roles: { cache: { has: () => false } } },
       reply: async (p) => replies.push(p),
     });
 

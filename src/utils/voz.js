@@ -1,6 +1,6 @@
 // Canales de voz temporales ("Join-to-Create", estilo VoiceMaster).
 //
-// El staff configura un canal hub "➕ Crear canal" con /voz configurar. Al entrar,
+// El staff configura un canal hub "Crear canal" con /voz configurar. Al entrar,
 // el bot crea un canal de voz a nombre del usuario, lo mueve y publica un panel
 // de controles en el chat del canal: renombrar, límite de usuarios, cerrar/abrir,
 // expulsar, transferir dueño, reclamar y borrar. El canal se borra solo cuando
@@ -35,11 +35,12 @@ const {
 const { getGuildConfig, setGuildConfig, mutarYAgendar } = require('../store');
 const { brandEmbed, successEmbed, COLORS } = require('./replies');
 const { logEvent } = require('./log');
+const { autorizadoDe } = require('./permisos');
 const crearLogger = require('../logger');
 const log = crearLogger('voz');
 
-const NOMBRE_HUB = '➕ Crear canal';
-const PLANTILLA_NOMBRE = '🔊 Canal de Voz de {usuario}';
+const NOMBRE_HUB = 'Crear canal';
+const PLANTILLA_NOMBRE = 'Canal de Voz de {usuario}';
 const MAX_CANALES_POR_GUILD = 25; // techo por defecto (anti-flood), configurable con /voz limite
 const MIN_CANALES_POR_GUILD = 1;
 const MAX_LIMITE_CANALES = 50;
@@ -186,10 +187,7 @@ const PERMISOS_CHAT_DUENO = [
 
 // Staff: quien puede gestionar canales o tiene un rol de staff configurado.
 function esStaffMiembro(guild, member) {
-  if (!member) return false;
-  if (member.permissions?.has?.(PermissionFlagsBits.ManageChannels)) return true;
-  const config = getGuildConfig(guild.id);
-  return ['admin', 'mod', 'helper'].some((nivel) => member.roles?.cache?.has(config[`${nivel}Role`]));
+  return autorizadoDe(guild, member, PermissionFlagsBits.ManageChannels);
 }
 
 // ¿El actor puede controlar este canal? Dueño actual o staff. Se revalida SIEMPRE
@@ -202,37 +200,37 @@ function puedeControlar(guild, member, duenoId) {
 // ---------- Panel de controles (mensaje en el chat del canal de voz) ----------
 function filaControles1() {
   return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('voz:nombre').setLabel('Renombrar').setEmoji('📝').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId('voz:limite').setLabel('Límite').setEmoji('👥').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId('voz:lock').setLabel('Cerrar').setEmoji('🔒').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('voz:unlock').setLabel('Abrir').setEmoji('🔓').setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId('voz:nombre').setLabel('Renombrar').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId('voz:limite').setLabel('Límite').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId('voz:lock').setLabel('Cerrar').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('voz:unlock').setLabel('Abrir').setStyle(ButtonStyle.Secondary)
   );
 }
 
 function filaControles2() {
   return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('voz:kick').setLabel('Expulsar').setEmoji('👢').setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId('voz:transferir').setLabel('Transferir').setEmoji('👑').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('voz:claim').setLabel('Reclamar').setEmoji('✋').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('voz:borrar').setLabel('Borrar').setEmoji('🗑️').setStyle(ButtonStyle.Danger)
+    new ButtonBuilder().setCustomId('voz:kick').setLabel('Expulsar').setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId('voz:transferir').setLabel('Transferir').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('voz:claim').setLabel('Reclamar').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('voz:borrar').setLabel('Borrar').setStyle(ButtonStyle.Danger)
   );
 }
 
 function filaControles3() {
   return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('voz:permitir').setLabel('Permitir').setEmoji('➕').setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId('voz:bloquear').setLabel('Bloquear').setEmoji('🚫').setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId('voz:avanzado').setLabel('Ajustes').setEmoji('⚙️').setStyle(ButtonStyle.Primary)
+    new ButtonBuilder().setCustomId('voz:permitir').setLabel('Permitir').setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId('voz:bloquear').setLabel('Bloquear').setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId('voz:avanzado').setLabel('Ajustes').setStyle(ButtonStyle.Primary)
   );
 }
 
 function enviarPanel(canal, dueno) {
   const embed = brandEmbed({
     color: COLORS.info,
-    title: `🎧 Tu canal, ${dueno.displayName}`,
+    title: `Tu canal, ${dueno.displayName}`,
     description:
       'Controlá tu canal con estos botones.\n' +
-      '• **Cerrar** bloquea la entrada de gente nueva (⏱️ **Ajustes** permite cerrar por un tiempo).\n' +
+      '• **Cerrar** bloquea la entrada de gente nueva (**Ajustes** permite cerrar por un tiempo).\n' +
       '• **Permitir / Bloquear** controlan quién puede entrar, incluso con el canal abierto.\n' +
       '• Si te vas, el dueño pasa a otro y si queda vacío **se borra solo**.',
   });
@@ -541,7 +539,7 @@ async function crearParaInterno(state) {
   log.info(`Canal temporal creado para ${dueno.user?.tag ?? dueno.id} en ${guild.name}`);
   registrarEvento(guild, {
     color: COLORS.success,
-    title: '🎧 Canal de voz temporal creado',
+    title: 'Canal de voz temporal creado',
     description: `**${dueno.displayName}** entró al canal de creación y se le creó <#${canal.id}>.`,
     fields: padre ? [{ name: 'Categoría', value: `<#${padre}>` }] : [],
   });
@@ -555,7 +553,7 @@ async function transferirA(guild, canal, nuevoOwner, { silencioso = false } = {}
     await opQuitarOverwrite(canal, anteriorId, `Transferencia del canal temporal a ${nuevoOwner.id}`);
     registrarEvento(guild, {
       color: COLORS.warn,
-      title: '👑 Canal de voz temporal transferido',
+      title: 'Canal de voz temporal transferido',
       description: `**${canal.name}** (<#${canal.id}>) pasó de <@${anteriorId}> a <@${nuevoOwner.id}>.`,
     });
   }
@@ -574,7 +572,7 @@ async function transferirA(guild, canal, nuevoOwner, { silencioso = false } = {}
   );
   if (!silencioso) {
     await canal
-      .send({ embeds: [brandEmbed({ color: COLORS.warn, title: `👑 ${nuevoOwner.displayName} ahora es el dueño del canal` })] })
+      .send({ embeds: [brandEmbed({ color: COLORS.warn, title: `${nuevoOwner.displayName} ahora es el dueño del canal` })] })
       .catch(() => {});
   }
 }
@@ -646,7 +644,7 @@ function programarBorrado(guildId, canal) {
     log.info(`Canal temporal vacío borrado (${fresco.name})`);
     registrarEvento(fresco.guild, {
       color: COLORS.error,
-      title: '🗑️ Canal de voz temporal borrado',
+      title: 'Canal de voz temporal borrado',
       description: `**${fresco.name}** quedó vacío y se borró solo${duenoId ? ` (era de <@${duenoId}>)` : ''}.`,
     });
   }, DELAY_BORRADO_MS);
@@ -895,7 +893,7 @@ function menuAvanzado(canal) {
       .setCustomId('voz:sel:avanzado')
       .setPlaceholder('Cerrar por tiempo, bitrate o región')
       .addOptions([
-        ...DURACIONES_CIERRE.map((d) => ({ label: `⏱️ Cerrar por ${d.etiqueta}`, value: `cierre:${d.value}` })),
+        ...DURACIONES_CIERRE.map((d) => ({ label: `Cerrar por ${d.etiqueta}`, value: `cierre:${d.value}` })),
         ...BITRATES_OPCIONES.map((b) => ({
           label: b === 'auto' ? 'Bitrate automático' : `Bitrate ${Number(b) / 1000} kbps`,
           value: `bitrate:${b}`,
@@ -916,7 +914,7 @@ async function manejarComponente(interaction) {
   // el staff ejecutó el comando (no necesariamente un canal temporal).
   if (accion === 'admin') {
     const subaccion = interaction.customId.split(':')[2]; // desactivar_borrar | desactivar_conservar
-    if (!interaction.member?.permissions?.has(PermissionFlagsBits.ManageChannels)) {
+    if (!esStaffMiembro(guild, interaction.member)) {
       return interaction.reply({ content: 'Solo el staff puede confirmar esta acción.', flags: MessageFlags.Ephemeral });
     }
     if (subaccion === 'desactivar_conservar') {
@@ -934,7 +932,7 @@ async function manejarComponente(interaction) {
       await interaction.deferUpdate();
       const res = await desactivarSistema(guild, { borrarTemporales: true });
       return interaction.editReply({
-        embeds: [successEmbed(`Sistema desactivado. 🗑️ Se borraron **${res.borrados} de ${res.total}** canal(es) temporales y sus registros.`)],
+        embeds: [successEmbed(`Sistema desactivado. Se borraron **${res.borrados} de ${res.total}** canal(es) temporales y sus registros.`)],
         components: [],
       });
     }
@@ -1012,7 +1010,7 @@ async function manejarComponente(interaction) {
         c.voz.bloqueos = c.voz.bloqueos || {};
         c.voz.bloqueos[canal.id] = 0; // cierre manual: indefinido, sobrevive reinicios
       });
-      return interaction.followUp({ content: '🔒 Canal **cerrado**: solo pueden entrar quienes ya están adentro.', flags: MessageFlags.Ephemeral });
+      return interaction.followUp({ content: 'Canal **cerrado**: solo pueden entrar quienes ya están adentro.', flags: MessageFlags.Ephemeral });
     }
 
     case 'unlock': {
@@ -1021,7 +1019,7 @@ async function manejarComponente(interaction) {
       if (!resultado.ok) {
         return interaction.followUp({ content: `⚠️ Discord rechazó la apertura: \`${resultado.error}\``, flags: MessageFlags.Ephemeral });
       }
-      return interaction.followUp({ content: '🔓 Canal **abierto** para todos.', flags: MessageFlags.Ephemeral });
+      return interaction.followUp({ content: 'Canal **abierto** para todos.', flags: MessageFlags.Ephemeral });
     }
 
     case 'kick': {
@@ -1034,7 +1032,7 @@ async function manejarComponente(interaction) {
         .setPlaceholder('Elegí a quién expulsar del canal')
         .addOptions(opciones);
       return interaction.reply({
-        content: '👢 Elegí al usuario a expulsar:',
+        content: 'Elegí al usuario a expulsar:',
         components: [new ActionRowBuilder().addComponents(menu)],
         flags: MessageFlags.Ephemeral,
       });
@@ -1050,7 +1048,7 @@ async function manejarComponente(interaction) {
         .setPlaceholder('Elegí el nuevo dueño del canal')
         .addOptions(opciones);
       return interaction.reply({
-        content: '👑 Elegí quién va a ser el nuevo dueño:',
+        content: 'Elegí quién va a ser el nuevo dueño:',
         components: [new ActionRowBuilder().addComponents(menu)],
         flags: MessageFlags.Ephemeral,
       });
@@ -1067,7 +1065,7 @@ async function manejarComponente(interaction) {
         .setPlaceholder(accion === 'permitir' ? 'Elegí a quién permitir' : 'Elegí a quién bloquear')
         .addOptions(opciones);
       return interaction.reply({
-        content: accion === 'permitir' ? '➕ Elegí al usuario a permitir:' : '🚫 Elegí al usuario a bloquear:',
+        content: accion === 'permitir' ? 'Elegí al usuario a permitir:' : 'Elegí al usuario a bloquear:',
         components: [new ActionRowBuilder().addComponents(menu)],
         flags: MessageFlags.Ephemeral,
       });
@@ -1075,7 +1073,7 @@ async function manejarComponente(interaction) {
 
     case 'avanzado': {
       return interaction.reply({
-        content: '⚙️ Ajustes del canal: cierre temporizado, bitrate y región.',
+        content: 'Ajustes del canal: cierre temporizado, bitrate y región.',
         components: [menuAvanzado(canal)],
         flags: MessageFlags.Ephemeral,
       });
@@ -1090,7 +1088,7 @@ async function manejarComponente(interaction) {
       olvidarTemporal(guild.id, canal.id); // solo si Discord aceptó: si no, el canal seguiría vivo y huérfano
       logEvent(guild, {
         color: COLORS.error,
-        title: '🗑️ Canal de voz temporal borrado',
+        title: 'Canal de voz temporal borrado',
         description: `**${canal.name}** (de <@${duenoId}>) fue cerrado por <@${interaction.user.id}>.`,
       });
       return;
@@ -1133,7 +1131,7 @@ async function manejarSelect(interaction) {
       if (!resultado.ok) {
         return interaction.followUp({ content: `⚠️ Discord rechazó el cierre: \`${resultado.error}\``, flags: MessageFlags.Ephemeral });
       }
-      const texto = ms === 0 ? '🔒 Canal **cerrado indefinidamente**.' : `🔒 Canal **cerrado por ${minutos === 60 ? '1 hora' : `${minutos} minutos`}**. Se reabre solo.`;
+      const texto = ms === 0 ? 'Canal **cerrado indefinidamente**.' : `Canal **cerrado por ${minutos === 60 ? '1 hora' : `${minutos} minutos`}**. Se reabre solo.`;
       return interaction.followUp({ content: texto, flags: MessageFlags.Ephemeral });
     }
 
@@ -1141,7 +1139,7 @@ async function manejarSelect(interaction) {
       if (valor === 'auto') {
         const resultado = await opBitrate(canal, 0, `Bitrate automático por ${interaction.user.tag}`);
         if (!resultado.ok) return interaction.followUp({ content: `⚠️ Discord rechazó el cambio: \`${resultado.error}\``, flags: MessageFlags.Ephemeral });
-        return interaction.followUp({ content: '🎚️ Bitrate volvió al **automático del server**.', flags: MessageFlags.Ephemeral });
+        return interaction.followUp({ content: 'Bitrate volvió al **automático del server**.', flags: MessageFlags.Ephemeral });
       }
       const bps = bitrateValido(valor);
       if (!bps) return interaction.followUp({ content: 'Bitrate inválido.', flags: MessageFlags.Ephemeral });
@@ -1152,7 +1150,7 @@ async function manejarSelect(interaction) {
           flags: MessageFlags.Ephemeral,
         });
       }
-      return interaction.followUp({ content: `🎚️ Bitrate fijado en **${bps / 1000} kbps**.`, flags: MessageFlags.Ephemeral });
+      return interaction.followUp({ content: `Bitrate fijado en **${bps / 1000} kbps**.`, flags: MessageFlags.Ephemeral });
     }
 
     if (categoriaValor === 'region') {
@@ -1162,7 +1160,7 @@ async function manejarSelect(interaction) {
       if (!resultado.ok) {
         return interaction.followUp({ content: `⚠️ Discord rechazó la región: \`${resultado.error}\``, flags: MessageFlags.Ephemeral });
       }
-      return interaction.followUp({ content: region ? `🌍 Región fijada en **${region}**.` : '🌍 Región volvió al **automático**.', flags: MessageFlags.Ephemeral });
+      return interaction.followUp({ content: region ? `Región fijada en **${region}**.` : 'Región volvió al **automático**.', flags: MessageFlags.Ephemeral });
     }
 
     return interaction.followUp({ content: 'Opción desconocida.', flags: MessageFlags.Ephemeral });
@@ -1185,12 +1183,12 @@ async function manejarSelect(interaction) {
     if (!resultado.ok) {
       return interaction.followUp({ content: `⚠️ Discord rechazó la expulsión de **${objetivo.displayName}**: \`${resultado.error}\``, flags: MessageFlags.Ephemeral });
     }
-    return interaction.followUp({ content: `👢 Expulsaste a **${objetivo.displayName}** del canal.`, flags: MessageFlags.Ephemeral });
+    return interaction.followUp({ content: `Expulsaste a **${objetivo.displayName}** del canal.`, flags: MessageFlags.Ephemeral });
   }
 
   if (tipo === 'transferir') {
     await transferirA(guild, canal, objetivo);
-    return interaction.followUp({ content: `👑 **${objetivo.displayName}** ahora es el dueño del canal.`, flags: MessageFlags.Ephemeral });
+    return interaction.followUp({ content: `**${objetivo.displayName}** ahora es el dueño del canal.`, flags: MessageFlags.Ephemeral });
   }
 
   if (tipo === 'permitir' || tipo === 'bloquear') {
@@ -1224,8 +1222,8 @@ async function manejarSelect(interaction) {
     return interaction.followUp({
       content:
         tipo === 'permitir'
-          ? `➕ **${objetivo.displayName}** ya puede entrar al canal (aunque esté cerrado).`
-          : `🚫 **${objetivo.displayName}** quedó bloqueado: no puede entrar${canal.members.has(objetivo.id) ? '' : ' y si estaba adentro fue expulsado'}.`,
+          ? `**${objetivo.displayName}** ya puede entrar al canal (aunque esté cerrado).`
+          : `**${objetivo.displayName}** quedó bloqueado: no puede entrar${canal.members.has(objetivo.id) ? '' : ' y si estaba adentro fue expulsado'}.`,
       flags: MessageFlags.Ephemeral,
     });
   }
@@ -1251,7 +1249,7 @@ async function manejarModal(interaction) {
       return interaction.reply({ content: `⚠️ Discord rechazó el renombre: \`${resultado.error}\``, flags: MessageFlags.Ephemeral });
     }
     refrescarContador(guild, canal); // vuelve a colgarle el contador al nombre nuevo
-    return interaction.reply({ content: `📝 Canal renombrado a **${nombre}**.`, flags: MessageFlags.Ephemeral });
+    return interaction.reply({ content: `Canal renombrado a **${nombre}**.`, flags: MessageFlags.Ephemeral });
   }
 
   if (tipo === 'limite') {
@@ -1263,7 +1261,7 @@ async function manejarModal(interaction) {
     }
     refrescarContador(guild, canal); // con límite el contador pasa a mostrarse como «n/límite»
     return interaction.reply({
-      content: limite === 0 ? '👥 Límite quitado: canal abierto para todos.' : `👥 Límite fijado en **${limite}** usuarios.`,
+      content: limite === 0 ? 'Límite quitado: canal abierto para todos.' : `Límite fijado en **${limite}** usuarios.`,
       flags: MessageFlags.Ephemeral,
     });
   }
@@ -1286,7 +1284,7 @@ async function limpiarAlArrancar(client) {
         if (!resultado.ok) continue;
         registrarEvento(guild, {
           color: COLORS.error,
-          title: '🗑️ Canal de voz temporal borrado',
+          title: 'Canal de voz temporal borrado',
           description: `**${canal.name}** (de <@${duenoId}>) quedó vacío tras un reinicio y se limpió.`,
         });
       }

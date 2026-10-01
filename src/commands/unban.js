@@ -3,17 +3,19 @@ const { logAction } = require('../utils/modlog');
 const { errorEmbed, accionEmbed, COLORS } = require('../utils/replies');
 const { avisarPorDM } = require('../utils/moderation');
 const { quiereSilencioso, diferir, intentar } = require('../utils/acciones');
+const { exigirStaff } = require('../utils/permisos');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('unban')
     .setDescription('Revoca el baneo de un usuario por su ID')
-    .setDefaultMemberPermissions(PermissionFlagsBits.BanMembers)
     .addStringOption((o) => o.setName('usuario_id').setDescription('ID del usuario a desbanear (clic derecho → Copiar ID)').setRequired(true))
     .addStringOption((o) => o.setName('razon').setDescription('Motivo del desbaneo').setMaxLength(500))
     .addBooleanOption((o) => o.setName('silencioso').setDescription('Mostrar la confirmación solo a vos')),
 
   async execute(interaction) {
+    if (!(await exigirStaff(interaction, PermissionFlagsBits.BanMembers))) return;
+
     const userId = interaction.options.getString('usuario_id', true).trim();
     const reason = interaction.options.getString('razon');
     const silencioso = quiereSilencioso(interaction);
@@ -63,12 +65,12 @@ module.exports = {
       });
     }
 
-    void avisarPorDM(ban.user, `✅ Fuiste desbaneado de **${interaction.guild.name}**. Podés volver a entrar.`);
+    void avisarPorDM(ban.user, `Fuiste desbaneado de **${interaction.guild.name}**. Podés volver a entrar.`);
 
     return interaction.editReply({
       embeds: [
         accionEmbed({
-          titulo: '✅ Desbaneo',
+          titulo: 'Desbaneo',
           detalle: `**${ban.user.tag}** fue desbaneado. Ya puede volver a entrar al servidor.`,
           motivo: reason,
           caso,

@@ -5,12 +5,12 @@ const { motivoNoModerable, avisarPorDM } = require('../utils/moderation');
 const { autocompletar } = require('../utils/plantillas');
 const { quiereSilencioso, resolverMiembro, intentar } = require('../utils/acciones');
 const { pedir } = require('../utils/confirmaciones');
+const { exigirStaff } = require('../utils/permisos');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('ban')
     .setDescription('Banea a un usuario del servidor')
-    .setDefaultMemberPermissions(PermissionFlagsBits.BanMembers)
     .addUserOption((o) => o.setName('usuario').setDescription('Usuario a banear').setRequired(true))
     .addStringOption((o) =>
       o.setName('razon').setDescription('Motivo del baneo (escribí para ver plantillas)').setMaxLength(500).setAutocomplete(true)
@@ -23,6 +23,8 @@ module.exports = {
   },
 
   async execute(interaction) {
+    if (!(await exigirStaff(interaction, PermissionFlagsBits.BanMembers))) return;
+
     const user = interaction.options.getUser('usuario', true);
     const reason = interaction.options.getString('razon');
     const deleteDays = interaction.options.getInteger('borrar_dias') ?? 0;
@@ -45,7 +47,7 @@ module.exports = {
 
     // Un baneo es irreversible desde el lado del usuario: se confirma antes de tocar la API.
     return pedir(interaction, {
-      titulo: '🔨 Confirmar baneo',
+      titulo: 'Confirmar baneo',
       color: COLORS.error,
       silencioso,
       deshacerLabel: 'Deshacer (desbanear)',
@@ -74,13 +76,13 @@ module.exports = {
           return { ok: false, embeds: [errorEmbed(`No se pudo banear a ${user}.\n> ${resultado.error}`, 'La acción no se aplicó')] };
         }
 
-        void avisarPorDM(user, `⛔ Fuiste baneado de **${guild.name}**.\n**Motivo:** ${reason || 'no especificado'}`);
+        void avisarPorDM(user, `Fuiste baneado de **${guild.name}**.\n**Motivo:** ${reason || 'no especificado'}`);
 
         return {
           ok: true,
           embeds: [
             accionEmbed({
-              titulo: '🔨 Baneo',
+              titulo: 'Baneo',
               detalle: `${user} fue baneado del servidor.`,
               motivo: reason,
               caso,
@@ -111,7 +113,7 @@ module.exports = {
         return {
           embeds: [
             accionEmbed({
-              titulo: '↩️ Baneo deshecho',
+              titulo: 'Baneo deshecho',
               detalle: `**${user.tag}** fue desbaneado.`,
               caso,
               moderador: btn.member?.displayName ?? btn.user.username,

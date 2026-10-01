@@ -243,7 +243,7 @@ async function procesarMensajeParaSpam(message) {
 
   await avisarPorDM(
     message.author,
-    `⚠️ En **${message.guild.name}** se detectó que escribiste demasiado rápido (${enVentana.length} mensajes en ${config.spamSegundos} s).\n` +
+    `En **${message.guild.name}** se detectó que escribiste demasiado rápido (${enVentana.length} mensajes en ${config.spamSegundos} s).\n` +
       `Resultado: **${resultadoAccion}**. Escribí con calma para evitar sanciones.`
   );
 
@@ -251,7 +251,7 @@ async function procesarMensajeParaSpam(message) {
     message.guild,
     brandEmbed({
       color: COLORS.warn,
-      title: '🛡️ Anti-spam — posible flood detectado',
+      title: 'Anti-spam — posible flood detectado',
       description: `${member} (**${member.user.tag}**) superó el umbral: **${enVentana.length} mensajes en ${config.spamSegundos} s** en <#${message.channelId}>.`,
       fields: [
         { name: 'Acción aplicada', value: `${ETIQUETA_ACCION_SPAM[config.accionSpam]} → ${resultadoAccion}`, inline: true },
@@ -289,7 +289,7 @@ async function registrarIngreso(member) {
   const recientes = registro.miembros.filter((m) => ahora - m.creado <= EDAD_CUENTA_NUEVA_MS);
   const listaMiembros = registro.miembros
     .slice(-10)
-    .map((m) => `• <@${m.id}> — cuenta creada <t:${Math.floor(m.creado / 1000)}:R>${ahora - m.creado <= EDAD_CUENTA_NUEVA_MS ? ' 🆕' : ''}`)
+    .map((m) => `• <@${m.id}> — cuenta creada <t:${Math.floor(m.creado / 1000)}:R>${ahora - m.creado <= EDAD_CUENTA_NUEVA_MS ? ' (nueva)' : ''}`)
     .join('\n');
 
   // Auto-acción: solo si el staff la prendió. Apunta a las cuentas nuevas con el rol menor.
@@ -318,9 +318,9 @@ async function registrarIngreso(member) {
     member.guild,
     brandEmbed({
       color: COLORS.error,
-      title: '🚨 Anti-raid — oleada de ingresos detectada',
+      title: 'Anti-raid — oleada de ingresos detectada',
       description:
-        `**${enVentana.length} ingresos en ${config.raidSegundos} s** (${recientes.length} con cuenta de menos de 7 días 🆕).\n` +
+        `**${enVentana.length} ingresos en ${config.raidSegundos} s** (${recientes.length} con cuenta de menos de 7 días).\n` +
         (aplicado === 'solo alerta'
           ? 'Revisá la lista y actuá manualmente si corresponde.'
           : `Auto-acción: **${aplicado}**.`),

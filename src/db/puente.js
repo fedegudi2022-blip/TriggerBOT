@@ -149,7 +149,7 @@ async function procesarFila(fila, client) {
         embeds: [
           brandEmbed({
             color: COLORS.info,
-            title: String(args.titulo || '📣 Anuncio').slice(0, 256),
+            title: String(args.titulo || 'Anuncio').slice(0, 256),
             description: texto.slice(0, 4000),
             footer: 'Enviado desde TriGGer.Arena • TriggerBOT',
           }),

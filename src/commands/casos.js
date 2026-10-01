@@ -5,16 +5,10 @@
 // que es lo que el staff necesita para revisar una sanción.
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const { obtener, listar } = require('../casos');
-const { getGuildConfig } = require('../store');
 const { brandEmbed, COLORS } = require('../utils/replies');
+const { exigirStaff } = require('../utils/permisos');
 
 const MAX_LISTA = 10; // casos por consulta (un embed aguanta 25 campos; 10 se lee cómodo)
-
-function esStaff(interaction) {
-  if (interaction.member?.permissions?.has?.(PermissionFlagsBits.ModerateMembers)) return true;
-  const config = getGuildConfig(interaction.guildId);
-  return ['admin', 'mod', 'helper'].some((nivel) => interaction.member?.roles?.cache?.has?.(config[`${nivel}Role`]));
-}
 
 const fecha = (ts) => `<t:${Math.floor(ts / 1000)}:f>`;
 
@@ -50,7 +44,7 @@ function embedDeLista(casos, { usuario, total }) {
   }));
   return brandEmbed({
     color: COLORS.info,
-    title: usuario ? `📁 Casos de ${usuario.tag}` : '📁 Últimos casos de moderación',
+    title: usuario ? `Casos de ${usuario.tag}` : 'Últimos casos de moderación',
     description: total > casos.length ? `Mostrando los **${casos.length}** más recientes de **${total}**.` : `**${total}** caso(s).`,
     fields: fields.length
       ? fields
@@ -63,17 +57,11 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('casos')
     .setDescription('Consulta el registro de casos de moderación (mod-log)')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
     .addIntegerOption((o) => o.setName('caso').setDescription('Número de caso a ver en detalle').setMinValue(1))
     .addUserOption((o) => o.setName('usuario').setDescription('Ver todos los casos de este usuario')),
 
   async execute(interaction) {
-    if (!esStaff(interaction)) {
-      return interaction.reply({
-        embeds: [brandEmbed({ color: COLORS.error, title: 'Solo staff', description: 'El registro de casos es solo para el staff.' })],
-        flags: MessageFlags.Ephemeral,
-      });
-    }
+    if (!(await exigirStaff(interaction, PermissionFlagsBits.ModerateMembers, 'El registro de casos es solo para el staff.'))) return;
 
     const numero = interaction.options.getInteger('caso');
     const usuario = interaction.options.getUser('usuario');

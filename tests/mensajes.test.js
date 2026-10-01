@@ -111,7 +111,8 @@ function interaccionConOrden(opciones = {}, { fallarDefer = false } = {}) {
     nickname: null,
     premiumSince: null,
     joinedTimestamp: Date.now() - 86_400_000,
-    permissions: { has: () => false },
+    // Staff: /frases y /ticket validan con exigirStaff() (ya no usan permisos nativos).
+    permissions: { has: () => true },
     roles: { cache: coleccion(), highest: null },
     displayAvatarURL: () => 'https://ejemplo.com/avatar.png',
   };

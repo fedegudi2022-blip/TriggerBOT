@@ -11,10 +11,10 @@ const {
   EmbedBuilder,
   ChannelType,
   MessageFlags,
-  PermissionFlagsBits,
 } = require('discord.js');
 const { getGuildConfig, setGuildConfig } = require('../store');
 const { brandEmbed, errorEmbed, COLORS } = require('./replies');
+const { nivelStaff, esStaff } = require('./permisos');
 const { POR_DEFECTO: PROTECCION_DEFECTO } = require('./proteccion');
 const {
   ACCIONES: ACCIONES_ESCALADA,
@@ -25,36 +25,47 @@ const {
 
 // ---------- Definición de secciones ----------
 const SECCIONES = [
-  { value: 'bienvenida', label: 'Bienvenida y autorol', description: 'Canal, mensaje y rol automático para nuevos miembros', emoji: '1️⃣' },
-  { value: 'modlog', label: 'Mod-log', description: 'Canal de registro de acciones de moderación', emoji: '2️⃣' },
-  { value: 'logs', label: 'Logs de eventos', description: 'Mensajes borrados/editados, salidas, roles y apodos', emoji: '3️⃣' },
-  { value: 'avisos', label: 'Avisos al staff', description: 'Canal de notificaciones para el equipo', emoji: '4️⃣' },
-  { value: 'staff', label: 'Roles de staff', description: 'Quiénes son admin, mod y helper para el bot', emoji: '5️⃣' },
-  { value: 'mute', label: 'Rol de silenciado', description: 'Rol que usa /mute (si no hay, se crea uno solo)', emoji: '6️⃣' },
+  { value: 'bienvenida', label: 'Bienvenida y autorol', description: 'Canal, mensaje y rol automático para nuevos miembros' },
+  { value: 'modlog', label: 'Mod-log', description: 'Canal de registro de acciones de moderación' },
+  { value: 'logs', label: 'Logs de eventos', description: 'Mensajes borrados/editados, salidas, roles y apodos' },
+  { value: 'avisos', label: 'Avisos al staff', description: 'Canal de notificaciones para el equipo' },
+  { value: 'staff', label: 'Roles de staff', description: 'Quiénes son admin, mod y helper para el bot' },
+  { value: 'mute', label: 'Rol de silenciado', description: 'Rol que usa /mute (si no hay, se crea uno solo)' },
   {
     value: 'escalada',
     label: 'Escalada de avisos',
     description: 'Qué pasa cuando alguien acumula advertencias',
-    emoji: '⚠️',
   },
-  { value: 'ia', label: 'Chat con IA', description: 'Prender o apagar las respuestas al mencionar al bot', emoji: '7️⃣' },
-  { value: 'niveles', label: 'Niveles y XP', description: 'Canal donde se anuncian subidas de nivel y logros', emoji: '8️⃣' },
-  { value: 'frases', label: 'Frase del día', description: 'Canal y hora de la frase automática diaria', emoji: '9️⃣' },
-  { value: 'proteccion', label: 'Anti-spam y anti-raid', description: 'Flood y oleadas de ingresos con acción automática', emoji: '🛡️' },
-  { value: 'servidores', label: 'Servidores CS 1.6', description: 'Servers con IP, panel en vivo y alertas de caída', emoji: '🎮' },
-  { value: 'tickets', label: 'Tickets de soporte', description: 'Categoría, canal de logs y panel con botón', emoji: '🎫' },
-  { value: 'desactivar', label: 'Desactivar funciones', description: 'Apagar funciones que ya no querés usar', emoji: '🔟' },
+  { value: 'ia', label: 'Chat con IA', description: 'Prender o apagar las respuestas al mencionar al bot' },
+  { value: 'niveles', label: 'Niveles y XP', description: 'Canal donde se anuncian subidas de nivel y logros' },
+  { value: 'frases', label: 'Frase del día', description: 'Canal y hora de la frase automática diaria' },
+  { value: 'proteccion', label: 'Anti-spam y anti-raid', description: 'Flood y oleadas de ingresos con acción automática' },
+  { value: 'servidores', label: 'Servidores CS 1.6', description: 'Servers con IP, panel en vivo y alertas de caída' },
+  { value: 'tickets', label: 'Tickets de soporte', description: 'Categoría, canal de logs y panel con botón' },
+  { value: 'desactivar', label: 'Desactivar funciones', description: 'Apagar funciones que ya no querés usar' },
 ];
 
 const NOMBRE_SECCION = Object.fromEntries(SECCIONES.map((s) => [s.value, s.label]));
 
+// Secciones que NO son configuración rutinaria: tocar los roles de staff, la
+// escalada de warns o las defensas anti-spam/raid puede ampliar privilegios o
+// debilitar el servidor, así que quedan reservadas al admin (dueño, ManageGuild o
+// rol admin configurado). El resto lo puede usar cualquier nivel de staff
+// (helper/mod/admin): canales, logs, frases, tickets, niveles, servidores, etc.
+const SECCIONES_SENSIBLES = new Set(['staff', 'escalada', 'proteccion']);
+
 // ---------- Helpers de filas ----------
-function filaMenuPrincipal() {
+function filaMenuPrincipal(interaction) {
+  // Un helper/mod no ve las secciones sensibles: el control real está en
+  // manejarComponente(), esto solo evita ofrecer lo que igual no puede usar.
+  const esAdmin = nivelStaff(interaction) === 'admin';
+  const opciones = SECCIONES.filter((s) => esAdmin || !SECCIONES_SENSIBLES.has(s.value)).map((s) => ({
+    label: s.label,
+    value: s.value,
+    description: s.description,
+  }));
   return new ActionRowBuilder().addComponents(
-    new StringSelectMenuBuilder()
-      .setCustomId('cfg:menu')
-      .setPlaceholder('Elegí qué querés configurar')
-      .addOptions(SECCIONES.map((s) => ({ label: s.label, value: s.value, description: s.description, emoji: s.emoji })))
+    new StringSelectMenuBuilder().setCustomId('cfg:menu').setPlaceholder('Elegí qué querés configurar').addOptions(opciones)
   );
 }
 
@@ -78,8 +89,10 @@ function rolActual(valor) {
 }
 
 // ---------- Vista del panel principal (resumen + menú) ----------
-function panelCompleto(guild) {
+function panelCompleto(interaction) {
+  const guild = interaction.guild;
   const config = getGuildConfig(guild.id);
+  const esAdmin = nivelStaff(interaction) === 'admin';
 
   const estado = (v) => (v ? v : '*sin configurar*');
   const staffLines = ['admin', 'mod', 'helper']
@@ -89,34 +102,54 @@ function panelCompleto(guild) {
     })
     .join('\n');
 
+  const campos = [
+    { name: 'Bienvenida', value: estado(config.welcome?.channelId ? `<#${config.welcome.channelId}>` : null), inline: true },
+    { name: 'Autorol', value: estado(config.autorole ? `<@&${config.autorole}>` : null), inline: true },
+    { name: 'Mod-log', value: estado(config.modlog ? `<#${config.modlog}>` : null), inline: true },
+    { name: 'Logs', value: estado(config.logs ? `<#${config.logs}>` : null), inline: true },
+    { name: 'Avisos al staff', value: estado(config.avisosChannel ? `<#${config.avisosChannel}>` : null), inline: true },
+    { name: 'Rol de silenciado', value: estado(config.muteRole ? `<@&${config.muteRole}>` : null), inline: true },
+    { name: 'Chat con IA', value: config.iaActivada === false ? 'Apagada' : 'Prendida', inline: true },
+    { name: 'Servidores CS', value: config.servidores?.lista?.length ? `${config.servidores.lista.length} cargado(s)` : 'Sin cargar', inline: true },
+    { name: 'Tickets', value: config.tickets?.categoriaId ? `<#${config.tickets.categoriaId}>` : 'Sin configurar', inline: true },
+    { name: 'Canal de niveles', value: estado(config.canalNiveles ? `<#${config.canalNiveles}>` : null), inline: true },
+    { name: 'Frase del día', value: estado(config.fraseDelDia?.canalId ? `<#${config.fraseDelDia.canalId}>` : null), inline: true },
+  ];
+  if (esAdmin) {
+    // El resumen de las secciones sensibles se muestra solo a quien puede editarlas.
+    campos.push({ name: 'Anti-spam/raid', value: config.proteccion?.activado ? 'Prendida' : 'Apagada', inline: true });
+    campos.push({ name: 'Staff del bot', value: staffLines, inline: false });
+  }
+
   const embed = new EmbedBuilder()
     .setTitle('Configuración del servidor')
     .setColor(COLORS.info)
-    .setDescription('Usá el menú de abajo para configurar cada sección. Todo se guarda al instante.')
-    .addFields(
-      { name: 'Bienvenida', value: estado(config.welcome?.channelId ? `<#${config.welcome.channelId}>` : null), inline: true },
-      { name: 'Autorol', value: estado(config.autorole ? `<@&${config.autorole}>` : null), inline: true },
-      { name: 'Mod-log', value: estado(config.modlog ? `<#${config.modlog}>` : null), inline: true },
-      { name: 'Logs', value: estado(config.logs ? `<#${config.logs}>` : null), inline: true },
-      { name: 'Avisos al staff', value: estado(config.avisosChannel ? `<#${config.avisosChannel}>` : null), inline: true },
-      { name: 'Rol de silenciado', value: estado(config.muteRole ? `<@&${config.muteRole}>` : null), inline: true },
-      { name: 'Chat con IA', value: config.iaActivada === false ? 'Apagada' : 'Prendida', inline: true },
-      { name: 'Anti-spam/raid', value: config.proteccion?.activado ? 'Prendida' : 'Apagada', inline: true },
-      { name: 'Servidores CS', value: config.servidores?.lista?.length ? `${config.servidores.lista.length} cargado(s)` : 'Sin cargar', inline: true },
-      { name: 'Tickets', value: config.tickets?.categoriaId ? `<#${config.tickets.categoriaId}>` : 'Sin configurar', inline: true },
-      { name: 'Canal de niveles', value: estado(config.canalNiveles ? `<#${config.canalNiveles}>` : null), inline: true },
-      { name: 'Frase del día', value: estado(config.fraseDelDia?.canalId ? `<#${config.fraseDelDia.canalId}>` : null), inline: true },
-      { name: 'Staff del bot', value: staffLines, inline: false }
+    .setDescription(
+      'Usá el menú de abajo para configurar cada sección. Todo se guarda al instante.' +
+        (esAdmin ? '' : '\n\nLas secciones de staff, escalada y anti-spam/raid las configura solo un admin.')
     )
+    .addFields(campos)
     .setFooter({ text: 'TriggerBOT' })
     .setTimestamp();
 
-  return { embeds: [embed], components: [filaMenuPrincipal()] };
+  return { embeds: [embed], components: [filaMenuPrincipal(interaction)] };
 }
 
 // ---------- Vistas por sección ----------
-function vistaSeccion(guild, seccion, guardado = false) {
+function vistaSeccion(interaction, seccion, guardado = false) {
+  const guild = interaction.guild;
   const config = getGuildConfig(guild.id);
+  const esAdmin = nivelStaff(interaction) === 'admin';
+
+  // Defensa en profundidad: el menú ya no ofrece las secciones sensibles a un
+  // helper/mod, pero si llegan por un customId fabricado no se renderiza nada.
+  if (SECCIONES_SENSIBLES.has(seccion) && !esAdmin) {
+    return {
+      embeds: [errorEmbed(`Solo un admin puede ver y configurar **${NOMBRE_SECCION[seccion] ?? seccion}**.`)],
+      components: [filaVolver()],
+    };
+  }
+
   const nota = guardado ? '\n\n**Guardado.**' : '';
   const components = [];
   let embed;
@@ -293,16 +326,16 @@ function vistaSeccion(guild, seccion, guardado = false) {
   } else if (seccion === 'proteccion') {
     const { ETIQUETA_ACCION_SPAM, ETIQUETA_ACCION_RAID } = require('./proteccion');
     const OPCIONES_SPAM = [
-      { valor: 'aviso', etiqueta: 'Borrar mensajes', emoji: '🧹' },
-      { valor: 'timeout', etiqueta: 'Timeout 10 min', emoji: '⏱️' },
-      { valor: 'mute', etiqueta: 'Silenciar con rol', emoji: '🔇' },
-      { valor: 'kick', etiqueta: 'Expulsar', emoji: '👋' },
-      { valor: 'ban', etiqueta: 'Banear', emoji: '🔨' },
+      { valor: 'aviso', etiqueta: 'Borrar mensajes' },
+      { valor: 'timeout', etiqueta: 'Timeout 10 min' },
+      { valor: 'mute', etiqueta: 'Silenciar con rol' },
+      { valor: 'kick', etiqueta: 'Expulsar' },
+      { valor: 'ban', etiqueta: 'Banear' },
     ];
     const OPCIONES_RAID = [
-      { valor: 'nada', etiqueta: 'Solo alertar', emoji: '🔔' },
-      { valor: 'kick', etiqueta: 'Expulsar', emoji: '👋' },
-      { valor: 'ban', etiqueta: 'Banear', emoji: '🔨' },
+      { valor: 'nada', etiqueta: 'Solo alertar' },
+      { valor: 'kick', etiqueta: 'Expulsar' },
+      { valor: 'ban', etiqueta: 'Banear' },
     ];
 
     embed = new EmbedBuilder()
@@ -333,7 +366,7 @@ function vistaSeccion(guild, seccion, guardado = false) {
         new StringSelectMenuBuilder()
           .setCustomId('cfg:set:proteccion:accionSpam')
           .setPlaceholder('Acción ante spam')
-          .addOptions(OPCIONES_SPAM.map((o) => ({ label: o.etiqueta, value: o.valor, emoji: o.emoji, default: p.accionSpam === o.valor })))
+          .addOptions(OPCIONES_SPAM.map((o) => ({ label: o.etiqueta, value: o.valor, default: p.accionSpam === o.valor })))
       )
     );
     components.push(
@@ -341,7 +374,7 @@ function vistaSeccion(guild, seccion, guardado = false) {
         new StringSelectMenuBuilder()
           .setCustomId('cfg:set:proteccion:accionRaid')
           .setPlaceholder('Acción ante oleada de ingresos')
-          .addOptions(OPCIONES_RAID.map((o) => ({ label: o.etiqueta, value: o.valor, emoji: o.emoji, default: p.accionRaid === o.valor })))
+          .addOptions(OPCIONES_RAID.map((o) => ({ label: o.etiqueta, value: o.valor, default: p.accionRaid === o.valor })))
       )
     );
     components.push(
@@ -369,7 +402,7 @@ function vistaSeccion(guild, seccion, guardado = false) {
     // Modal para cargar un server nuevo: nombre + IP:puerto + modo.
     components.push(
       new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('cfg:modalpedir:servidores').setLabel('Agregar servidor').setEmoji('➕').setStyle(ButtonStyle.Success)
+        new ButtonBuilder().setCustomId('cfg:modalpedir:servidores').setLabel('Agregar servidor').setStyle(ButtonStyle.Success)
       )
     );
 
@@ -444,11 +477,12 @@ function vistaSeccion(guild, seccion, guardado = false) {
           .addOptions(
             // La escalada tiene su propio interruptor en su sección (apagarla desde
             // acá sería un segundo camino para lo mismo).
-            SECCIONES.filter((s) => !['desactivar', 'escalada'].includes(s.value)).map((s) => ({
-              label: s.label,
-              value: s.value,
-              emoji: s.emoji,
-            }))
+            SECCIONES.filter((s) => !['desactivar', 'escalada'].includes(s.value))
+              .filter((s) => esAdmin || !SECCIONES_SENSIBLES.has(s.value))
+              .map((s) => ({
+                label: s.label,
+                value: s.value,
+              }))
           )
       )
     );
@@ -481,11 +515,25 @@ function vistaConfirmarDesactivado(feature) {
   };
 }
 
-// ---------- Permisos ----------
-function esStaff(interaction) {
-  if (interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) return true;
-  const config = getGuildConfig(interaction.guildId);
-  return ['admin', 'mod', 'helper'].some((nivel) => interaction.member.roles.cache.has(config[`${nivel}Role`]));
+// Deduce a qué sección pertenece un componente cfg:* para aplicar la política de
+// secciones sensibles sin repetir el chequeo en cada rama. null = no toca ninguna.
+function seccionDeComponente(interaction) {
+  const partes = interaction.customId.split(':');
+  const accion = partes[1];
+  if (accion === 'menu') return interaction.values?.[0] ?? null;
+  if (accion === 'set' || accion === 'msg' || accion === 'modal' || accion === 'modalpedir') return partes[2] ?? null;
+  if (accion === 'toggle') {
+    const cual = partes[2];
+    if (cual === 'raidAuto') return 'proteccion';
+    if (cual === 'servMonitoreo') return 'servidores';
+    return cual ?? null;
+  }
+  if (accion === 'servers') return 'servidores';
+  if (accion === 'off') {
+    // cfg:off:menu (la sección viene en values) | cfg:off:ask:<feature> | cfg:off:si:<feature>
+    return partes[2] === 'menu' ? interaction.values?.[0] ?? null : partes[3] ?? null;
+  }
+  return null;
 }
 
 // ---------- Guardado por sección ----------
@@ -546,7 +594,8 @@ function aplicarDesactivado(guildId, feature) {
 
 // ---------- Router principal de componentes cfg:* ----------
 async function manejarComponente(interaction) {
-  if (!esStaff(interaction)) {
+  const nivel = nivelStaff(interaction);
+  if (!nivel) {
     return interaction.reply({
       embeds: [errorEmbed('Solo el staff puede usar el panel de configuración.')],
       flags: MessageFlags.Ephemeral,
@@ -557,22 +606,33 @@ async function manejarComponente(interaction) {
   const accion = partes[1];
   const guild = interaction.guild;
 
+  // Las secciones sensibles se revalidan en CADA componente, no solo al abrir el
+  // panel: un helper que fabrique el customId no puede otorgarse roles de staff,
+  // apagar la escalada ni desactivar las defensas del servidor.
+  const seccion = seccionDeComponente(interaction);
+  if (SECCIONES_SENSIBLES.has(seccion) && nivel !== 'admin') {
+    return interaction.reply({
+      embeds: [errorEmbed(`Solo un admin puede configurar **${NOMBRE_SECCION[seccion] ?? seccion}**.`)],
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
   // Select del menú principal: navegar a una sección
   if (accion === 'menu' && interaction.isStringSelectMenu()) {
-    return interaction.update(vistaSeccion(guild, interaction.values[0]));
+    return interaction.update(vistaSeccion(interaction, interaction.values[0]));
   }
 
   // Botón volver al panel
   if (accion === 'volver') {
-    return interaction.update(panelCompleto(guild));
+    return interaction.update(panelCompleto(interaction));
   }
 
   // Selectores de canal/rol: guardar y redibujar la sección
   if (accion === 'set' && interaction.isAnySelectMenu()) {
-    const [, , seccion, campo] = partes;
+    const [, , seccionSet, campo] = partes;
     const valor = interaction.values[0];
-    aplicarSet(guild.id, seccion, campo, valor);
-    return interaction.update(vistaSeccion(guild, seccion, true));
+    aplicarSet(guild.id, seccionSet, campo, valor);
+    return interaction.update(vistaSeccion(interaction, seccionSet, true));
   }
 
   // Botón editar mensaje de bienvenida: abrir modal
@@ -603,7 +663,7 @@ async function manejarComponente(interaction) {
       c.welcome.message = texto;
     });
     if (interaction.isFromMessage()) {
-      return interaction.update(vistaSeccion(guild, 'bienvenida', true));
+      return interaction.update(vistaSeccion(interaction, 'bienvenida', true));
     }
     return interaction.reply({ embeds: [brandEmbed({ color: COLORS.success, title: 'Mensaje de bienvenida guardado' })], flags: MessageFlags.Ephemeral });
   }
@@ -615,7 +675,7 @@ async function manejarComponente(interaction) {
     setGuildConfig(guild.id, (c) => {
       c.iaActivada = nuevo;
     });
-    return interaction.update(vistaSeccion(guild, 'ia', true));
+    return interaction.update(vistaSeccion(interaction, 'ia', true));
   }
 
   // Toggle de la escalada de advertencias
@@ -624,7 +684,7 @@ async function manejarComponente(interaction) {
     setGuildConfig(guild.id, (c) => {
       c.escalada = { ...(c.escalada || {}), activada: !actual.activada };
     });
-    return interaction.update(vistaSeccion(guild, 'escalada', true));
+    return interaction.update(vistaSeccion(interaction, 'escalada', true));
   }
 
   // Botón que pide el modal de umbral y duración de la escalada
@@ -666,7 +726,7 @@ async function manejarComponente(interaction) {
     setGuildConfig(guild.id, (c) => {
       c.escalada = { ...(c.escalada || {}), umbral, duracion };
     });
-    if (interaction.isFromMessage()) return interaction.update(vistaSeccion(guild, 'escalada', true));
+    if (interaction.isFromMessage()) return interaction.update(vistaSeccion(interaction, 'escalada', true));
     return interaction.reply({
       embeds: [
         brandEmbed({
@@ -687,7 +747,7 @@ async function manejarComponente(interaction) {
       c.proteccion = { ...PROTECCION_DEFECTO, ...(c.proteccion || {}) };
       c.proteccion.activado = nuevo;
     });
-    return interaction.update(vistaSeccion(guild, 'proteccion', true));
+    return interaction.update(vistaSeccion(interaction, 'proteccion', true));
   }
 
   // Toggle de la auto-acción en raids (por defecto solo alerta, por seguridad)
@@ -698,7 +758,7 @@ async function manejarComponente(interaction) {
       c.proteccion = { ...PROTECCION_DEFECTO, ...(c.proteccion || {}) };
       c.proteccion.accionesRapidas = nuevo;
     });
-    return interaction.update(vistaSeccion(guild, 'proteccion', true));
+    return interaction.update(vistaSeccion(interaction, 'proteccion', true));
   }
 
   // Botón que pide el modal de umbrales de spam/raid
@@ -759,7 +819,7 @@ async function manejarComponente(interaction) {
       c.proteccion = { ...PROTECCION_DEFECTO, ...(c.proteccion || {}) };
       Object.assign(c.proteccion, { spamMensajes, spamSegundos, raidJoins, raidSegundos });
     });
-    if (interaction.isFromMessage()) return interaction.update(vistaSeccion(guild, 'proteccion', true));
+    if (interaction.isFromMessage()) return interaction.update(vistaSeccion(interaction, 'proteccion', true));
     return interaction.reply({
       embeds: [brandEmbed({ color: COLORS.success, title: 'Umbrales de protección guardados' })],
       flags: MessageFlags.Ephemeral,
@@ -843,7 +903,7 @@ async function manejarComponente(interaction) {
       c.servidores.lista = c.servidores.lista || [];
       c.servidores.lista.push({ nombre, host, puerto, modo, descripcion, imagen: imagen || undefined });
     });
-    if (interaction.isFromMessage()) return interaction.update(vistaSeccion(guild, 'servidores', true));
+    if (interaction.isFromMessage()) return interaction.update(vistaSeccion(interaction, 'servidores', true));
     return interaction.reply({
       embeds: [brandEmbed({ color: COLORS.success, title: `Servidor "${nombre}" agregado`, description: `Ya podés usar /servidores e /ip.` })],
       flags: MessageFlags.Ephemeral,
@@ -856,7 +916,7 @@ async function manejarComponente(interaction) {
     setGuildConfig(guild.id, (c) => {
       if (c.servidores?.lista?.[indice]) c.servidores.lista.splice(indice, 1);
     });
-    return interaction.update(vistaSeccion(guild, 'servidores', true));
+    return interaction.update(vistaSeccion(interaction, 'servidores', true));
   }
 
   // Toggle de alertas de caída/vuelta
@@ -865,7 +925,7 @@ async function manejarComponente(interaction) {
       c.servidores = c.servidores || {};
       c.servidores.monitoreo = c.servidores.monitoreo === false ? true : false;
     });
-    return interaction.update(vistaSeccion(guild, 'servidores', true));
+    return interaction.update(vistaSeccion(interaction, 'servidores', true));
   }
 
   // Olvidar el panel publicado (por si lo borraron a mano)
@@ -876,7 +936,7 @@ async function manejarComponente(interaction) {
         delete c.servidores.mensajePanel;
       }
     });
-    return interaction.update(vistaSeccion(guild, 'servidores', true));
+    return interaction.update(vistaSeccion(interaction, 'servidores', true));
   }
 
   // Desactivar: pedir confirmación
@@ -893,11 +953,20 @@ async function manejarComponente(interaction) {
   if (accion === 'off' && partes[2] === 'si' && interaction.isButton()) {
     const feature = partes[3];
     aplicarDesactivado(guild.id, feature);
-    return interaction.update(vistaSeccion(guild, feature, true));
+    return interaction.update(vistaSeccion(interaction, feature, true));
   }
 
   // Cualquier otra cosa: limpiar componentes para no dejar botones muertos
   return interaction.update({ components: [] });
 }
 
-module.exports = { panelCompleto, filaMenuPrincipal, vistaSeccion, manejarComponente };
+module.exports = {
+  panelCompleto,
+  filaMenuPrincipal,
+  vistaSeccion,
+  manejarComponente,
+  nivelStaff,
+  esStaff,
+  seccionDeComponente,
+  SECCIONES_SENSIBLES,
+};

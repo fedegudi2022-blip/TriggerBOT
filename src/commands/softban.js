@@ -5,12 +5,12 @@ const { motivoNoModerable, avisarPorDM } = require('../utils/moderation');
 const { autocompletar } = require('../utils/plantillas');
 const { quiereSilencioso, resolverMiembro, intentar } = require('../utils/acciones');
 const { pedir } = require('../utils/confirmaciones');
+const { exigirStaff } = require('../utils/permisos');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('softban')
     .setDescription('Banea y desbanea al instante: expulsa al usuario borrando todos sus mensajes')
-    .setDefaultMemberPermissions(PermissionFlagsBits.BanMembers)
     .addUserOption((o) => o.setName('usuario').setDescription('Usuario a expulsar con limpieza de mensajes').setRequired(true))
     .addIntegerOption((o) => o.setName('borrar_dias').setDescription('Días de mensajes a borrar (0-7, por defecto 1)').setMinValue(0).setMaxValue(7))
     .addStringOption((o) =>
@@ -23,6 +23,8 @@ module.exports = {
   },
 
   async execute(interaction) {
+    if (!(await exigirStaff(interaction, PermissionFlagsBits.BanMembers))) return;
+
     const user = interaction.options.getUser('usuario', true);
     const deleteDays = interaction.options.getInteger('borrar_dias') ?? 1;
     const reason = interaction.options.getString('razon');
@@ -39,7 +41,7 @@ module.exports = {
     }
 
     return pedir(interaction, {
-      titulo: '🧹 Confirmar softban',
+      titulo: 'Confirmar softban',
       color: COLORS.naranja,
       silencioso,
       detalle:
@@ -79,7 +81,7 @@ module.exports = {
           return { ok: false, embeds: [errorEmbed(`No se pudo expulsar a ${user}.\n> ${baneo.error}`, 'La acción no se aplicó')] };
         }
 
-        void avisarPorDM(user, `🧹 Fuiste expulsado de **${guild.name}** con limpieza de mensajes.\n**Motivo:** ${reason || 'no especificado'}`);
+        void avisarPorDM(user, `Fuiste expulsado de **${guild.name}** con limpieza de mensajes.\n**Motivo:** ${reason || 'no especificado'}`);
 
         // El baneo sí se aplicó pero el desbaneo no: el usuario quedó baneado sin querer.
         if (!desbaneo.ok) {
@@ -88,7 +90,7 @@ module.exports = {
             embeds: [
               errorEmbed(
                 `**${user.tag}** quedó baneado (no se pudo desbanear).\n> ${desbaneo.error}\n\nDesbanealo con \`/unban usuario_id:${user.id}\`.`,
-                '⚠️ Softban incompleto'
+                'Softban incompleto'
               ),
             ],
           };
@@ -98,7 +100,7 @@ module.exports = {
           ok: true,
           embeds: [
             accionEmbed({
-              titulo: '🧹 Softban',
+              titulo: 'Softban',
               detalle: `${user} fue expulsado con limpieza de **${deleteDays} día(s)** de mensajes. Puede volver a entrar cuando quiera.`,
               motivo: reason,
               caso,

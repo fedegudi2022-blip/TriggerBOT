@@ -109,12 +109,12 @@ function embedMeme(meme, sub) {
     .setTitle(meme.titulo.slice(0, 256))
     .setImage(meme.imagen)
     .setURL(meme.url)
-    .setFooter({ text: `r/${sub} • u/${meme.autor} • 👍 ${meme.votos.toLocaleString('es-AR')}` });
+    .setFooter({ text: `r/${sub} • u/${meme.autor} • ${meme.votos.toLocaleString('es-AR')} votos` });
 }
 
 const filaBoton = () =>
   new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('meme:otro').setLabel('Otro').setStyle(ButtonStyle.Primary).setEmoji('🎲')
+    new ButtonBuilder().setCustomId('meme:otro').setLabel('Otro').setStyle(ButtonStyle.Primary)
   );
 
 module.exports = {

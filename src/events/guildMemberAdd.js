@@ -3,7 +3,7 @@ const { brandEmbed, COLORS } = require('../utils/replies');
 const { registrarIngreso } = require('../utils/proteccion');
 
 function renderWelcome(message, member) {
-  return (message || '¡Bienvenido {usuario} a **{servidor}**! Sos el miembro #{miembros} 🎉')
+  return (message || '¡Bienvenido {usuario} a **{servidor}**! Sos el miembro #{miembros}')
     .replaceAll('{usuario}', `<@${member.id}>`)
     .replaceAll('{servidor}', member.guild.name)
     .replaceAll('{miembros}', String(member.guild.memberCount));
@@ -36,7 +36,7 @@ module.exports = {
       if (channel) {
         const embed = brandEmbed({
           color: COLORS.success,
-          title: `👋 ¡${member.user.tag} se unió!`,
+          title: `¡${member.user.tag} se unió!`,
           description: renderWelcome(config.welcome.message, member),
         });
         embed.setThumbnail(member.user.displayAvatarURL({ size: 256 }));

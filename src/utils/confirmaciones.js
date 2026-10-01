@@ -37,8 +37,8 @@ async function pedir(interaction, spec) {
   pendientes.set(t, { spec, expira: Date.now() + VIDA_MS });
 
   const fila = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`conf:si:${t}`).setLabel('Confirmar').setEmoji('✅').setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId(`conf:no:${t}`).setLabel('Cancelar').setEmoji('❌').setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId(`conf:si:${t}`).setLabel('Confirmar').setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(`conf:no:${t}`).setLabel('Cancelar').setStyle(ButtonStyle.Secondary)
   );
 
   const embed = brandEmbed({
@@ -64,7 +64,7 @@ async function manejarComponente(interaction) {
   if (accion === 'no') {
     pendientes.delete(t);
     return interaction.update({
-      embeds: [brandEmbed({ color: COLORS.gris, title: '❌ Acción cancelada', description: `Cancelada por ${interaction.user}.` })],
+      embeds: [brandEmbed({ color: COLORS.gris, title: 'Acción cancelada', description: `Cancelada por ${interaction.user}.` })],
       components: [],
     });
   }
@@ -121,14 +121,13 @@ async function manejarComponente(interaction) {
         new ButtonBuilder()
           .setCustomId(`conf:deshacer:${d}`)
           .setLabel(spec.deshacerLabel ?? 'Deshacer')
-          .setEmoji('↩️')
           .setStyle(ButtonStyle.Secondary)
       )
     );
   }
 
   return interaction.editReply({
-    embeds: embeds.length ? embeds : [brandEmbed({ color: COLORS.success, title: '✅ Hecho' })],
+    embeds: embeds.length ? embeds : [brandEmbed({ color: COLORS.success, title: 'Hecho' })],
     components: componentes,
   });
 }

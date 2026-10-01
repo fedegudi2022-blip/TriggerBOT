@@ -17,7 +17,7 @@ module.exports = {
     const caras = interaction.options.getInteger('caras') ?? 6;
     const resultado = Math.floor(Math.random() * caras) + 1;
     return interaction.reply({
-      embeds: [successEmbed(`Sacaste un **${resultado}** con el dado de ${caras} caras.`, 'Dado 🎲')],
+      embeds: [successEmbed(`Sacaste un **${resultado}** con el dado de ${caras} caras.`, 'Dado')],
     });
   },
 };
@@ -28,7 +28,7 @@ module.exports.moneda = {
   async execute(interaction) {
     const esCara = Math.random() < 0.5;
     return interaction.reply({
-      embeds: [successEmbed(`Salió **${esCara ? 'CARA' : 'CECA'}**.`, 'Moneda 🪙')],
+      embeds: [successEmbed(`Salió **${esCara ? 'CARA' : 'CECA'}**.`, 'Moneda')],
     });
   },
 };

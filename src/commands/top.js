@@ -1,13 +1,9 @@
 const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
-const { ranking, rangoDe } = require('../niveles');
+const { ranking } = require('../niveles');
 const { brandEmbed, miles, COLORS } = require('../utils/replies');
 
-const MEDALLAS = ['🥇', '🥈', '🥉'];
 const POR_PAGINA = 10;
 const MAX_PAGINAS = 10;
-
-// Emoji por rango, igual que en /estadisticas.
-const EMOJI_RANGO = { Leyenda: '👑', Veterano: '🛡️', Experto: '🌟', Activo: '⚡', Novato: '🌱' };
 
 // Construye el embed y las filas de botones para una página del ranking.
 // Lo usa tanto /top como el botón de página (interaction puede ser slash o botón).
@@ -35,10 +31,9 @@ async function ejecutar(interaction, paginaPedida = 1) {
 
   const fila = (e, i) => {
     const pos = desde + i + 1;
-    const medalla = MEDALLAS[pos - 1] ?? `\`#${pos}\``;
-    const rango = EMOJI_RANGO[rangoDe(e.nivel).nombre] ?? '🎖️';
-    const yo = e.userId === interaction.user.id ? ' ✨' : '';
-    return `${medalla} <@${e.userId}>${yo} — **nivel ${e.nivel}** ${rango} · ${miles(e.xp)} XP · ${miles(e.mensajes)} msj`;
+    const medalla = `\`#${pos}\``;
+    const yo = e.userId === interaction.user.id ? ' (vos)' : '';
+    return `${medalla} <@${e.userId}>${yo} — **nivel ${e.nivel}** · ${miles(e.xp)} XP · ${miles(e.mensajes)} msj`;
   };
 
   // Podio destacado arriba; el resto en columnas de a 3 con posición numérica.
@@ -55,7 +50,7 @@ async function ejecutar(interaction, paginaPedida = 1) {
 
   const embed = brandEmbed({
     color: COLORS.warn,
-    title: `🏆 Ranking de actividad — página ${pagina}/${paginas}`,
+    title: `Ranking de actividad — página ${pagina}/${paginas}`,
     thumbnail: guild.iconURL({ size: 256 }) ?? undefined,
     description: podio,
     fields: columnas.map((valor) => ({ name: '\u200b', value: valor, inline: true })),
@@ -70,13 +65,11 @@ async function ejecutar(interaction, paginaPedida = 1) {
         new ButtonBuilder()
           .setCustomId(`top:page:${pagina - 1}`)
           .setLabel('Anterior')
-          .setEmoji('◀️')
           .setStyle(ButtonStyle.Primary)
           .setDisabled(pagina <= 1),
         new ButtonBuilder()
           .setCustomId(`top:page:${pagina + 1}`)
           .setLabel('Siguiente')
-          .setEmoji('▶️')
           .setStyle(ButtonStyle.Primary)
           .setDisabled(pagina >= paginas)
       )

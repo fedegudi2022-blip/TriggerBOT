@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const { getGuildConfig, setGuildConfig } = require('../store');
 const { infoEmbed, warnEmbed, successEmbed, errorEmbed } = require('../utils/replies');
+const { exigirStaff } = require('../utils/permisos');
 
 // Frases del día por servidor: { canal, hora, frases: [{ texto, autor }], ultima }.
 // El scheduler global las publica una vez por día a la hora configurada.
@@ -37,7 +38,6 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('frases')
     .setDescription('Configura la frase del día que el bot publica automáticamente (solo staff)')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .addSubcommand((sc) =>
       sc
         .setName('configurar')
@@ -64,6 +64,8 @@ module.exports = {
     ),
 
   async execute(interaction) {
+    if (!(await exigirStaff(interaction, PermissionFlagsBits.ManageGuild))) return;
+
     const sub = interaction.options.getSubcommand();
     const config = getGuildConfig(interaction.guildId);
 

@@ -1,7 +1,7 @@
 # Soporte y tickets
 
 ## Cómo pido ayuda al staff
-En el canal de soporte hay un panel con el botón **📨**. Al apretarlo se crea un
+En el canal de soporte hay un panel con el botón **Abrir ticket**. Al apretarlo se crea un
 **canal privado** que solo ven vos y el staff, y ahí podés explicar tu problema. El
 bot primero te pide un motivo corto, así el staff sabe de qué se trata antes de
 entrar.

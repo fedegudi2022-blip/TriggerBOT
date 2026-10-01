@@ -4,6 +4,7 @@ const { errorEmbed, accionEmbed, marcaTiempo, textoDuracion, COLORS } = require(
 const { motivoNoModerable, avisarPorDM } = require('../utils/moderation');
 const { autocompletar } = require('../utils/plantillas');
 const { quiereSilencioso, diferir, resolverMiembro, intentar } = require('../utils/acciones');
+const { exigirStaff } = require('../utils/permisos');
 
 const DURATIONS = {
   '5m': 5 * 60 * 1000,
@@ -21,7 +22,6 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('timeout')
     .setDescription('Silencia a un usuario por un tiempo determinado')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
     .addUserOption((o) => o.setName('usuario').setDescription('Usuario a silenciar').setRequired(true))
     .addStringOption((o) =>
       o
@@ -29,7 +29,7 @@ module.exports = {
         .setDescription('Cuánto tiempo queda silenciado')
         .setRequired(true)
         .addChoices(
-          { name: '🔊 Quitarlo ahora (levantar el silencio)', value: '0' },
+          { name: 'Quitarlo ahora (levantar el silencio)', value: '0' },
           { name: '5 minutos', value: '5m' },
           { name: '10 minutos', value: '10m' },
           { name: '30 minutos', value: '30m' },
@@ -51,6 +51,8 @@ module.exports = {
   },
 
   async execute(interaction) {
+    if (!(await exigirStaff(interaction, PermissionFlagsBits.ModerateMembers))) return;
+
     const user = interaction.options.getUser('usuario', true);
     const durationKey = interaction.options.getString('duracion', true);
     const reason = interaction.options.getString('razon');
@@ -96,11 +98,11 @@ module.exports = {
     // Levantar el silencio es la mitad del comando: sin esto no había forma de
     // terminar un timeout antes de que venciera (el rol Silenciado es otra cosa).
     if (quitando) {
-      void avisarPorDM(user, `🔊 Ya podés volver a hablar en **${interaction.guild.name}**.`);
+      void avisarPorDM(user, `Ya podés volver a hablar en **${interaction.guild.name}**.`);
       return interaction.editReply({
         embeds: [
           accionEmbed({
-            titulo: '🔊 Silencio levantado',
+            titulo: 'Silencio levantado',
             detalle: `${user} puede volver a hablar.`,
             motivo: reason,
             caso,
@@ -115,13 +117,13 @@ module.exports = {
     // staff y el sancionado ven exactamente cuándo termina, sin cuentas mentales.
     void avisarPorDM(
       user,
-      `🔇 Fuiste silenciado en **${interaction.guild.name}** por ${textoDuracion(ms)} (hasta ${marcaTiempo(Date.now() + ms)}).\n**Motivo:** ${reason || 'no especificado'}`
+      `Fuiste silenciado en **${interaction.guild.name}** por ${textoDuracion(ms)} (hasta ${marcaTiempo(Date.now() + ms)}).\n**Motivo:** ${reason || 'no especificado'}`
     );
 
     return interaction.editReply({
       embeds: [
         accionEmbed({
-          titulo: '🔇 Silencio',
+          titulo: 'Silencio',
           detalle: `${user} quedó silenciado por **${textoDuracion(ms)}**.`,
           motivo: reason,
           duracionTexto: `${textoDuracion(ms)} — termina ${marcaTiempo(Date.now() + ms)}`,

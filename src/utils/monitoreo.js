@@ -49,7 +49,7 @@ function nombresCompatibles(configurado, reportado) {
 function notaDifiere(server, datos) {
   if (!datos?.nombre) return '';
   if (nombresCompatibles(server.nombre, datos.nombre)) return '';
-  return ` ⚠ *el server informa llamarse "${datos.nombre}" — verificá que la IP sea la correcta*`;
+  return ` (*el server informa llamarse "${datos.nombre}" — verificá que la IP sea la correcta*)`;
 }
 
 // Parsea "cs.nostalgia.ar:27015" o { host, puerto } → [host, puerto].
@@ -158,7 +158,7 @@ function tarjetaServidor(server, host, puerto, s) {
     return brandEmbed({
       color: COLORS.info,
       title: server.nombre,
-      description: `${base}\n\n⏳ Consultando estado…`,
+      description: `${base}\n\nConsultando estado…`,
       thumbnail: server.imagen || undefined,
       footer: 'TriGGer.Arena • Última actualización',
     });

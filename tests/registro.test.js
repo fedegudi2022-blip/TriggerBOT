@@ -17,7 +17,7 @@ const path = require('node:path');
 process.env.TRIGGER_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'tgb-reg-'));
 
 const { cargarComandos, fallosDeCarga } = require('../src/commandLoader');
-const { construirGuia, construirGuiaStaff } = require('../src/utils/guia');
+const { construirGuia, construirGuiaStaff, SOLO_STAFF } = require('../src/utils/guia');
 
 // ---------- Reglas de Discord ----------
 // Copiadas de @discordjs/builders (namePredicate) y de los límites documentados de
@@ -181,14 +181,16 @@ describe('la guía /help cubre todo lo que existe', () => {
     assert.deepEqual(faltantes, [], `estos comandos no aparecen en /help staff: ${faltantes.join(', ')}`);
   });
 
-  test('ningún comando con permisos restringidos aparece en la guía pública', () => {
-    // Si mañana se agrega un comando de staff y se olvida sumarlo a SOLO_STAFF, se
-    // filtraría en la guía pública: acá se detecta comparando con los permisos reales.
+  test('ningún comando de staff aparece en la guía pública', () => {
+    // Los comandos de staff ya no declaran permisos nativos (la autorización la
+    // aplica exigirStaff() en cada uno). La única fuente de verdad de qué es de
+    // staff para la guía es SOLO_STAFF: si un comando nuevo se olvida de sumarse,
+    // se filtraría en la guía pública y acá se detecta.
     const client = clientFake();
     const publica = textoDe(construirGuia(client));
     const filtrados = revisados
-      .filter((r) => r.json.default_member_permissions != null)
       .map((r) => r.nombre)
+      .filter((nombre) => SOLO_STAFF.has(nombre))
       .filter((nombre) => publica.includes(`\`/${nombre}\``));
 
     assert.deepEqual(filtrados, [], `comandos de staff visibles en /help público: ${filtrados.join(', ')}`);

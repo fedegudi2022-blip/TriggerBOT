@@ -188,11 +188,12 @@ describe('/nota — notas internas separadas de los warns', () => {
 });
 
 describe('/help — detalle por comando', () => {
-  test('el detalle muestra el permiso y las opciones reales', () => {
+  test('el detalle muestra el acceso y las opciones reales', () => {
     const detalle = detalleDeComando({ commands: comandos }, 'ban');
     const t = texto(detalle);
     assert.match(t, /\/ban/);
-    assert.match(t, /Banear miembros/);
+    // /ban ya no declara permisos nativos: el acceso lo decide la política interna.
+    assert.match(t, /Solo staff/);
     assert.match(t, /usuario/);
   });
 

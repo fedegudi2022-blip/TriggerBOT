@@ -444,7 +444,7 @@ function embedProblemas(problemas) {
   const hayError = problemas.some((p) => p.nivel === 'error');
   return brandEmbed({
     color: hayError ? COLORS.error : COLORS.warn,
-    title: hayError ? '🚨 Problema detectado' : '⚠️ Aviso de funcionamiento',
+    title: hayError ? 'Problema detectado' : 'Aviso de funcionamiento',
     description: problemas
       .map((p) => `**${p.titulo}**\n${p.detalle}\n> ${p.accion}`)
       .join('\n\n')
@@ -456,7 +456,7 @@ function embedProblemas(problemas) {
 function embedResueltos(problemas) {
   return brandEmbed({
     color: COLORS.success,
-    title: '✅ Todo volvió a la normal',
+    title: 'Todo volvió a la normal',
     description: problemas.map((p) => `**${p.titulo}**`).join('\n'),
     footer: 'TriggerBOT • vigilancia automática',
   });

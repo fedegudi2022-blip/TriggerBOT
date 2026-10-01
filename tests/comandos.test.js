@@ -146,7 +146,10 @@ function guildFake({ ownerId = 'dueno' } = {}) {
 }
 
 function interaccionFake(guild, { opciones = {}, moderador = null, silencioso = false } = {}) {
-  const member = moderador ?? miembroFake('mod-1', { position: 10 });
+  // Por defecto la interacción es de un moderador con permisos: los comandos de
+  // moderación ya no dependen de setDefaultMemberPermissions, validan internamente
+  // con exigirStaff(). Los tests que necesitan un miembro raso pasan `moderador`.
+  const member = moderador ?? miembroConPermisos();
   const llamadas = { replies: [], edits: [], defers: [], seguimientos: [] };
 
   const pedir = (nombre, requerido) => {
@@ -279,7 +282,7 @@ const textoDe = (embed) => {
 describe('mensajes de acciones (replies.js)', () => {
   test('accionEmbed arma la forma estándar: motivo, duración, caso y moderador', () => {
     const embed = accionEmbed({
-      titulo: '👢 Expulsión',
+      titulo: 'Expulsión',
       detalle: '<@1> fue expulsado.',
       motivo: 'flodeo',
       duracionTexto: '1 hora',
@@ -288,7 +291,7 @@ describe('mensajes de acciones (replies.js)', () => {
       thumbnail: 'https://ejemplo.com/a.png',
     });
 
-    assert.equal(embed.data.title, '👢 Expulsión');
+    assert.equal(embed.data.title, 'Expulsión');
     assert.deepEqual(
       embed.data.fields.map((f) => f.name),
       ['Motivo', 'Duración']
@@ -744,7 +747,7 @@ describe('/userinfo', () => {
     const guild = guildFake();
     const user = usuarioFake('user-raso');
     casosStore.registrar(guild.id, { numero: 1, action: 'Baneo (ban)', targetId: user.id, moderatorId: 'mod-1', timestamp: Date.now() });
-    const { interaction, llamadas } = interaccionFake(guild, { opciones: { usuario: user } });
+    const { interaction, llamadas } = interaccionFake(guild, { opciones: { usuario: user }, moderador: miembroFake('raso-1', { position: 1 }) });
 
     await userinfo.execute(interaction);
 

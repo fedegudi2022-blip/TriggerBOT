@@ -5,12 +5,12 @@ const { motivoNoModerable, avisarPorDM } = require('../utils/moderation');
 const { autocompletar } = require('../utils/plantillas');
 const { quiereSilencioso, resolverMiembro, intentar } = require('../utils/acciones');
 const { pedir } = require('../utils/confirmaciones');
+const { exigirStaff } = require('../utils/permisos');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('kick')
     .setDescription('Expulsa a un usuario del servidor')
-    .setDefaultMemberPermissions(PermissionFlagsBits.KickMembers)
     .addUserOption((o) => o.setName('usuario').setDescription('Usuario a expulsar').setRequired(true))
     .addStringOption((o) =>
       o.setName('razon').setDescription('Motivo de la expulsión (escribí para ver plantillas)').setMaxLength(500).setAutocomplete(true)
@@ -22,6 +22,8 @@ module.exports = {
   },
 
   async execute(interaction) {
+    if (!(await exigirStaff(interaction, PermissionFlagsBits.KickMembers))) return;
+
     const user = interaction.options.getUser('usuario', true);
     const reason = interaction.options.getString('razon');
     const silencioso = quiereSilencioso(interaction);
@@ -39,7 +41,7 @@ module.exports = {
 
     // Un kick es irreversible desde el lado del usuario: se confirma antes de tocar la API.
     return pedir(interaction, {
-      titulo: '👢 Confirmar expulsión',
+      titulo: 'Confirmar expulsión',
       color: COLORS.error,
       silencioso,
       detalle: `Vas a expulsar a **${user.tag}** (${user}).\n**Motivo:** ${reason || '*no especificado*'}`,
@@ -64,13 +66,13 @@ module.exports = {
         // El DM va DESPUÉS de la acción: avisar antes deja al usuario con una
         // notificación de algo que puede haber fallado. Sin await: es una cortesía y
         // no debe demorar la confirmación.
-        void avisarPorDM(user, `👢 Fuiste expulsado de **${guild.name}**.\n**Motivo:** ${reason || 'no especificado'}`);
+        void avisarPorDM(user, `Fuiste expulsado de **${guild.name}**.\n**Motivo:** ${reason || 'no especificado'}`);
 
         return {
           ok: true,
           embeds: [
             accionEmbed({
-              titulo: '👢 Expulsión',
+              titulo: 'Expulsión',
               detalle: `${user} fue expulsado del servidor.`,
               motivo: reason,
               caso,

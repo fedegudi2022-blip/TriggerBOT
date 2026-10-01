@@ -11,6 +11,7 @@ const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags, ActionRowBuilder
 const { getGuildConfig, pendientesDeGuardado } = require('../store');
 const { brandEmbed, COLORS, miles, duracion, marcaTiempo } = require('../utils/replies');
 const { revisar } = require('../utils/vigilancia');
+const { exigirStaff } = require('../utils/permisos');
 
 const REFRESH_ID = 'diag:refresh';
 
@@ -24,8 +25,8 @@ async function resumenSistemas(client, guild) {
     const estado = await ia.estadoIA();
     const linea = (nombre, p) => {
       if (!p.configurada) return `${nombre}: sin clave`;
-      if (p.enPausa) return `${nombre}: ⏸️ ${p.motivoPausa}`;
-      if (!p.modelo) return `${nombre}: ❌ sin modelos utilizables`;
+      if (p.enPausa) return `${nombre}: ${p.motivoPausa}`;
+      if (!p.modelo) return `${nombre}: sin modelos utilizables`;
       const latencia = p.p50 != null ? ` · ${p.p50} ms de mediana (${p.muestras} resp.)` : ' · sin muestras';
       const bajas = p.modelosCaidos.length ? ` · ${p.modelosCaidos.length} modelo(s) descartado(s)` : '';
       return `${nombre}: \`${p.modelo}\`${latencia}${bajas}`;
@@ -35,9 +36,9 @@ async function resumenSistemas(client, guild) {
     // Una línea por proveedor de la cadena (utils/ia.js), en orden: agregar uno nuevo
     // no requiere tocar este comando.
     const lineas = Object.entries(estado).map(([id, p]) => linea(ia.nombreProveedor(id), p));
-    campos.push({ name: '🧠 IA', value: `${lineas.join('\n')}\n${uso}`, inline: false });
+    campos.push({ name: 'IA', value: `${lineas.join('\n')}\n${uso}`, inline: false });
   } catch (error) {
-    campos.push({ name: '🧠 IA', value: `❌ No se pudo consultar: ${error.message}`, inline: false });
+    campos.push({ name: 'IA', value: `No se pudo consultar: ${error.message}`, inline: false });
   }
 
   // ---------- Búsqueda web ----------
@@ -53,7 +54,7 @@ async function resumenSistemas(client, guild) {
         ? `✅ Respondió en **${prueba.ms} ms** (${prueba.resultados} resultado(s)).`
         : `❌ Sin respuesta: ${prueba.motivo || 'falló la consulta'}.`;
     campos.push({
-      name: '🔎 Búsqueda web',
+      name: 'Búsqueda web',
       value: `${detalle}\nConsultas en caché: **${stats.enCache}** · fuentes activas: **${stats.fuentes}** (Wikipedia + DuckDuckGo + especializadas)`,
       inline: false,
     });
@@ -73,16 +74,16 @@ async function resumenSistemas(client, guild) {
       texto = `✅ Conectada — ${miles(db.estado.subidasOk)} subida(s) OK, ${miles(db.estado.subidasFallidas)} fallida(s)${hace}${permiso}`;
     }
     const pendientes = require('../db/sync').pendientesDeSubida();
-    campos.push({ name: '🗄️ Base de datos', value: `${texto}\nPendientes de subir: **${pendientes}**`, inline: false });
+    campos.push({ name: 'Base de datos', value: `${texto}\nPendientes de subir: **${pendientes}**`, inline: false });
   } catch {
-    campos.push({ name: '🗄️ Base de datos', value: 'Módulo no disponible.', inline: false });
+    campos.push({ name: 'Base de datos', value: 'Módulo no disponible.', inline: false });
   }
 
   // ---------- Monitoreo de servidores CS ----------
   try {
     const monitoreo = require('../utils/monitoreo');
     const lista = getGuildConfig(guild.id).servidores?.lista ?? [];
-    if (!lista.length) campos.push({ name: '📡 Servidores CS 1.6', value: 'Ninguno cargado.', inline: false });
+    if (!lista.length) campos.push({ name: 'Servidores CS 1.6', value: 'Ninguno cargado.', inline: false });
     else {
       let frescos = 0;
       let masViejo = null;
@@ -96,7 +97,7 @@ async function resumenSistemas(client, guild) {
       }
       const edad = masViejo === null ? 'sin datos' : `dato más nuevo hace ${duracion(masViejo / 1000)}`;
       campos.push({
-        name: '📡 Servidores CS 1.6',
+        name: 'Servidores CS 1.6',
         value: `**${frescos}/${lista.length}** con datos · ${edad}\nSe renueva cada ${Math.round(monitoreo.INTERVALO_MS / 1000)} s`,
         inline: false,
       });
@@ -112,7 +113,7 @@ async function resumenSistemas(client, guild) {
     const temporales = Object.keys(voz.temporalesDe(guild.id)).length;
     const hub = config.hubId ? guild.channels.cache.get(config.hubId) : null;
     campos.push({
-      name: '🎧 Canales de voz',
+      name: 'Canales de voz',
       value: hub
         ? `Hub **${hub.name}** · ${temporales}/${voz.limiteCanales(guild.id)} canal(es) temporal(es) en uso`
         : 'Sistema sin activar (no hay hub configurado).',
@@ -126,7 +127,7 @@ async function resumenSistemas(client, guild) {
   const escritura = pendientesDeGuardado();
   const carga = client.fallosCarga?.length ? `⚠️ ${client.fallosCarga.length} archivo(s) no cargaron` : '✅ Todo cargado';
   campos.push({
-    name: '💾 Escrituras y proceso',
+    name: 'Escrituras y proceso',
     value:
       `Config sin guardar: **${escritura.guilds}** (la más vieja hace ${duracion(escritura.masViejoMs / 1000)})\n` +
       `Uptime: **${duracion(process.uptime())}** · memoria **${Math.round(process.memoryUsage().rss / 1048576)} MB** · ping **${Math.round(client.ws.ping)} ms**\n` +
@@ -145,10 +146,10 @@ async function vistaDiag(client, guild, { ping = true, web = false } = {}) {
   const avisos = problemas.filter((p) => p.nivel !== 'error');
 
   const titulo = errores.length
-    ? `🚨 Diagnóstico — ${errores.length} problema(s) crítico(s)`
+    ? `Diagnóstico — ${errores.length} problema(s) crítico(s)`
     : avisos.length
-      ? `⚠️ Diagnóstico — ${avisos.length} aviso(s)`
-      : '✅ Diagnóstico — todo en orden';
+      ? `Diagnóstico — ${avisos.length} aviso(s)`
+      : 'Diagnóstico — todo en orden';
 
   const detalle = problemas.length
     ? problemas.map((p) => `${p.nivel === 'error' ? '🔴' : '🟡'} **${p.titulo}**\n${p.detalle}\n> ${p.accion}`).join('\n\n')
@@ -163,7 +164,7 @@ async function vistaDiag(client, guild, { ping = true, web = false } = {}) {
   });
 
   const fila = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(REFRESH_ID).setLabel('Volver a revisar').setEmoji('🔄').setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId(REFRESH_ID).setLabel('Volver a revisar').setStyle(ButtonStyle.Secondary)
   );
 
   return { embeds: [embed], components: [fila] };
@@ -175,10 +176,10 @@ module.exports = {
 
   data: new SlashCommandBuilder()
     .setName('diag')
-    .setDescription('Diagnóstico operativo del bot: qué está roto y qué hacer (staff)')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+    .setDescription('Diagnóstico operativo del bot: qué está roto y qué hacer (staff)'),
 
   async execute(interaction, client) {
+    if (!(await exigirStaff(interaction, PermissionFlagsBits.ManageGuild))) return;
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     return interaction.editReply(await vistaDiag(client, interaction.guild, { web: true }));
   },
@@ -186,6 +187,7 @@ module.exports = {
   // Botón 🔄: vuelve a correr los chequeos (incluida la prueba de internet) y edita el
   // mismo mensaje.
   async boton(interaction, client) {
+    if (!(await exigirStaff(interaction, PermissionFlagsBits.ManageGuild))) return;
     await interaction.deferUpdate();
     await interaction.editReply(await vistaDiag(client, interaction.guild, { web: true })).catch(() => {});
   },

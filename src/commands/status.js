@@ -19,8 +19,8 @@ function vistaStatus(client, m) {
   // que antes había que adivinar mirando los logs del server.
   const chipIA = (proveedor) => {
     if (!proveedor.configurada) return '`—` sin clave';
-    if (proveedor.enPausa) return `⏸️ en pausa · ${proveedor.motivoPausa}`;
-    if (!proveedor.modelo) return '❌ sin modelos disponibles';
+    if (proveedor.enPausa) return `en pausa · ${proveedor.motivoPausa}`;
+    if (!proveedor.modelo) return 'sin modelos disponibles';
     return `\`${proveedor.modelo}\`${proveedor.p50 != null ? ` · **${proveedor.p50} ms**` : ''}`;
   };
 
@@ -35,7 +35,7 @@ function vistaStatus(client, m) {
   // llega en orden (principal → respaldos) y con los nombres ya resueltos, así sumar un
   // proveedor nuevo no obliga a tocar este comando.
   const chipsIA = Object.entries(m.ia).map(([id, p]) => ({
-    name: `🧠 ${nombreProveedor(id)}`,
+    name: `${nombreProveedor(id)}`,
     value: chipIA(p),
     inline: true,
   }));
@@ -54,25 +54,25 @@ function vistaStatus(client, m) {
       `Escribí en cualquier canal y el bot responde.`,
     fields: [
       {
-        name: '⚡ Rendimiento',
+        name: 'Rendimiento',
         value:
-          `**Latencia API:** ${m.api === null ? '⏳ midiendo…' : `${m.calPing.emoji} ${m.api} ms (${m.calPing.texto})`}\n` +
+          `**Latencia API:** ${m.api === null ? 'midiendo…' : `${m.calPing.emoji} ${m.api} ms (${m.calPing.texto})`}\n` +
           `**Memoria:** ${m.calMem.emoji} ${m.mem} MB en uso (${m.heap} MB de JS)\n` +
           `**CPU:** ${m.cpu.toFixed(1)} % de promedio`,
         inline: false,
       },
-      { name: '⏱️ Tiempo encendido', value: `**${duracion(process.uptime())}**`, inline: true },
-      { name: '🟢 Node.js', value: `\`${process.version}\``, inline: true },
+      { name: 'Tiempo encendido', value: `**${duracion(process.uptime())}**`, inline: true },
+      { name: 'Node.js', value: `\`${process.version}\``, inline: true },
       ...chipsIA,
-      { name: '⚡ Velocidad de la IA', value: velocidadIA, inline: false },
-      { name: '💬 Respuestas de IA', value: m.statsIA, inline: false },
-      { name: '🗄️ Base de datos (MariaDB)', value: m.textoDB, inline: false },
+      { name: 'Velocidad de la IA', value: velocidadIA, inline: false },
+      { name: 'Respuestas de IA', value: m.statsIA, inline: false },
+      { name: 'Base de datos (MariaDB)', value: m.textoDB, inline: false },
     ],
     footer: `TriggerBOT v1.0.0 • Uptime del proceso • ${new Date().toLocaleDateString('es-AR')}`,
   });
 
   const fila = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(REFRESH_ID).setLabel('Refrescar').setEmoji('🔄').setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId(REFRESH_ID).setLabel('Refrescar').setStyle(ButtonStyle.Secondary)
   );
 
   return { embeds: [embed], components: [fila] };
@@ -120,7 +120,7 @@ async function medir(client, guild = null) {
 
   // ---------- Base de datos ----------
   let textoDB;
-  if (!db.configurada) textoDB = '⚪ No configurada — guardando solo en `data/` local';
+  if (!db.configurada) textoDB = 'No configurada — guardando solo en `data/` local';
   else if (dbOk && db.estado.permisoEscritura === false)
     textoDB = '⚠️ Conectada **sin permiso de escritura**: revisá los GRANT del usuario `DB_USER` sobre la base.';
   else if (dbOk) {

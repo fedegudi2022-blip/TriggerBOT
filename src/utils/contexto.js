@@ -12,9 +12,9 @@
 // Discord ni se escriben datos desde acá. Si algo falla, el contexto se omite y la
 // charla sigue funcionando.
 
-const { PermissionFlagsBits } = require('discord.js');
 const { getGuildConfig } = require('../store');
 const { miles } = require('./replies');
+const { esStaffDe } = require('./permisos');
 
 const FRESCURA_CS_MS = 5 * 60 * 1000; // un dato de servidor CS más viejo que esto se aclara
 
@@ -46,11 +46,7 @@ function catalogoComandos(client, { detallado = true } = {}) {
 
 // ---------- Ficha de quien pregunta ----------
 function esStaff(guild, member) {
-  if (!member) return false;
-  if (guild?.ownerId === member.id) return true;
-  if (member.permissions?.has?.(PermissionFlagsBits.ModerateMembers)) return true;
-  const config = getGuildConfig(guild?.id);
-  return ['admin', 'mod', 'helper'].some((nivel) => member.roles?.cache?.has?.(config[`${nivel}Role`]));
+  return esStaffDe(guild, member);
 }
 
 // Nivel, XP, puesto, racha, logros y advertencias del autor del mensaje.
@@ -120,7 +116,7 @@ function estadoServidores(guild) {
 function estadoConfig(guild) {
   const config = getGuildConfig(guild?.id);
   const partes = [];
-  if (config.tickets?.categoriaId) partes.push('el soporte por tickets está activo (botón 📨)');
+  if (config.tickets?.categoriaId) partes.push('el soporte por tickets está activo (hay un panel para abrir tickets)');
   if (config.voz?.hubId) partes.push('los canales de voz temporales están activos');
   if (config.proteccion?.activado) partes.push('el anti-spam/anti-raid automático está prendido');
   if (config.welcome?.channelId) partes.push('hay mensaje de bienvenida para los nuevos');

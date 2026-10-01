@@ -6,6 +6,7 @@ const { motivoNoModerable, avisarPorDM } = require('../utils/moderation');
 const { autocompletar } = require('../utils/plantillas');
 const { quiereSilencioso, resolverMiembro, intentar } = require('../utils/acciones');
 const { pedir } = require('../utils/confirmaciones');
+const { exigirStaff } = require('../utils/permisos');
 
 // Permisos que se niegan con el rol Silenciado. Los usa también el evento
 // channelCreate (events/channelCreate.js) para que un canal creado DESPUÉS de que
@@ -47,7 +48,6 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('mute')
     .setDescription('Silencia a un usuario con el rol Silenciado (hasta que alguien lo quite)')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
     .addUserOption((o) => o.setName('usuario').setDescription('Usuario a silenciar').setRequired(true))
     .addStringOption((o) =>
       o.setName('razon').setDescription('Motivo del silencio (escribí para ver plantillas)').setMaxLength(500).setAutocomplete(true)
@@ -59,6 +59,8 @@ module.exports = {
   },
 
   async execute(interaction) {
+    if (!(await exigirStaff(interaction, PermissionFlagsBits.ModerateMembers))) return;
+
     const user = interaction.options.getUser('usuario', true);
     const reason = interaction.options.getString('razon');
     const silencioso = quiereSilencioso(interaction);
@@ -82,7 +84,7 @@ module.exports = {
     let rolUsado = null;
 
     return pedir(interaction, {
-      titulo: '🔇 Confirmar silencio',
+      titulo: 'Confirmar silencio',
       color: COLORS.error,
       silencioso,
       deshacerLabel: 'Deshacer (quitar silencio)',
@@ -119,13 +121,13 @@ module.exports = {
           return { ok: false, embeds: [errorEmbed(`No se pudo silenciar a ${user}.\n> ${resultado.error}`, 'La acción no se aplicó')] };
         }
 
-        void avisarPorDM(user, `🔇 Fuiste silenciado en **${guild.name}**.\n**Motivo:** ${reason || 'no especificado'}`);
+        void avisarPorDM(user, `Fuiste silenciado en **${guild.name}**.\n**Motivo:** ${reason || 'no especificado'}`);
 
         return {
           ok: true,
           embeds: [
             accionEmbed({
-              titulo: '🔇 Silencio (rol)',
+              titulo: 'Silencio (rol)',
               detalle: `${user} quedó silenciado con el rol ${rolUsado}.`,
               motivo: reason,
               duracionTexto: 'Indefinido — hasta que lo quite /unmute',
@@ -160,7 +162,7 @@ module.exports = {
         return {
           embeds: [
             accionEmbed({
-              titulo: '↩️ Silencio deshecho',
+              titulo: 'Silencio deshecho',
               detalle: `${user} ya no tiene el rol Silenciado.`,
               caso,
               moderador: btn.member?.displayName ?? btn.user.username,

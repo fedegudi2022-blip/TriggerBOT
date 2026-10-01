@@ -1,12 +1,12 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const { brandEmbed, errorEmbed, accionEmbed, COLORS } = require('../utils/replies');
 const { quiereSilencioso, diferir, intentar } = require('../utils/acciones');
+const { exigirStaff } = require('../utils/permisos');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('embed')
     .setDescription('Crea un mensaje embed profesional (solo staff)')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .addStringOption((o) => o.setName('titulo').setDescription('Título del anuncio').setRequired(true).setMaxLength(256))
     .addStringOption((o) => o.setName('texto').setDescription('Cuerpo del mensaje').setRequired(true).setMaxLength(4000))
     .addStringOption((o) => o.setName('color').setDescription('Color en hex sin # (ej: 5865f2)').setMaxLength(6))
@@ -16,6 +16,8 @@ module.exports = {
     .addBooleanOption((o) => o.setName('silencioso').setDescription('Mostrar la confirmación solo a vos')),
 
   async execute(interaction) {
+    if (!(await exigirStaff(interaction, PermissionFlagsBits.ManageGuild))) return;
+
     const titulo = interaction.options.getString('titulo', true);
     const texto = interaction.options.getString('texto', true);
     const colorHex = interaction.options.getString('color');
@@ -68,7 +70,7 @@ module.exports = {
       embeds: [
         accionEmbed({
           color: COLORS.success,
-          titulo: '📢 Anuncio enviado',
+          titulo: 'Anuncio enviado',
           detalle: `Publicado en <#${destino.id}>.`,
           moderador: interaction.member?.displayName ?? interaction.user.username,
           footer: 'se puede editar o borrar como cualquier mensaje',

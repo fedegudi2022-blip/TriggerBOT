@@ -2,12 +2,12 @@ const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags } = 
 const { logAction } = require('../utils/modlog');
 const { errorEmbed, accionEmbed, textoDuracion, COLORS } = require('../utils/replies');
 const { quiereSilencioso, diferir, intentar } = require('../utils/acciones');
+const { exigirStaff } = require('../utils/permisos');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('slowmode')
     .setDescription('Configura el modo lento de un canal (0 para desactivarlo)')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .addIntegerOption((o) =>
       o
         .setName('segundos')
@@ -26,6 +26,8 @@ module.exports = {
     .addBooleanOption((o) => o.setName('silencioso').setDescription('Mostrar la confirmación solo a vos')),
 
   async execute(interaction) {
+    if (!(await exigirStaff(interaction, PermissionFlagsBits.ManageChannels))) return;
+
     const segundos = interaction.options.getInteger('segundos', true);
     const channel = interaction.options.getChannel('canal') ?? interaction.channel;
     const reason = interaction.options.getString('razon');
@@ -77,7 +79,7 @@ module.exports = {
     return interaction.editReply({
       embeds: [
         accionEmbed({
-          titulo: '⏱️ Modo lento',
+          titulo: 'Modo lento',
           detalle:
             segundos === 0
               ? `Modo lento **desactivado** en ${channel}.`

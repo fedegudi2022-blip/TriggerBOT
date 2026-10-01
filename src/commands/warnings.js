@@ -9,18 +9,12 @@
 // Severidad: 🟢 historial limpio · 🟡 con advertencias · 🔴 al límite (3 = silencio de 1 h).
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { getWarns } = require('../warns');
-const { getGuildConfig } = require('../store');
 const { brandEmbed, COLORS } = require('../utils/replies');
+const { exigirStaff } = require('../utils/permisos');
 
 const LIMITE_WARNS = 3; // mismo umbral que /warn (silencio automático de 1 h al tercer warn)
 const POR_PAGINA = 8;
 const MAX_CARACTERES_CAMPO = 1000; // el límite real de Discord por campo es 1024
-
-function esStaff(interaction) {
-  if (interaction.member?.permissions?.has?.(PermissionFlagsBits.ModerateMembers)) return true;
-  const config = getGuildConfig(interaction.guildId);
-  return ['admin', 'mod', 'helper'].some((nivel) => interaction.member?.roles?.cache?.has?.(config[`${nivel}Role`]));
-}
 
 // Arma el embed y los botones de una página del historial.
 function vista(interaction, user, paginaPedida) {
@@ -30,8 +24,8 @@ function vista(interaction, user, paginaPedida) {
       embeds: [
         brandEmbed({
           color: COLORS.success,
-          title: '📋 Historial limpio',
-          description: `${user} no tiene advertencias registradas. ✨`,
+          title: 'Historial limpio',
+          description: `${user} no tiene advertencias registradas.`,
           thumbnail: user.displayAvatarURL({ size: 128 }),
           footer: `TriggerBOT • ${LIMITE_WARNS} advertencias acumuladas = silencio automático de 1 h`,
         }),
@@ -72,7 +66,7 @@ function vista(interaction, user, paginaPedida) {
 
   const embed = brandEmbed({
     color: alLimite ? COLORS.error : COLORS.warn,
-    title: `📋 Advertencias de ${user.tag}`,
+    title: `Advertencias de ${user.tag}`,
     description:
       `**${warns.length}** advertencia(s) en total · ` +
       (alLimite ? 'ya alcanzó (o superó) el límite de silencio automático' : `**${restantes}** más y queda silenciado 1 h automáticamente`),
@@ -88,13 +82,11 @@ function vista(interaction, user, paginaPedida) {
         new ButtonBuilder()
           .setCustomId(`warnings:${user.id}:${pagina - 1}`)
           .setLabel('Anterior')
-          .setEmoji('◀️')
           .setStyle(ButtonStyle.Secondary)
           .setDisabled(pagina <= 1),
         new ButtonBuilder()
           .setCustomId(`warnings:${user.id}:${pagina + 1}`)
           .setLabel('Siguiente')
-          .setEmoji('▶️')
           .setStyle(ButtonStyle.Secondary)
           .setDisabled(pagina >= paginas)
       )
@@ -106,12 +98,7 @@ function vista(interaction, user, paginaPedida) {
 
 // Lo usan el slash y los botones de página (misma vista, mismo permiso).
 async function ejecutar(interaction, user, pagina = 1) {
-  if (!esStaff(interaction)) {
-    return interaction.reply({
-      embeds: [brandEmbed({ color: COLORS.error, title: 'Solo staff', description: 'El historial de advertencias es solo para el staff.' })],
-      flags: MessageFlags.Ephemeral,
-    });
-  }
+  if (!(await exigirStaff(interaction, PermissionFlagsBits.ModerateMembers, 'El historial de advertencias es solo para el staff.'))) return;
 
   const vista_ = vista(interaction, user, pagina);
   if (interaction.isButton?.()) return interaction.update(vista_);
@@ -124,7 +111,6 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('warnings')
     .setDescription('Muestra el historial de advertencias de un usuario')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
     .addUserOption((o) => o.setName('usuario').setDescription('Usuario a consultar').setRequired(true)),
 
   async execute(interaction) {

@@ -3,7 +3,7 @@ const { brandEmbed, COLORS } = require('../utils/replies');
 const { getWarns } = require('../warns');
 const { getNotas } = require('../notas');
 const { listar } = require('../casos');
-const { getGuildConfig } = require('../store');
+const { esStaff } = require('../utils/permisos');
 
 const PERMISOS_INTERESANTES = [
   ['Administrador', PermissionFlagsBits.Administrator],
@@ -13,14 +13,6 @@ const PERMISOS_INTERESANTES = [
   ['Moderar miembros', PermissionFlagsBits.ModerateMembers],
   ['Gestionar mensajes', PermissionFlagsBits.ManageMessages],
 ];
-
-// Mismo criterio de staff que /casos, /nota y /warnings: permiso de moderación o
-// alguno de los roles admin/mod/helper configurados.
-function esStaff(interaction) {
-  if (interaction.member?.permissions?.has?.(PermissionFlagsBits.ModerateMembers)) return true;
-  const config = getGuildConfig(interaction.guildId);
-  return ['admin', 'mod', 'helper'].some((nivel) => interaction.member?.roles?.cache?.has?.(config[`${nivel}Role`]));
-}
 
 // Antigüedad legible: "3 a 2 m" · "5 m 12 d" · "12 d".
 function antiguedad(ts) {
@@ -78,22 +70,22 @@ module.exports = {
     const warns = getWarns(interaction.guild.id, user.id).length;
 
     const fields = [
-      { name: '🆔 ID', value: `\`${user.id}\``, inline: true },
-      { name: '📅 Cuenta creada', value: `<t:${creado}:D>\n<t:${creado}:R> · hace ${antiguedad(user.createdTimestamp)}`, inline: true },
+      { name: 'ID', value: `\`${user.id}\``, inline: true },
+      { name: 'Cuenta creada', value: `<t:${creado}:D>\n<t:${creado}:R> · hace ${antiguedad(user.createdTimestamp)}`, inline: true },
       {
-        name: '📥 Se unió',
+        name: 'Se unió',
         value: unido ? `<t:${unido}:D>\n<t:${unido}:R> · hace ${antiguedad(member.joinedTimestamp)}` : '*desconocido*',
         inline: true,
       },
-      { name: '🏷️ Apodo', value: member?.nickname ? member.nickname : '—', inline: true },
-      { name: '⚠️ Advertencias', value: warns > 0 ? `**${warns}** warn(s)` : 'Ninguna', inline: true },
+      { name: 'Apodo', value: member?.nickname ? member.nickname : '—', inline: true },
+      { name: 'Advertencias', value: warns > 0 ? `**${warns}** warn(s)` : 'Ninguna', inline: true },
       {
-        name: '🚀 Boost',
+        name: 'Boost',
         value: member?.premiumSince ? `desde <t:${Math.floor(member.premiumSinceTimestamp / 1000)}:R>` : 'No es booster',
         inline: true,
       },
       {
-        name: '🔐 Permisos destacados',
+        name: 'Permisos destacados',
         value: permisos.length ? permisos.map((p) => `\`${p}\``).join(', ') : '*sin permisos destacados*',
         inline: false,
       },
@@ -108,14 +100,14 @@ module.exports = {
       const ultimas = notas.slice(-3).reverse();
 
       fields.push({
-        name: `📝 Notas del staff (${notas.length})`,
+        name: `Notas del staff (${notas.length})`,
         value: ultimas.length
           ? ultimas.map((n) => `<t:${Math.floor(n.timestamp / 1000)}:d> · <@${n.moderatorId}>\n> ${String(n.texto).slice(0, 150)}`).join('\n')
           : 'Sin notas internas.',
         inline: false,
       });
       fields.push({
-        name: `📁 Últimos casos (${casos.length})`,
+        name: `Últimos casos (${casos.length})`,
         value: casos.length
           ? casos
               .map(
@@ -135,7 +127,7 @@ module.exports = {
       description:
         (member ? `<@${user.id}>` : `**${user.tag}** (no está en el server)`) +
         (rolTop ? ` · máximo rol: <@&${rolTop.id}>` : '') +
-        (user.bot ? '\n🤖 Esta cuenta es un bot' : ''),
+        (user.bot ? '\nEsta cuenta es un bot' : ''),
       fields,
       footer: `TriggerBOT • /avatar para ver su avatar en grande • en el server hace ${antiguedad(member?.joinedTimestamp ?? user.createdTimestamp)}`,
     });

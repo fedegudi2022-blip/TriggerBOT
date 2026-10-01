@@ -47,7 +47,7 @@ const CATEGORIAS_PUBLICAS = [
     nombre: 'Comunidad',
     comandos: ['redes', 'web'],
     intro: '`/redes` · `/web` — redes sociales oficiales (WhatsApp, Steam, Instagram) y el sitio triggerarena.pro, con botones directos.',
-    nota: 'En el canal «➕ Crear canal» tenés **canales de voz temporales**: entrás y se te crea tu propio canal con controles (cerrar, renombrar, límite, expulsar). Se borra solo cuando queda vacío.',
+    nota: 'En el canal «Crear canal» tenés **canales de voz temporales**: entrás y se te crea tu propio canal con controles (cerrar, renombrar, límite, expulsar). Se borra solo cuando queda vacío.',
   },
   {
     nombre: 'Servidores CS 1.6',

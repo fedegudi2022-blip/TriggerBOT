@@ -24,13 +24,13 @@ function vistaPing(client, medicion) {
 
   const embed = brandEmbed({
     color: calidad.emoji === '🟢' ? COLORS.success : calidad.emoji === '🟡' ? COLORS.warn : COLORS.error,
-    title: '🏓 Pong!',
+    title: 'Pong',
     description: `El bot está vivo y responde. Estado general: ${calidad.emoji} **${calidad.texto}**`,
     fields: TRAMOS.map((t) => ({
       name: t.nombre,
       value:
         t.clave === 'api' && api === null
-          ? '⏳ Midiendo...'
+          ? 'Midiendo…'
           : tramo(t.clave === 'ida' ? ida : t.clave === 'total' ? total : api, UMBRALES.ping),
       inline: true,
     })),
@@ -38,7 +38,7 @@ function vistaPing(client, medicion) {
   });
 
   const fila = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(REFRESH_ID).setLabel('Refrescar').setEmoji('🔄').setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId(REFRESH_ID).setLabel('Refrescar').setStyle(ButtonStyle.Secondary)
   );
 
   return { embeds: [embed], components: [fila] };
@@ -46,7 +46,7 @@ function vistaPing(client, medicion) {
 
 // Mide el roundtrip: envía la respuesta "Midiendo..." y calcula con el timestamp del reply.
 async function medir(interaction, client) {
-  const sent = await interaction.reply({ content: '🏓 Midiendo...', fetchReply: true });
+  const sent = await interaction.reply({ content: 'Midiendo…', fetchReply: true });
 
   // Antes del primer heartbeat, Discord.js reporta -1: mostramos "midiendo".
   const apiBruta = Math.round(client.ws.ping);
@@ -74,7 +74,7 @@ module.exports = {
     await interaction.deferUpdate();
     // Roundtrip real: el ACK del botón llega con su propio timestamp; el tiempo
     // transcurrido hasta editar el mensaje es la latencia ida y vuelta de ahora.
-    const sent = await interaction.editReply({ content: '🏓 Midiendo...', embeds: [], components: [] });
+    const sent = await interaction.editReply({ content: 'Midiendo…', embeds: [], components: [] });
     const total = sent.createdTimestamp - interaction.createdTimestamp;
 
     const apiBruta = Math.round(client.ws.ping);

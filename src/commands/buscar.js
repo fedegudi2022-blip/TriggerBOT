@@ -9,6 +9,7 @@ const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('disc
 const { brandEmbed, warnEmbed, COLORS } = require('../utils/replies');
 const web = require('../utils/web');
 const { perfilDe } = require('../utils/ia');
+const { exigirStaff } = require('../utils/permisos');
 
 const MAX_RESULTADOS = 5;
 const MAX_TEXTO = 600; // el límite de un campo de embed es 1024: entran texto + link
@@ -39,10 +40,11 @@ module.exports = {
     .setDescription('Busca en internet y muestra los resultados crudos con su fuente (staff)')
     .addStringOption((o) =>
       o.setName('consulta').setDescription('Qué buscar, tal como lo preguntaría un usuario').setRequired(true).setMaxLength(200)
-    )
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+    ),
 
   async execute(interaction) {
+    if (!(await exigirStaff(interaction, PermissionFlagsBits.ManageGuild))) return;
+
     const consulta = interaction.options.getString('consulta', true).trim();
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
@@ -58,7 +60,7 @@ module.exports = {
             `${encabezado}\n\nNo trajo **nada**: ni Wikipedia (es/en), ni DuckDuckGo, ni las fuentes especializadas.\n` +
               '> Probá con menos palabras o con el nombre propio solo (por ejemplo `Lionel Messi` en vez de la pregunta entera).\n' +
               '> Si estás probando muchas consultas seguidas, el bot frena a las 20 por minuto para no saturar las fuentes.',
-            '🔎 Sin resultados'
+            'Sin resultados'
           ),
         ],
       });
@@ -66,12 +68,12 @@ module.exports = {
 
     const campos = resultados.slice(0, MAX_RESULTADOS).map((r) => ({
       name: recortar(`[${r.fuente}] ${r.titulo || 'Sin título'}`, 250),
-      value: recortar(r.texto, MAX_TEXTO) + (r.url ? `\n🔗 ${r.url}` : ''),
+      value: recortar(r.texto, MAX_TEXTO) + (r.url ? `\n${r.url}` : ''),
     }));
 
     const embed = brandEmbed({
       color: COLORS.info,
-      title: `🔎 ${recortar(consulta, 200)}`,
+      title: `${recortar(consulta, 200)}`,
       description: `${encabezado}\n**${resultados.length}** resultado(s), en el orden en que se le pasan a la IA.`,
       fields: campos,
       footer: 'TriggerBOT • /diag prueba si el host tiene salida a internet',

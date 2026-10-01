@@ -4,14 +4,14 @@
 const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { setGuildConfig } = require('../store');
 const { successEmbed, errorEmbed, brandEmbed, COLORS } = require('../utils/replies');
+const { exigirStaff } = require('../utils/permisos');
 const voz = require('../utils/voz');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('voz')
     .setDescription('Canales de voz temporales: cada usuario crea el suyo al entrar (solo staff)')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
-    .addSubcommand((sc) => sc.setName('activar').setDescription('Crea el canal «➕ Crear canal» y activa el sistema'))
+    .addSubcommand((sc) => sc.setName('activar').setDescription('Crea el canal «Crear canal» y activa el sistema'))
     .addSubcommand((sc) =>
       sc
         .setName('hub')
@@ -32,7 +32,7 @@ module.exports = {
     .addSubcommand((sc) =>
       sc
         .setName('contador')
-        .setDescription('Muestra cuántos hay en cada canal: «🔊 Canal de X · 3/5»')
+        .setDescription('Muestra cuántos hay en cada canal: «Canal de X · 3/5»')
         .addBooleanOption((o) => o.setName('activado').setDescription('Prender o apagar el contador en el nombre del canal').setRequired(true))
     )
     .addSubcommand((sc) =>
@@ -69,11 +69,13 @@ module.exports = {
       sc
         .setName('formato')
         .setDescription('Cambia el nombre de los canales temporales')
-        .addStringOption((o) => o.setName('plantilla').setDescription('Usá {usuario} donde va el nombre. Ej: «🔊 Canal de {usuario}»').setMaxLength(90))
+        .addStringOption((o) => o.setName('plantilla').setDescription('Usá {usuario} donde va el nombre. Ej: «Canal de {usuario}»').setMaxLength(90))
     )
     .addSubcommand((sc) => sc.setName('estado').setDescription('Muestra la configuración, los canales activos y el diagnóstico del sistema')),
 
   async execute(interaction) {
+    if (!(await exigirStaff(interaction, PermissionFlagsBits.ManageChannels))) return;
+
     const sub = interaction.options.getSubcommand();
 
     if (sub === 'activar') {
@@ -101,7 +103,7 @@ module.exports = {
           successEmbed(
             `Canal **${voz.NOMBRE_HUB}** creado en esta categoría.\nCuando alguien entre, se le crea **su propio canal de voz** con panel de controles ` +
               '(renombrar, límite, cerrar, expulsar, transferir). Se borra solo cuando queda vacío.\n' +
-              '📍 Elegí la categoría donde se crean con `/voz categoria`.'
+              'Elegí la categoría donde se crean con `/voz categoria`.'
           ),
         ],
       });
@@ -120,7 +122,7 @@ module.exports = {
         embeds: [
           successEmbed(
             `**${canal.name}** ahora es el canal de creación: al entrar, cada usuario recibe su canal propio.` +
-              '\n📍 Los canales se crean en la categoría elegida con `/voz categoria`.'
+              '\nLos canales se crean en la categoría elegida con `/voz categoria`.'
           ),
         ],
         flags: MessageFlags.Ephemeral,
@@ -145,7 +147,7 @@ module.exports = {
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       const { movidos, fallidos } = await voz.moverTemporalesACategoria(interaction.guild, categoria.id);
       const lineas = [`Categoría configurada: **${categoria.name}**.`, 'Los canales temporales de los usuarios se crean ahí.'];
-      if (movidos.length) lineas.push(`📦 ${movidos.length} canal(es) ya existente(s) se movieron a la nueva categoría (conservando sus permisos).`);
+      if (movidos.length) lineas.push(`${movidos.length} canal(es) ya existente(s) se movieron a la nueva categoría (conservando sus permisos).`);
       if (fallidos.length) {
         lineas.push(
           `⚠️ **${fallidos.length} canal(es) no se pudieron mover** (Discord los rechazó):` +
@@ -169,8 +171,8 @@ module.exports = {
         embeds: [
           successEmbed(
             activado
-              ? '🔢 Contador **prendido**: los canales muestran cuántos hay adentro («· 3», o «· 3/5» con límite).\n Discord limita los renombres a 2 por canal cada 10 min: el bot junta cambios y aplica el valor más nuevo apenas puede.'
-              : '🔢 Contador **apagado**: los nombres vuelven a quedar sin cantidad en el próximo cambio de gente.'
+              ? 'Contador **prendido**: los canales muestran cuántos hay adentro («· 3», o «· 3/5» con límite).\n Discord limita los renombres a 2 por canal cada 10 min: el bot junta cambios y aplica el valor más nuevo apenas puede.'
+              : 'Contador **apagado**: los nombres vuelven a quedar sin cantidad en el próximo cambio de gente.'
           ),
         ],
         flags: MessageFlags.Ephemeral,
@@ -217,8 +219,8 @@ module.exports = {
       // Confirmación: borrar N canales con gente adentro es destructivo.
       if (borrarTemporales && temporales.length > 0) {
         const fila = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId('voz:admin:desactivar_borrar').setLabel(`Borrar todo (${temporales.length})`).setEmoji('🗑️').setStyle(ButtonStyle.Danger),
-          new ButtonBuilder().setCustomId('voz:admin:desactivar_conservar').setLabel('Conservarlos').setEmoji('🛡️').setStyle(ButtonStyle.Secondary)
+          new ButtonBuilder().setCustomId('voz:admin:desactivar_borrar').setLabel(`Borrar todo (${temporales.length})`).setStyle(ButtonStyle.Danger),
+          new ButtonBuilder().setCustomId('voz:admin:desactivar_conservar').setLabel('Conservarlos').setStyle(ButtonStyle.Secondary)
         );
         return interaction.reply({
           embeds: [
@@ -235,7 +237,7 @@ module.exports = {
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       const res = await voz.desactivarSistema(interaction.guild, { borrarTemporales });
       const nota = borrarTemporales
-        ? `🗑️ Se borraron **${res.borrados} de ${res.total}** canal(es) temporales y sus registros.`
+        ? `Se borraron **${res.borrados} de ${res.total}** canal(es) temporales y sus registros.`
         : 'Los canales temporales ya creados se borran solos al vaciarse.';
       return interaction.editReply({ embeds: [successEmbed(`Sistema desactivado. ${nota}`)] });
     }
@@ -281,7 +283,7 @@ module.exports = {
 
       const embed = brandEmbed({
         color: problemas.some((p) => p.nivel === 'error') ? COLORS.error : COLORS.info,
-        title: '🎧 Canales de voz temporales',
+        title: 'Canales de voz temporales',
         description:
           `**Estado:** ${hub ? '🟢 Activo' : '🔴 Inactivo'}\n` +
           `**Canal de creación:** ${hub ? hub.name : 'sin configurar'}\n` +
@@ -293,7 +295,7 @@ module.exports = {
           `**Fallback a la categoría del hub:** ${voz.fallbackActivo(guild.id) ? 'activado' : 'apagado (recomendado)'}\n` +
           `**Bloqueos con vencimiento:** ${bloqueos.length ? bloqueos.map(([id, vence]) => `\n• <#${id}> — se reabre <t:${Math.floor(Number(vence) / 1000)}:R>`).join('') : 'ninguno'}\n\n` +
           `**Canales activos (${temporales.length}):**\n${lista || '*ninguno en este momento*'}` +
-          (problemas.length ? `\n\n**🩺 Diagnóstico:**\n${problemas.map((p) => p.texto).join('\n')}` : '\n\n✅ Sin problemas operativos detectados.'),
+          (problemas.length ? `\n\n**Diagnóstico:**\n${problemas.map((p) => p.texto).join('\n')}` : '\n\n✅ Sin problemas operativos detectados.'),
       });
       return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
     }

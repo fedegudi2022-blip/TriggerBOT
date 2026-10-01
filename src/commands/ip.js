@@ -31,7 +31,7 @@ module.exports = {
 
     if (!servers.length) {
       return interaction.reply({
-        embeds: [warnEmbed('El staff todavía no los cargó en `/config → Servidores CS 1.6`.', '🎮 Sin servidores configurados')],
+        embeds: [warnEmbed('El staff todavía no los cargó en `/config → Servidores CS 1.6`.', 'Sin servidores configurados')],
         flags: MessageFlags.Ephemeral,
       });
     }
@@ -43,7 +43,7 @@ module.exports = {
 
     if (!elegidos.length) {
       return interaction.reply({
-        embeds: [warnEmbed(`Probá con: ${servers.map((s) => `\`${s.nombre}\``).join(' · ')}`, '🎮 No encontré ese servidor')],
+        embeds: [warnEmbed(`Probá con: ${servers.map((s) => `\`${s.nombre}\``).join(' · ')}`, 'No encontré ese servidor')],
         flags: MessageFlags.Ephemeral,
       });
     }
@@ -64,13 +64,13 @@ module.exports = {
       if (!resultado.ok) return `**${server.nombre}** — 🔴 caído\n> \`${host}:${puerto}\``;
 
       const d = resultado.datos;
-      const conMapa = filtro ? ` — 🗺️ \`${d.mapa}\` — ${estado(d.jugadores, d.maximo)} **${d.jugadores}/${d.maximo}**` : '';
+      const conMapa = filtro ? ` — \`${d.mapa}\` — ${estado(d.jugadores, d.maximo)} **${d.jugadores}/${d.maximo}**` : '';
       return `**${server.nombre}**${conMapa}\n> \`${host}:${puerto}\``;
     });
 
     const embed = successEmbed(
       lineas.join('\n\n') + '\n\n**Cómo entrar:** copiá la IP → abrí CS 1.6 → consola (`~`) → `connect IP`',
-      '🔗 IPs para conectarte'
+      'IPs para conectarte'
     );
     embed.setFooter({ text: 'TriggerBOT • /servidores para ver el estado completo en vivo' });
 

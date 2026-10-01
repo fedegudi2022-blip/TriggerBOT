@@ -5,13 +5,13 @@ const { errorEmbed, accionEmbed, COLORS } = require('../utils/replies');
 // lo comparten este comando y las órdenes por chat con IA, para no responder con un
 // error engañoso ni perder el pedido del staff.
 const { quiereSilencioso, LIMITE_14_DIAS_MS } = require('../utils/acciones');
+const { exigirStaff } = require('../utils/permisos');
 const { pedir } = require('../utils/confirmaciones');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('clear')
     .setDescription('Borra mensajes masivamente en este canal')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
     .addIntegerOption((o) =>
       o.setName('cantidad').setDescription('Cantidad de mensajes a borrar (1-100)').setRequired(true).setMinValue(1).setMaxValue(100)
     )
@@ -20,6 +20,8 @@ module.exports = {
     .addBooleanOption((o) => o.setName('silencioso').setDescription('Mostrar la confirmación solo a vos')),
 
   async execute(interaction) {
+    if (!(await exigirStaff(interaction, PermissionFlagsBits.ManageMessages))) return;
+
     const amount = interaction.options.getInteger('cantidad', true);
     const user = interaction.options.getUser('usuario');
     const reason = interaction.options.getString('razon');
@@ -33,7 +35,7 @@ module.exports = {
 
     // Un borrado masivo no se puede deshacer: se confirma antes de leer y borrar nada.
     return pedir(interaction, {
-      titulo: '🧹 Confirmar limpieza',
+      titulo: 'Confirmar limpieza',
       color: COLORS.warn,
       silencioso,
       detalle:
@@ -106,7 +108,7 @@ module.exports = {
           ok: true,
           embeds: [
             accionEmbed({
-              titulo: '🧹 Limpieza',
+              titulo: 'Limpieza',
               detalle: `Borré **${borrados}** mensaje(s)${user ? ` de ${user}` : ''}.`,
               motivo: reason,
               caso,

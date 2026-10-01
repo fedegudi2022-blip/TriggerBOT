@@ -96,11 +96,11 @@ describe('/status', () => {
     const { m, campos, campo } = await correr();
 
     // El bug que este test cubre: nombrar al proveedor desde el estado en vez del módulo.
-    assert.ok(campo('🧠 Groq'), 'hay un chip por proveedor');
-    assert.ok(campo('🧠 Cerebras'), 'los proveedores nuevos también aparecen');
-    assert.ok(campo('🧠 Gemini'));
-    assert.match(campo('🧠 Cerebras').value, /llama-3\.3-70b/, 'el chip dice el modelo en uso');
-    assert.match(campo('⚡ Velocidad de la IA').value, /Cerebras/, 'y la velocidad se mide por proveedor');
+    assert.ok(campo('Groq'), 'hay un chip por proveedor');
+    assert.ok(campo('Cerebras'), 'los proveedores nuevos también aparecen');
+    assert.ok(campo('Gemini'));
+    assert.match(campo('Cerebras').value, /llama-3\.3-70b/, 'el chip dice el modelo en uso');
+    assert.match(campo('Velocidad de la IA').value, /Cerebras/, 'y la velocidad se mide por proveedor');
 
     // El embed nunca puede pasarse del límite de campos de Discord.
     assert.ok(campos.length <= 25, `el embed tiene ${campos.length} campos`);
@@ -113,8 +113,8 @@ describe('/status', () => {
 
     const { m, campo } = await correr();
 
-    assert.match(campo('🧠 Groq').value, /sin clave/);
-    assert.match(campo('🧠 Gemini').value, /sin clave/);
+    assert.match(campo('Groq').value, /sin clave/);
+    assert.match(campo('Gemini').value, /sin clave/);
     assert.equal(m.degradado, true, 'sin IA el bot funciona, pero no está "todo en orden"');
   });
 
@@ -128,8 +128,8 @@ describe('/status', () => {
 
     const { m, campo } = await correr();
     assert.equal(m.degradado, true);
-    assert.match(campo('🧠 Cerebras').value, /en pausa/);
-    assert.match(campo('🧠 Cerebras').value, /cuota/);
+    assert.match(campo('Cerebras').value, /en pausa/);
+    assert.match(campo('Cerebras').value, /cuota/);
   });
 
   test('los contadores de respuestas se nombran por proveedor', async () => {
@@ -150,7 +150,7 @@ describe('/status', () => {
     assert.equal(ia.getStatsIA().cerebras, antes + 1, 'la respuesta salió por Cerebras');
 
     const { m, campo } = await correr();
-    assert.match(campo('💬 Respuestas de IA').value, new RegExp(`Cerebras: \\*\\*${antes + 1}\\*\\*`));
+    assert.match(campo('Respuestas de IA').value, new RegExp(`Cerebras: \\*\\*${antes + 1}\\*\\*`));
     assert.match(m.statsIA, /Presupuesto de IA hoy/);
   });
 });

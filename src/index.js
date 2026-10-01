@@ -22,7 +22,7 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.GuildVoiceStates, // necesario para detectar quién entra a «➕ Crear canal»
+    GatewayIntentBits.GuildVoiceStates, // necesario para detectar quién entra a «Crear canal»
   ],
   partials: [Partials.Channel, Partials.Message],
 });
@@ -225,7 +225,7 @@ client.on('interactionCreate', async (interaction) => {
     await command.execute(interaction, client);
   } catch (error) {
     logComandos.error(`Error en /${interaction.commandName}`, error, { comando: interaction.commandName });
-    const payload = { content: '❌ Ocurrió un error al ejecutar el comando.', flags: MessageFlags.Ephemeral };
+    const payload = { content: 'Ocurrió un error al ejecutar el comando.', flags: MessageFlags.Ephemeral };
     if (interaction.replied || interaction.deferred) {
       await interaction.followUp(payload).catch(() => {});
     } else {

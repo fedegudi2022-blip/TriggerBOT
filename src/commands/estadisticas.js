@@ -2,9 +2,6 @@ const { SlashCommandBuilder } = require('discord.js');
 const { datosDe, xpParaNivel, posicion, rangoDe, multiplicador, LOGROS } = require('../niveles');
 const { brandEmbed, miles } = require('../utils/replies');
 
-// Emoji por rango para la descripción.
-const EMOJI_RANGO = { Leyenda: '👑', Veterano: '🛡️', Experto: '🌟', Activo: '⚡', Novato: '🌱' };
-
 // Barra de progreso ASCII entre el nivel actual y el siguiente (20 celdas: más detalle).
 function barra(xp, nivel) {
   const actual = xpParaNivel(nivel);
@@ -38,8 +35,8 @@ module.exports = {
     // XP ganado por logros ya cobrados.
     const ganadoLogros = LOGROS.filter((l) => logrosObtenidos.includes(l.id)).reduce((s, l) => s + (l.premio || 0), 0);
 
-    // Logros en dos columnas compactas: ✅ conseguidos y 🔒 pendientes.
-    const check = (l) => (logrosObtenidos.includes(l.id) ? `${l.emoji}` : '🔒');
+    // Logros en dos columnas compactas: [x] conseguidos y [ ] pendientes.
+    const check = (l) => (logrosObtenidos.includes(l.id) ? '[x]' : '[ ]');
     const linea = (l) => `${check(l)} **${l.nombre}** · ${miles(l.premio)} XP`;
     const mitad = Math.ceil(LOGROS.length / 2);
     const colA = LOGROS.slice(0, mitad).map(linea).join('\n');
@@ -50,20 +47,20 @@ module.exports = {
       title: `Perfil de niveles — ${user.username}`,
       thumbnail: user.displayAvatarURL({ size: 256 }),
       description:
-        `${EMOJI_RANGO[rango.nombre] ?? '🎖️'} **${rango.nombre}** · Nivel **${datos.nivel}** · Puesto **#${puesto || '—'}** del server\n` +
+        `**${rango.nombre}** · Nivel **${datos.nivel}** · Puesto **#${puesto || '—'}** del server\n` +
         `Le faltan **${miles(faltan)} XP** para el nivel ${siguienteNivel}`,
       fields: [
-        { name: '💎 XP total', value: `**${miles(datos.xp)}** / ${miles(xpSiguiente)}`, inline: true },
-        { name: '💬 Mensajes', value: `**${miles(datos.mensajes)}**`, inline: true },
-        { name: '🔥 Racha', value: `**${datos.racha || 0}** día(s)`, inline: true },
+        { name: 'XP total', value: `**${miles(datos.xp)}** / ${miles(xpSiguiente)}`, inline: true },
+        { name: 'Mensajes', value: `**${miles(datos.mensajes)}**`, inline: true },
+        { name: 'Racha', value: `**${datos.racha || 0}** día(s)`, inline: true },
         { name: 'Progreso al siguiente nivel', value: `\`${barra(datos.xp, datos.nivel)}\` ${Math.round(((datos.xp - xpParaNivel(datos.nivel)) / (xpSiguiente - xpParaNivel(datos.nivel))) * 100)}%`, inline: false },
         {
-          name: '✨ Bonus activos',
+          name: 'Bonus activos',
           value: bono.partes.length ? bono.partes.join(' · ') + ` → total **x${bono.total.toFixed(2)}**` : 'Ninguno ahora (activá racha con actividad diaria)',
           inline: false,
         },
         {
-          name: `🏅 Logros — ${logrosObtenidos.length}/${LOGROS.length} · ${miles(ganadoLogros)} XP cobrado`,
+          name: `Logros — ${logrosObtenidos.length}/${LOGROS.length} · ${miles(ganadoLogros)} XP cobrado`,
           value: colA,
           inline: true,
         },

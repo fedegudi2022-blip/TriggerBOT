@@ -40,14 +40,14 @@ function guardar() {
 
 // Catálogo de acciones: nombre del comando → endpoint de nekos.best + textos.
 const ACCIONES = {
-  beso: { endpoint: 'kiss', verbo: 'besó', texto: 'le dio un beso a', desc: 'Dale un beso a alguien', emoji: '😘' },
-  abrazo: { endpoint: 'hug', verbo: 'abrazó', texto: 'abrazó a', desc: 'Abraza a alguien', emoji: '🤗' },
-  caricia: { endpoint: 'pat', verbo: 'acarició', texto: 'acarició la cabeza de', desc: 'Acaricia la cabeza de alguien', emoji: '🫶' },
-  abofetear: { endpoint: 'slap', verbo: 'abofeteó', texto: 'abofeteó a', desc: 'Abofetea a alguien', emoji: '💥' },
-  morder: { endpoint: 'bite', verbo: 'mordió', texto: 'mordió a', desc: 'Muerde a alguien', emoji: '🦷' },
-  pellizco: { endpoint: 'poke', verbo: 'pellizcó', texto: 'pellizcó a', desc: 'Pellizca a alguien', emoji: '👉' },
-  chocar: { endpoint: 'handhold', verbo: 'chocó las manos con', texto: 'chocó los cinco con', desc: 'Choca los cinco con alguien', emoji: '🙌' },
-  guino: { endpoint: 'wink', verbo: 'guiñó el ojo a', texto: 'guiñó el ojo a', desc: 'Guiña el ojo a alguien', emoji: '😉' },
+  beso: { endpoint: 'kiss', verbo: 'besó', texto: 'le dio un beso a', desc: 'Dale un beso a alguien' },
+  abrazo: { endpoint: 'hug', verbo: 'abrazó', texto: 'abrazó a', desc: 'Abraza a alguien' },
+  caricia: { endpoint: 'pat', verbo: 'acarició', texto: 'acarició la cabeza de', desc: 'Acaricia la cabeza de alguien' },
+  abofetear: { endpoint: 'slap', verbo: 'abofeteó', texto: 'abofeteó a', desc: 'Abofetea a alguien' },
+  morder: { endpoint: 'bite', verbo: 'mordió', texto: 'mordió a', desc: 'Muerde a alguien' },
+  pellizco: { endpoint: 'poke', verbo: 'pellizcó', texto: 'pellizcó a', desc: 'Pellizca a alguien' },
+  chocar: { endpoint: 'handhold', verbo: 'chocó las manos con', texto: 'chocó los cinco con', desc: 'Choca los cinco con alguien' },
+  guino: { endpoint: 'wink', verbo: 'guiñó el ojo a', texto: 'guiñó el ojo a', desc: 'Guiña el ojo a alguien' },
 };
 
 // Pide un GIF con doble fuente: nekos.best primero y otakugifs.xyz de respaldo

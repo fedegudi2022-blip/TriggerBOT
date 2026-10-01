@@ -6,14 +6,8 @@
 // observación terminaría sancionando.
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const { getNotas, addNota, removeNota } = require('../notas');
-const { getGuildConfig } = require('../store');
 const { brandEmbed, COLORS } = require('../utils/replies');
-
-function esStaff(interaction) {
-  if (interaction.member?.permissions?.has?.(PermissionFlagsBits.ModerateMembers)) return true;
-  const config = getGuildConfig(interaction.guildId);
-  return ['admin', 'mod', 'helper'].some((nivel) => interaction.member?.roles?.cache?.has?.(config[`${nivel}Role`]));
-}
+const { exigirStaff } = require('../utils/permisos');
 
 const fecha = (ts) => `<t:${Math.floor(ts / 1000)}:d>`;
 
@@ -21,7 +15,7 @@ function vista(usuario, notas) {
   if (!notas.length) {
     return brandEmbed({
       color: COLORS.success,
-      title: `📝 Notas de ${usuario.tag}`,
+      title: `Notas de ${usuario.tag}`,
       description: 'Sin notas internas.',
       thumbnail: usuario.displayAvatarURL?.({ size: 128 }),
     });
@@ -29,7 +23,7 @@ function vista(usuario, notas) {
   const cuerpo = notas.map((n, i) => `**#${i + 1}** — ${fecha(n.timestamp)} por <@${n.moderatorId}>\n> ${n.texto}`).join('\n\n');
   return brandEmbed({
     color: COLORS.info,
-    title: `📝 Notas de ${usuario.tag} (${notas.length})`,
+    title: `Notas de ${usuario.tag} (${notas.length})`,
     description: cuerpo.slice(0, 4000),
     thumbnail: usuario.displayAvatarURL?.({ size: 128 }),
     footer: 'TriggerBOT • las notas NO cuentan como advertencias • /nota quitar para borrar',
@@ -40,7 +34,6 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('nota')
     .setDescription('Notas internas sobre un usuario (no cuentan como advertencias)')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
     .addSubcommand((sc) =>
       sc
         .setName('agregar')
@@ -63,12 +56,7 @@ module.exports = {
     ),
 
   async execute(interaction) {
-    if (!esStaff(interaction)) {
-      return interaction.reply({
-        embeds: [brandEmbed({ color: COLORS.error, title: 'Solo staff', description: 'Las notas internas son solo para el staff.' })],
-        flags: MessageFlags.Ephemeral,
-      });
-    }
+    if (!(await exigirStaff(interaction, PermissionFlagsBits.ModerateMembers, 'Las notas internas son solo para el staff.'))) return;
 
     const sub = interaction.options.getSubcommand();
     const usuario = interaction.options.getUser('usuario', true);
@@ -82,7 +70,7 @@ module.exports = {
         embeds: [
           brandEmbed({
             color: COLORS.success,
-            title: '📝 Nota guardada',
+            title: 'Nota guardada',
             description: `Anoté algo sobre ${usuario} (${total} nota(s) en total). **No cuenta como advertencia.**`,
           }),
         ],
@@ -104,7 +92,7 @@ module.exports = {
       });
     }
     return interaction.reply({
-      embeds: [brandEmbed({ color: COLORS.success, title: '🗑️ Nota eliminada', description: `Borré la nota #${numero} de ${usuario}.` })],
+      embeds: [brandEmbed({ color: COLORS.success, title: 'Nota eliminada', description: `Borré la nota #${numero} de ${usuario}.` })],
       flags: MessageFlags.Ephemeral,
     });
   },

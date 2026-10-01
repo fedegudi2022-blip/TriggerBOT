@@ -37,7 +37,7 @@ module.exports = {
     const embed = brandEmbed({
       color: COLORS.neutral,
       title: 'Bola 8',
-      description: `**Pregunta:** ${pregunta}\n\n🎱 **${respuesta}**`,
+      description: `**Pregunta:** ${pregunta}\n\n**${respuesta}**`,
       footer: `Preguntado por ${interaction.user.username}`,
     });
 

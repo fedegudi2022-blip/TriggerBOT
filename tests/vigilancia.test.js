@@ -486,7 +486,9 @@ describe('/diag', () => {
   test('es un comando de staff', () => {
     const json = diag.data.toJSON();
     assert.equal(json.name, 'diag');
-    assert.ok(json.default_member_permissions, '/diag tiene que declarar permisos');
+    // Sin permisos nativos: Discord no lo oculta a un rol de staff configurado y
+    // la autorización real la aplica exigirStaff() dentro de execute().
+    assert.equal(json.default_member_permissions ?? null, null, '/diag ya no declara permisos nativos');
     assert.equal(typeof diag.boton, 'function', 'el botón de refrescar existe');
   });
 });

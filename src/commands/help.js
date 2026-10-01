@@ -1,17 +1,7 @@
-const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
-const { getGuildConfig } = require('../store');
+const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const { construirGuia, construirGuiaStaff, detalleDeComando, SOLO_STAFF } = require('../utils/guia');
 const { errorEmbed } = require('../utils/replies');
-
-const LEVELS = ['admin', 'mod', 'helper'];
-
-// Mismo criterio de staff que el resto del bot: ManageGuild o rol admin/mod/helper
-// configurado en /config (el bot ignora la jerarquía de roles de Discord a propósito).
-function esStaff(interaction) {
-  if (interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) return true;
-  const config = getGuildConfig(interaction.guildId);
-  return LEVELS.some((nivel) => interaction.member.roles.cache.has(config[`${nivel}Role`]));
-}
+const { esStaff } = require('../utils/permisos');
 
 module.exports = {
   data: new SlashCommandBuilder()

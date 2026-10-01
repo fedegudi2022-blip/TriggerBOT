@@ -10,7 +10,7 @@
 function motivoNoModerable(interaction, member) {
   if (!member) return 'Ese usuario no está en el servidor.';
   if (member.id === interaction.user.id) return 'No podés hacérselo a vos mismo.';
-  if (member.id === interaction.client.user.id) return 'No pienso hacérmelo a mí mismo 😤';
+  if (member.id === interaction.client.user.id) return 'No puedo aplicarme esa acción a mí mismo.';
 
   const esDueno = interaction.guild.ownerId === interaction.user.id;
   if (!esDueno && member.roles.highest.position >= interaction.member.roles.highest.position) {
@@ -28,7 +28,7 @@ function validarAccionDelBot(guild, member, permiso) {
   const yo = guild.members.me;
   if (!yo) return 'No pude resolver mi propio miembro en el servidor.';
   if (!member) return 'Ese usuario no está en el servidor.';
-  if (member.id === yo.id) return 'No pienso hacérmelo a mí mismo 😤';
+  if (member.id === yo.id) return 'No puedo aplicarme esa acción a mí mismo.';
   if (member.id === guild.ownerId) return 'No puedo moderar al dueño del servidor.';
   if (!yo.permissions.has(permiso)) return 'Me falta el permiso necesario para esa acción.';
   if (member.roles.highest.position >= yo.roles.highest.position) {

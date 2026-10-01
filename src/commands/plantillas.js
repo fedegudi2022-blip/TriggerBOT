@@ -2,12 +2,12 @@ const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const { PermissionFlagsBits } = require('discord.js');
 const { listar, agregar, quitar } = require('../utils/plantillas');
 const { infoEmbed, warnEmbed, successEmbed, errorEmbed } = require('../utils/replies');
+const { exigirStaff } = require('../utils/permisos');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('plantillas')
     .setDescription('Razones rápidas para sanciones (aparecen como autocompletado en /warn, /ban, etc.)')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .addSubcommand((sc) =>
       sc
         .setName('agregar')
@@ -35,6 +35,8 @@ module.exports = {
   },
 
   async execute(interaction) {
+    if (!(await exigirStaff(interaction, PermissionFlagsBits.ManageGuild))) return;
+
     const sub = interaction.options.getSubcommand();
 
     if (sub === 'agregar') {

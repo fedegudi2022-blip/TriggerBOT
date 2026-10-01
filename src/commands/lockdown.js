@@ -2,19 +2,19 @@ const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags } = 
 const { logAction } = require('../utils/modlog');
 const { errorEmbed, accionEmbed, COLORS } = require('../utils/replies');
 const { quiereSilencioso, diferir, intentar } = require('../utils/acciones');
+const { exigirStaff } = require('../utils/permisos');
 const { pedir } = require('../utils/confirmaciones');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('lockdown')
     .setDescription('Bloquea o desbloquea el envío de mensajes en un canal')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .addStringOption((o) =>
       o
         .setName('accion')
         .setDescription('Qué hacer con el canal')
         .setRequired(true)
-        .addChoices({ name: '🔒 Bloquear', value: 'bloquear' }, { name: '🔓 Desbloquear', value: 'desbloquear' })
+        .addChoices({ name: 'Bloquear', value: 'bloquear' }, { name: 'Desbloquear', value: 'desbloquear' })
     )
     .addChannelOption((o) =>
       o
@@ -26,6 +26,8 @@ module.exports = {
     .addBooleanOption((o) => o.setName('silencioso').setDescription('Mostrar la confirmación solo a vos')),
 
   async execute(interaction) {
+    if (!(await exigirStaff(interaction, PermissionFlagsBits.ManageChannels))) return;
+
     const accion = interaction.options.getString('accion', true);
     const channel = interaction.options.getChannel('canal') ?? interaction.channel;
     const reason = interaction.options.getString('razon');
@@ -74,7 +76,7 @@ module.exports = {
         embeds: [
           accionEmbed({
             color: hacerBloqueo ? COLORS.error : COLORS.success,
-            titulo: hacerBloqueo ? '🔒 Canal bloqueado' : '🔓 Canal desbloqueado',
+            titulo: hacerBloqueo ? 'Canal bloqueado' : 'Canal desbloqueado',
             detalle: hacerBloqueo
               ? `**${channel}** quedó bloqueado: nadie de @everyone puede escribir hasta que lo desbloqueen.`
               : `**${channel}** fue desbloqueado: ya se puede volver a escribir.`,
@@ -96,7 +98,7 @@ module.exports = {
 
     // Cerrar un canal afecta a todos: se confirma antes de tocarlo.
     return pedir(interaction, {
-      titulo: '🔒 Confirmar bloqueo de canal',
+      titulo: 'Confirmar bloqueo de canal',
       color: COLORS.error,
       silencioso,
       deshacerLabel: 'Deshacer (desbloquear)',

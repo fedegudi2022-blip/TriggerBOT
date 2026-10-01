@@ -7,6 +7,7 @@
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits, ChannelType, MessageFlags, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
 const { brandEmbed, COLORS } = require('./replies');
 const { getGuildConfig, setGuildConfig } = require('../store');
+const { autorizadoDe } = require('./permisos');
 const crearLogger = require('../logger');
 
 const log = crearLogger('tickets');
@@ -57,14 +58,12 @@ function siguienteNumero(guildId) {
 }
 
 function esStaff(member) {
-  if (member.permissions?.has(PermissionFlagsBits.ManageGuild)) return true;
-  const config = getGuildConfig(member.guild.id);
-  return ['admin', 'mod', 'helper'].some((nivel) => member.roles.cache.has(config[`${nivel}Role`]));
+  return autorizadoDe(member.guild, member, PermissionFlagsBits.ManageGuild);
 }
 
 function botonesTicket() {
   return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('ticket:cerrar').setLabel('Cerrar ticket').setEmoji('🔒').setStyle(ButtonStyle.Danger)
+    new ButtonBuilder().setCustomId('ticket:cerrar').setLabel('Cerrar ticket').setStyle(ButtonStyle.Danger)
   );
 }
 
@@ -138,7 +137,7 @@ async function abrirTicketInterno(interaction, motivo, { config, raiz }) {
     embeds: [
       brandEmbed({
         color: COLORS.info,
-        title: `🎫 Ticket #${numeroTxt}`,
+        title: `Ticket #${numeroTxt}`,
         description: `**Usuario:** ${user} (\`${user.tag}\`)\n**Motivo:** ${motivo || 'sin especificar'}`,
         footer: 'TriggerBOT • usá el botón para cerrar cuando esté resuelto',
       }),
@@ -148,7 +147,7 @@ async function abrirTicketInterno(interaction, motivo, { config, raiz }) {
 
   loguear(guild, {
     color: COLORS.success,
-    title: '🎫 Ticket abierto',
+    title: 'Ticket abierto',
     description: `${user} abrió el ticket **#${numeroTxt}** → <#${canal.id}>`,
   });
 
@@ -161,7 +160,7 @@ async function cerrarTicket(interaction, cerradoPor) {
   const [, userId, numero] = canal.topic?.split(':') ?? [];
   const guild = canal.guild;
 
-  await canal.send({ embeds: [brandEmbed({ color: COLORS.warn, title: '📦 Generando transcript…', description: `El canal se cierra en un momento, ${cerradoPor}.` })] }).catch(() => {});
+  await canal.send({ embeds: [brandEmbed({ color: COLORS.warn, title: 'Generando transcript…', description: `El canal se cierra en un momento, ${cerradoPor}.` })] }).catch(() => {});
 
   // Transcript: todos los mensajes del canal, en orden (de a 100 por fetch).
   // Tope práctico: 50.000 mensajes (500 páginas). Un ticket normal nunca llega.
@@ -222,7 +221,7 @@ async function cerrarTicket(interaction, cerradoPor) {
               ? [
                   brandEmbed({
                     color: COLORS.warn,
-                    title: `🔒 Ticket #${numero} cerrado`,
+                    title: `Ticket #${numero} cerrado`,
                     description:
                       `**Abierto por:** <@${userId}>\n**Cerrado por:** ${cerradoPor}\n**Mensajes:** ${lineas.length}` +
                       (integro ? '' : '\n⚠️ **Transcript incompleto**'),
@@ -252,7 +251,7 @@ async function cerrarTicket(interaction, cerradoPor) {
                 ? [
                     brandEmbed({
                       color: COLORS.info,
-                      title: `🎫 Tu ticket #${numero} fue cerrado`,
+                      title: `Tu ticket #${numero} fue cerrado`,
                       description:
                         `Gracias por contactar al staff de **${guild.name}**. Te dejamos la conversación por si la necesitás.` +
                         (integro ? '' : '\n⚠️ El transcript quedó incompleto.'),
@@ -301,7 +300,7 @@ async function cerrarTicket(interaction, cerradoPor) {
     embeds: [
       brandEmbed({
         color: COLORS.error,
-        title: `🔒 Ticket cerrado por ${cerradoPor.tag}`,
+        title: `Ticket cerrado por ${cerradoPor.tag}`,
         description: `Se guardó un transcript con **${lineas.length}** mensajes. El canal se borra en **30 segundos**.`,
       }),
     ],
@@ -309,7 +308,7 @@ async function cerrarTicket(interaction, cerradoPor) {
 
   loguear(guild, {
     color: COLORS.warn,
-    title: `🔒 Ticket #${numero} cerrado`,
+    title: `Ticket #${numero} cerrado`,
     description: `Por ${cerradoPor} · transcript enviado a logs y al DM del usuario.`,
   });
 
@@ -332,7 +331,7 @@ function panel(guild) {
     embeds: [
       brandEmbed({
         color: COLORS.info,
-        title: '🎫 Soporte',
+        title: 'Soporte',
         description:
           config.mensajes ||
           '¿Necesitás hablar con el staff? Abrí un ticket con el botón de abajo: se crea un canal privado solo para vos y el equipo.',
@@ -341,7 +340,7 @@ function panel(guild) {
     ],
     components: [
       new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('ticket:abrir').setLabel('Abrir ticket').setEmoji('📨').setStyle(ButtonStyle.Primary)
+        new ButtonBuilder().setCustomId('ticket:abrir').setLabel('Abrir ticket').setStyle(ButtonStyle.Primary)
       ),
     ],
   };
@@ -369,7 +368,7 @@ async function manejarBotonTicket(interaction) {
     if (!esDuenio && !esStaff(interaction.member)) {
       return interaction.reply({ content: 'Solo el dueño del ticket o el staff pueden cerrarlo.', flags: MessageFlags.Ephemeral });
     }
-    await interaction.reply({ content: '🔒 Cerrando el ticket…', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: 'Cerrando el ticket…', flags: MessageFlags.Ephemeral });
     await cerrarTicket(interaction, interaction.user);
   }
 }
@@ -382,7 +381,7 @@ async function manejarModalTicket(interaction) {
   if (resultado.error) {
     return interaction.editReply({ content: `⚠️ ${resultado.error}` });
   }
-  await interaction.editReply({ content: `✅ Tu ticket quedó abierto en ${resultado.canal}.` });
+  await interaction.editReply({ content: `Tu ticket quedó abierto en ${resultado.canal}.` });
 }
 
 module.exports = { abrirTicket, cerrarTicket, panel, configDe, esStaff, manejarBotonTicket, manejarModalTicket, dividirTranscript, LIMITE_ADJUNTO_BYTES };

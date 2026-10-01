@@ -126,7 +126,7 @@ async function anunciarProgreso(message, progreso) {
     if (!definicion?.id) continue;
     const embed = brandEmbed({
       color: COLORS.logro,
-      title: `${definicion.emoji} ${definicion.nombre}`,
+      title: `${definicion.nombre}`,
       description:
         `**${message.author}** desbloqueó un logro nuevo.\n` +
         `> ${definicion.desc}\n\n` +
@@ -259,7 +259,7 @@ module.exports = {
         const minutos = Math.floor((Date.now() - afk.desde) / 60000);
         const tiempo = minutos >= 60 ? `${Math.floor(minutos / 60)} h` : `${Math.max(minutos, 1)} min`;
         await message
-          .reply(`😴 **${message.guild.members.cache.get(userId)?.displayName || 'Ese usuario'}** está AFK desde hace ${tiempo}: ${afk.motivo}`)
+          .reply(`**${message.guild.members.cache.get(userId)?.displayName || 'Ese usuario'}** está AFK desde hace ${tiempo}: ${afk.motivo}`)
           .catch(() => {});
         break; // un solo aviso por mensaje
       }

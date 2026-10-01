@@ -1,12 +1,12 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const { UMBRALES, rolesConfigurados, definirRol } = require('../utils/rolesNivel');
 const { infoEmbed, warnEmbed, errorEmbed, successEmbed } = require('../utils/replies');
+const { exigirStaff } = require('../utils/permisos');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('rolnivel')
     .setDescription('Configura roles que se otorgan automáticamente al alcanzar un nivel (staff)')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .addSubcommand((sub) =>
       sub
         .setName('definir')
@@ -23,6 +23,8 @@ module.exports = {
     .addSubcommand((sub) => sub.setName('lista').setDescription('Muestra los roles por nivel configurados')),
 
   async execute(interaction) {
+    if (!(await exigirStaff(interaction, PermissionFlagsBits.ManageGuild))) return;
+
     const sub = interaction.options.getSubcommand();
     const guildId = interaction.guildId;
 

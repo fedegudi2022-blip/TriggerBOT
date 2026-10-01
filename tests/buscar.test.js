@@ -35,11 +35,21 @@ function fetchFalso({ wiki } = {}) {
       : { ok: false, status: 503, json: async () => ({}), text: async () => '' };
 }
 
-function interaccionFake(consulta) {
+function interaccionFake(consulta, { staff = true } = {}) {
   const enviados = [];
+  const replies = [];
   return {
     enviados,
+    replies,
+    guild: { id: 'g-buscar', ownerId: 'dueno' },
+    guildId: 'g-buscar',
+    // /buscar valida con exigirStaff(): sin permisos nativos en el comando.
+    member: { id: 'staff-1', permissions: { has: () => staff }, roles: { cache: { has: () => false } } },
     options: { getString: (nombre) => (nombre === 'consulta' ? consulta : null) },
+    reply: async (payload) => {
+      replies.push(payload);
+      return payload;
+    },
     deferReply: async () => {},
     editReply: async (payload) => {
       enviados.push(payload);
@@ -95,10 +105,20 @@ describe('/buscar — búsqueda cruda para el staff', () => {
   test('es un comando de staff y la consulta es obligatoria', () => {
     const json = comando.data.toJSON();
     assert.equal(json.name, 'buscar');
-    assert.ok(json.default_member_permissions, '/buscar tiene que declarar permisos de staff');
+    // Sin permisos nativos: la autorización la aplica exigirStaff() en execute().
+    assert.equal(json.default_member_permissions ?? null, null);
     assert.equal(json.options[0].name, 'consulta');
     assert.equal(json.options[0].required, true);
     assert.equal(typeof comando.execute, 'function');
+  });
+
+  test('un miembro raso queda bloqueado por exigirStaff', async () => {
+    const interaccion = interaccionFake('messi', { staff: false });
+    await comando.execute(interaccion);
+
+    assert.equal(interaccion.enviados.length, 0, 'no se buscó nada');
+    assert.equal(interaccion.replies.length, 1);
+    assert.match(JSON.stringify(interaccion.replies[0]), /Solo staff/);
   });
 
   test('la respuesta es efímera (no llena el canal)', async () => {

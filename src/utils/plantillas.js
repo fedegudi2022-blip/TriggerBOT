@@ -1,4 +1,5 @@
 const { getGuildConfig, setGuildConfig } = require('../store');
+const { esStaff } = require('./permisos');
 
 // Plantillas de razones de sanción por servidor: { [nombre]: razon }.
 // El staff las carga una vez y después el autocompletado de Discord las
@@ -28,6 +29,10 @@ function quitar(guildId, nombre) {
 // Autocompletado: sugiere las plantillas que matcheen lo tipeado.
 // El value es la razón completa, así al elegir la plantilla se llena el campo.
 async function autocompletar(interaction) {
+  // Solo staff: los comandos de sanción son visibles para todos (sin
+  // setDefaultMemberPermissions), así que el filtro real va acá. Las plantillas
+  // son motivos internos del equipo.
+  if (!esStaff(interaction)) return interaction.respond([]);
   const tipeado = String(interaction.options.getFocused() ?? '').toLowerCase();
   const opciones = Object.entries(listar(interaction.guildId))
     .filter(([nombre]) => nombre.toLowerCase().includes(tipeado))

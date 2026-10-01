@@ -547,7 +547,7 @@ describe('conocimiento general y búsqueda web', () => {
 
     const respuesta = await conversar('u-web-forzada', 'buscame quien fue san martin', { usuario: 'Fede' });
     assert.match(respuesta.texto, /^San Martín fue un militar argentino\./);
-    assert.match(respuesta.texto, /🔎 Fuentes: \[Wikipedia\]\(https:\/\/es\.wikipedia\.org\/wiki\/Lionel_Messi\)/, 'cita la fuente');
+    assert.match(respuesta.texto, /Fuentes: \[Wikipedia\]\(https:\/\/es\.wikipedia\.org\/wiki\/Lionel_Messi\)/, 'cita la fuente');
 
     const generaciones = generacionesDe('groq');
     assert.equal(generaciones.length, 1);
@@ -559,7 +559,7 @@ describe('conocimiento general y búsqueda web', () => {
     const { conFuentes } = ia._internos;
     const resultados = [{ fuente: 'Wikipedia', titulo: 'Messi', texto: 'x', url: 'https://es.wikipedia.org/wiki/Lionel_Messi' }];
 
-    assert.match(conFuentes('Nació en 1987.', resultados), /🔎 Fuentes: \[Wikipedia\]/);
+    assert.match(conFuentes('Nació en 1987.', resultados), /Fuentes: \[Wikipedia\]/);
     assert.equal(
       conFuentes('Nació en 1987 (https://es.wikipedia.org/wiki/Lionel_Messi).', resultados),
       'Nació en 1987 (https://es.wikipedia.org/wiki/Lionel_Messi).',

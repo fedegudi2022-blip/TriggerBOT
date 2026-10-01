@@ -3,18 +3,20 @@ const { getWarns, removeWarn } = require('../warns');
 const { logAction } = require('../utils/modlog');
 const { errorEmbed, accionEmbed, COLORS, marcaTiempo } = require('../utils/replies');
 const { quiereSilencioso, diferir } = require('../utils/acciones');
+const { exigirStaff } = require('../utils/permisos');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('quitarnota')
     .setDescription('Elimina una advertencia del historial de un usuario')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
     .addUserOption((o) => o.setName('usuario').setDescription('Usuario al que quitar la advertencia').setRequired(true))
     .addIntegerOption((o) => o.setName('numero').setDescription('Número de advertencia a quitar (ver /warnings)').setRequired(true).setMinValue(1))
     .addStringOption((o) => o.setName('razon').setDescription('Motivo de la eliminación').setMaxLength(500))
     .addBooleanOption((o) => o.setName('silencioso').setDescription('Mostrar la confirmación solo a vos')),
 
   async execute(interaction) {
+    if (!(await exigirStaff(interaction, PermissionFlagsBits.ModerateMembers))) return;
+
     const user = interaction.options.getUser('usuario', true);
     const numero = interaction.options.getInteger('numero', true);
     const reason = interaction.options.getString('razon');
@@ -56,7 +58,7 @@ module.exports = {
     return interaction.editReply({
       embeds: [
         accionEmbed({
-          titulo: '✅ Advertencia eliminada',
+          titulo: 'Advertencia eliminada',
           detalle: `Se quitó la advertencia **#${numero}** de ${user}.`,
           caso,
           moderador: interaction.member?.displayName ?? interaction.user.username,

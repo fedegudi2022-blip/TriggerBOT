@@ -5,6 +5,7 @@ const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('disc
 const { infoEmbed, warnEmbed, errorEmbed, successEmbed } = require('../utils/replies');
 const monitoreo = require('../utils/monitoreo');
 const { getGuildConfig, setGuildConfig } = require('../store');
+const { autorizado } = require('../utils/permisos');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -20,7 +21,7 @@ module.exports = {
     if (!servers.length) {
       return interaction.reply({
         embeds: [
-          warnEmbed('El staff todavía no cargó los servers. Se agregan desde `/config → Servidores CS 1.6`.', '🎮 Sin servidores configurados'),
+          warnEmbed('El staff todavía no cargó los servers. Se agregan desde `/config → Servidores CS 1.6`.', 'Sin servidores configurados'),
         ],
         flags: MessageFlags.Ephemeral,
       });
@@ -28,7 +29,7 @@ module.exports = {
 
     // Publicar el panel fijo: no hace falta consultar nada acá, el monitoreo lo llena.
     if (interaction.options.getBoolean('publicar')) {
-      if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
+      if (!autorizado(interaction, PermissionFlagsBits.ManageGuild)) {
         return interaction.reply({
           embeds: [errorEmbed('Publicar el panel fijo del servidor es una acción de staff.', 'Solo el staff puede publicar el panel')],
           flags: MessageFlags.Ephemeral,
@@ -65,7 +66,7 @@ async function publicarPanel(interaction) {
 
   const guild = interaction.guild;
   const mensaje = await interaction.channel.send({
-    embeds: [infoEmbed('Generando panel…', '🎮 Panel de servidores')],
+    embeds: [infoEmbed('Generando panel…', 'Panel de servidores')],
   });
 
   setGuildConfig(guild.id, (c) => {
@@ -91,7 +92,7 @@ async function publicarPanel(interaction) {
     embeds: [
       successEmbed(
         `El panel se actualiza solo cada 90 s en <#${interaction.channelId}>. Para moverlo, volvé a usar /servidores → publicar en el canal nuevo.`,
-        '📌 Panel publicado'
+        'Panel publicado'
       ),
     ],
   });

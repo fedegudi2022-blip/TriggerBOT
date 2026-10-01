@@ -8,12 +8,12 @@ const { ACCIONES, resolver, corresponde, duracionMs, aplicar } = require('../uti
 const { motivoNoModerable, avisarPorDM } = require('../utils/moderation');
 const { autocompletar } = require('../utils/plantillas');
 const { quiereSilencioso, diferir, resolverMiembro } = require('../utils/acciones');
+const { exigirStaff } = require('../utils/permisos');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('warn')
     .setDescription('Advierte a un usuario (la escalada automática se configura en /config)')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
     .addUserOption((o) => o.setName('usuario').setDescription('Usuario a advertir').setRequired(true))
     .addStringOption((o) =>
       o.setName('razon').setDescription('Motivo de la advertencia (escribí para ver plantillas)').setMaxLength(500).setAutocomplete(true)
@@ -25,6 +25,8 @@ module.exports = {
   },
 
   async execute(interaction) {
+    if (!(await exigirStaff(interaction, PermissionFlagsBits.ModerateMembers))) return;
+
     const user = interaction.options.getUser('usuario', true);
     const reason = interaction.options.getString('razon');
     const silencioso = quiereSilencioso(interaction);
@@ -95,18 +97,18 @@ module.exports = {
     // avisarPorDM falla en silencio (ya no está en el servidor) y no se menciona.
     void avisarPorDM(
       user,
-      `⚠️ Recibiste una advertencia en **${interaction.guild.name}**.\n` +
+      `Recibiste una advertencia en **${interaction.guild.name}**.\n` +
         `**Motivo:** ${reason || 'no especificado'}\n` +
         `**Advertencias acumuladas:** ${total} de ${politica.umbral}` +
-        (escalada?.ok && escalada.tipo === 'timeout' ? `\n🔇 Quedaste silenciado hasta ${hasta}.` : '') +
-        (escalada?.ok && escalada.tipo === 'mute' ? '\n🔇 Quedaste silenciado con el rol Silenciado.' : '')
+        (escalada?.ok && escalada.tipo === 'timeout' ? `\nQuedaste silenciado hasta ${hasta}.` : '') +
+        (escalada?.ok && escalada.tipo === 'mute' ? '\nQuedaste silenciado con el rol Silenciado.' : '')
     );
 
     const campos = [];
     if (escalada) {
       const etiqueta = ACCIONES[escalada.tipo];
       campos.push({
-        name: escalada.ok ? `✅ Escalada aplicada — ${etiqueta}` : '⚠️ La escalada no se aplicó',
+        name: escalada.ok ? `Escalada aplicada — ${etiqueta}` : 'La escalada no se aplicó',
         value: escalada.ok
           ? `Llegó a **${total}** advertencias: ${etiqueta.toLowerCase()}` +
             (escalada.tipo === 'mute' ? ' (el rol no vence solo: se quita con /unmute).' : escalada.tipo === 'timeout' ? ` hasta ${hasta}.` : '.')
@@ -127,7 +129,7 @@ module.exports = {
       embeds: [
         accionEmbed({
           color: COLORS.warn,
-          titulo: '⚠️ Advertencia',
+          titulo: 'Advertencia',
           detalle: `${user} fue advertido.`,
           motivo: reason,
           caso,

@@ -9,14 +9,14 @@ module.exports = {
   async execute(interaction) {
     const embed = brandEmbed({
       color: COLORS.success,
-      title: '🌐 TriGGer.Arena — Sitio oficial',
+      title: 'TriGGer.Arena — Sitio oficial',
       description:
         `Entrá a **${WEB}** para novedades, torneos y todo lo de la comunidad.\n\n` +
         `Si buscás las redes sociales (WhatsApp, Steam, Instagram), usá \`/redes\`.\n`,
     });
 
     const fila = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setLabel('Visitar triggerarena.pro').setEmoji('🌐').setURL(WEB).setStyle(ButtonStyle.Link)
+      new ButtonBuilder().setLabel('Visitar triggerarena.pro').setURL(WEB).setStyle(ButtonStyle.Link)
     );
 
     return interaction.reply({ embeds: [embed], components: [fila] });

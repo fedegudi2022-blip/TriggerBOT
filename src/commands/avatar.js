@@ -2,12 +2,10 @@ const { SlashCommandBuilder, MessageFlags, ActionRowBuilder, ButtonBuilder, Butt
 const { brandEmbed, COLORS } = require('../utils/replies');
 
 // Formatos que ofrece Discord y para qué sirve cada uno.
-// Los emojis van como escapes Unicode: así el archivo queda portable y ningún
-// editor o herramienta que no respete UTF-8 los borra por accidente.
 const FORMATOS = [
-  { clave: 'png', etiqueta: 'PNG', emoji: '\u{1F5BC}\uFE0F' },
-  { clave: 'jpg', etiqueta: 'JPG', emoji: '\u{1F4F8}' },
-  { clave: 'webp', etiqueta: 'WEBP', emoji: '\u{1F578}\uFE0F' },
+  { clave: 'png', etiqueta: 'PNG' },
+  { clave: 'jpg', etiqueta: 'JPG' },
+  { clave: 'webp', etiqueta: 'WEBP' },
 ];
 
 module.exports = {
@@ -55,7 +53,6 @@ module.exports = {
       botones.addComponents(
         new ButtonBuilder()
           .setLabel(f.etiqueta)
-          .setEmoji(f.emoji)
           .setStyle(ButtonStyle.Link)
           .setURL(user.displayAvatarURL({ size: 1024, extension: f.clave }))
       );
@@ -65,8 +62,8 @@ module.exports = {
     if (urlServidor) {
       const filaServidor = new ActionRowBuilder();
       filaServidor.addComponents(
-        new ButtonBuilder().setLabel('Ver avatar del server').setEmoji('🏠').setStyle(ButtonStyle.Link).setURL(urlServidor),
-        new ButtonBuilder().setLabel('Ver avatar global').setEmoji('🌐').setStyle(ButtonStyle.Link).setURL(urlGlobal)
+        new ButtonBuilder().setLabel('Ver avatar del server').setStyle(ButtonStyle.Link).setURL(urlServidor),
+        new ButtonBuilder().setLabel('Ver avatar global').setStyle(ButtonStyle.Link).setURL(urlGlobal)
       );
       filas.push(filaServidor);
     }

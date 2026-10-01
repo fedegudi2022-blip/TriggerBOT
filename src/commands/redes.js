@@ -12,14 +12,14 @@ module.exports = {
 
     const embed = brandEmbed({
       color: COLORS.info,
-      title: '🌐 Redes oficiales de TriGGer.Arena',
-      description: `Sumate a la comunidad en cualquiera de estos espacios:\n\n${lista}\n\n🌐 **Web:** ${WEB}`,
+      title: 'Redes oficiales de TriGGer.Arena',
+      description: `Sumate a la comunidad en cualquiera de estos espacios:\n\n${lista}\n\n**Web:** ${WEB}`,
     });
 
     // Botones de link: hasta 5 por fila (tenemos 3 redes + la web).
     const fila = new ActionRowBuilder().addComponents(
       REDES.map((r) => new ButtonBuilder().setLabel(r.nombre).setEmoji(r.emoji).setURL(r.url).setStyle(ButtonStyle.Link)),
-      new ButtonBuilder().setLabel('Sitio web').setEmoji('🌐').setURL(WEB).setStyle(ButtonStyle.Link)
+      new ButtonBuilder().setLabel('Sitio web').setURL(WEB).setStyle(ButtonStyle.Link)
     );
 
     return interaction.reply({ embeds: [embed], components: [fila] });

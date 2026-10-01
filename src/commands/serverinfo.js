@@ -16,7 +16,7 @@ const BOOSTS_POR_TIER = { 1: 2, 2: 7, 3: 14 };
 // Cuántos boosts faltan para el próximo nivel de boost, con barra de progreso.
 function progresoBoosts(actual, tier) {
   const t = Number(tier) || 0;
-  if (t >= 3) return `**${miles(actual)}** boosts — nivel máximo alcanzado 🎉`;
+  if (t >= 3) return `**${miles(actual)}** boosts — nivel máximo alcanzado`;
   const proximo = t + 1;
   const necesario = BOOSTS_POR_TIER[proximo];
   const faltan = Math.max(necesario - actual, 0);
@@ -61,27 +61,27 @@ module.exports = {
       description: g.description ? `*${g.description}*\n` : '',
       thumbnail: g.iconURL({ size: 256 }),
       fields: [
-        { name: '👑 Dueño', value: `<@${g.ownerId}>`, inline: true },
-        { name: '👥 Miembros', value: `**${miles(g.memberCount)}**\n${miles(humanos)} humanos · ${miles(bots)} bots`, inline: true },
-        { name: '🎂 Creado', value: `<t:${creado}:D>\n<t:${creado}:R> · hace ${antiguedad}`, inline: true },
+        { name: 'Dueño', value: `<@${g.ownerId}>`, inline: true },
+        { name: 'Miembros', value: `**${miles(g.memberCount)}**\n${miles(humanos)} humanos · ${miles(bots)} bots`, inline: true },
+        { name: 'Creado', value: `<t:${creado}:D>\n<t:${creado}:R> · hace ${antiguedad}`, inline: true },
         {
-          name: '💬 Canales',
+          name: 'Canales',
           value:
             `Texto: **${texto}** · Voz: **${voz}**\n` +
             `Categorías: **${categorias}**${foros ? ` · Foros: **${foros}**` : ''}\n` +
             `Total: **${canales.size}**`,
           inline: true,
         },
-        { name: '🎭 Roles', value: `**${miles(g.roles.cache.size)}**`, inline: true },
-        { name: '😀 Emojis y stickers', value: `**${miles(g.emojis.cache.size)}** emojis · **${g.stickers.cache.size}** stickers`, inline: true },
-        { name: '🚀 Boosts', value: progresoBoosts(g.premiumSubscriptionCount ?? 0, g.premiumTier), inline: true },
-        { name: '🛡️ Seguridad', value: `Verificación: **${nivelVerificacion(g.verificationLevel)}**\n2FA del staff: **${g.mfaLevel ? 'Requerida' : 'Opcional'}**`, inline: true },
+        { name: 'Roles', value: `**${miles(g.roles.cache.size)}**`, inline: true },
+        { name: 'Emojis y stickers', value: `**${miles(g.emojis.cache.size)}** emojis · **${g.stickers.cache.size}** stickers`, inline: true },
+        { name: 'Boosts', value: progresoBoosts(g.premiumSubscriptionCount ?? 0, g.premiumTier), inline: true },
+        { name: 'Seguridad', value: `Verificación: **${nivelVerificacion(g.verificationLevel)}**\n2FA del staff: **${g.mfaLevel ? 'Requerida' : 'Opcional'}**`, inline: true },
         {
-          name: '✨ Extras',
+          name: 'Extras',
           value:
-            (g.partnered ? '🤝 Partner de Discord\n' : '') +
-            (g.verified ? '✔️ Server verificado\n' : '') +
-            (g.vanityURLCode ? `🔗 Invitación: \`${g.vanityURLCode}\`\n` : '') +
+            (g.partnered ? 'Partner de Discord\n' : '') +
+            (g.verified ? 'Server verificado\n' : '') +
+            (g.vanityURLCode ? `Invitación: \`${g.vanityURLCode}\`\n` : '') +
             (!g.partnered && !g.verified && !g.vanityURLCode ? '*Nada especial aún*' : '').trim(),
           inline: true,
         },

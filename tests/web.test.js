@@ -239,7 +239,7 @@ describe('formatear — el bloque que viaja al prompt', () => {
       { fuente: 'Web', titulo: 'D', texto: 'w', url: 'https://ejemplo.com/d' },
     ];
     const bloque = web.formatearFuentes(resultados);
-    assert.match(bloque, /^🔎 Fuentes: /);
+    assert.match(bloque, /^Fuentes: /);
     assert.match(bloque, /\[Wikipedia\]\(https:\/\/es\.wikipedia\.org\/wiki\/A\)/);
     assert.match(bloque, /\[Bluelytics\]/);
     assert.ok(!bloque.includes('ejemplo.com/d'), 'no pasa de 3 fuentes');
@@ -247,7 +247,7 @@ describe('formatear — el bloque que viaja al prompt', () => {
     assert.equal((bloque.match(/wikipedia\.org/g) || []).length, 1, 'la URL repetida se cita una vez');
     assert.equal(web.formatearFuentes([]), '');
     assert.equal(web.formatearFuentes(null), '');
-    assert.equal(web.formatearFuentes([{ fuente: 'Web', texto: 'sin url' }]), '🔎 Fuentes: Web');
+    assert.equal(web.formatearFuentes([{ fuente: 'Web', texto: 'sin url' }]), 'Fuentes: Web');
   });
 
   test('respeta el techo de tamaño del bloque', () => {
@@ -331,7 +331,7 @@ describe('buscar — fuentes reales y costos', () => {
     web.usarFetch(impl);
 
     const texto = await web.respuestaSinIA('messi cuantos anios tiene');
-    assert.match(texto, /🔎/);
+    assert.match(texto, /Fuentes/);
     assert.match(texto, /Wikipedia/);
     assert.match(texto, /Lionel Messi/);
     assert.match(texto, /24 de junio de 1987/);

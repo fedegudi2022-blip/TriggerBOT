@@ -31,7 +31,7 @@ function crearComando(accion, def) {
 
       if (receptor.id === interaction.user.id) {
         return interaction.reply({
-          embeds: [brandEmbed({ color: COLORS.warn, title: `${def.emoji} Auto-interacción`, description: AUTO_TEXTOS[accion] })],
+          embeds: [brandEmbed({ color: COLORS.warn, title: 'Auto-interacción', description: AUTO_TEXTOS[accion] })],
           flags: MessageFlags.Ephemeral,
         });
       }
@@ -53,8 +53,8 @@ function crearComando(accion, def) {
       const recibidas = total(interaction.guildId, accion, receptor.id);
 
       const embed = new EmbedBuilder()
-        .setColor(def.emoji === '💥' ? COLORS.error : COLORS.carino)
-        .setDescription(`**${interaction.member.displayName}** ${def.texto} **${receptor}** ${def.emoji}`)
+        .setColor(accion === 'abofetear' ? COLORS.error : COLORS.carino)
+        .setDescription(`**${interaction.member.displayName}** ${def.texto} **${receptor}**`)
         .setFooter({
           text: `Llevás ${veces} ${accion}${veces === 1 ? '' : 's'} a ${receptor.username} • recibió ${recibidas} en total`,
         });

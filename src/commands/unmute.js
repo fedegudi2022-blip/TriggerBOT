@@ -4,17 +4,19 @@ const { logAction } = require('../utils/modlog');
 const { errorEmbed, accionEmbed, COLORS, marcaTiempo } = require('../utils/replies');
 const { motivoNoModerable, avisarPorDM } = require('../utils/moderation');
 const { quiereSilencioso, diferir, resolverMiembro, intentar } = require('../utils/acciones');
+const { exigirStaff } = require('../utils/permisos');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('unmute')
     .setDescription('Le quita el silencio a un usuario')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
     .addUserOption((o) => o.setName('usuario').setDescription('Usuario a des-silenciar').setRequired(true))
     .addStringOption((o) => o.setName('razon').setDescription('Motivo del des-silencio').setMaxLength(500))
     .addBooleanOption((o) => o.setName('silencioso').setDescription('Mostrar la confirmación solo a vos')),
 
   async execute(interaction) {
+    if (!(await exigirStaff(interaction, PermissionFlagsBits.ModerateMembers))) return;
+
     const user = interaction.options.getUser('usuario', true);
     const reason = interaction.options.getString('razon');
     const silencioso = quiereSilencioso(interaction);
@@ -63,14 +65,14 @@ module.exports = {
       });
     }
 
-    void avisarPorDM(user, `🔊 Ya no estás silenciado en **${interaction.guild.name}**. ¡Bienvenido de vuelta!`);
+    void avisarPorDM(user, `Ya no estás silenciado en **${interaction.guild.name}**. ¡Bienvenido de vuelta!`);
 
     // Si además tenía un timeout activo, el rol no alcanza: se lo aclaramos al staff.
     const timeoutActivo = member.communicationDisabledUntilTimestamp;
     return interaction.editReply({
       embeds: [
         accionEmbed({
-          titulo: '🔊 Silencio levantado',
+          titulo: 'Silencio levantado',
           detalle: `${user} puede volver a hablar.`,
           motivo: reason,
           caso,
@@ -80,7 +82,7 @@ module.exports = {
             timeoutActivo && new Date(timeoutActivo).getTime() > Date.now()
               ? [
                   {
-                    name: '⚠️ Ojo: sigue con un silencio temporal',
+                    name: 'Ojo: sigue con un silencio temporal',
                     value: `Tiene un timeout activo hasta ${marcaTiempo(timeoutActivo)} — levantalo con \`/timeout\` → *Quitarlo ahora*.`,
                     inline: false,
                   },

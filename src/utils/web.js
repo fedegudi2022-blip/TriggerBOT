@@ -557,7 +557,7 @@ function formatearFuentes(resultados, { limite = 3 } = {}) {
     partes.push(url ? `[${nombre}](${url})` : nombre);
     if (partes.length >= limite) break;
   }
-  return partes.length ? `🔎 Fuentes: ${partes.join(' · ')}` : '';
+  return partes.length ? `Fuentes: ${partes.join(' · ')}` : '';
 }
 
 // ---------- Chequeo de conexión (lo usa /diag) ----------
@@ -610,7 +610,7 @@ async function respuestaSinIA(consulta, { usuarioId = null, forzar = false } = {
   if (!primero) return '';
   const encabezado = primero.titulo ? `**${primero.titulo}**\n` : '';
   const fuente = primero.url ? ` — [${primero.fuente}](${primero.url})` : ` — ${primero.fuente}`;
-  return `🔎 Busqué esto${fuente}:\n${encabezado}${primero.texto}`;
+  return `Busqué esto${fuente}:\n${encabezado}${primero.texto}`;
 }
 
 // Vacía cache y contadores (tests).

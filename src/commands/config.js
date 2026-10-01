@@ -1,15 +1,15 @@
-const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
-const { getGuildConfig } = require('../store');
-const { panelCompleto, manejarComponente } = require('../utils/configPanel');
+const { SlashCommandBuilder, MessageFlags } = require('discord.js');
+const { panelCompleto, manejarComponente, nivelStaff } = require('../utils/configPanel');
 const { errorEmbed } = require('../utils/replies');
 
 const LEVELS = ['admin', 'mod', 'helper'];
 
-// Devuelve true si el usuario puede usar /config y el panel.
+// Devuelve true si el usuario puede ABRIR el panel: cualquier nivel de staff
+// (admin, mod o helper) o ManageGuild. Las secciones sensibles (roles de staff,
+// escalada y anti-spam/raid) se revalidan aparte y son solo para admin
+// (ver utils/configPanel.js → SECCIONES_SENSIBLES).
 function isMod(interaction) {
-  if (interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) return true;
-  const config = getGuildConfig(interaction.guildId);
-  return LEVELS.some((level) => interaction.member.roles.cache.has(config[`${level}Role`]));
+  return nivelStaff(interaction) !== null;
 }
 
 module.exports = {
@@ -18,12 +18,11 @@ module.exports = {
 
   data: new SlashCommandBuilder()
     .setName('config')
-    .setDescription('Abre el panel de configuración del bot para este servidor (solo staff)')
-  ,
-  // Sin setDefaultMemberPermissions: la política interna (isMod: ManageGuild O roles
-  // admin/mod/helper configurados) es la única fuente de verdad. Si declaráramos
-  // ManageGuild acá, Discord le ocultaría el comando a un moderador configurado
-  // por rol, aunque isMod() lo aceptaría. El chequeo efímero de execute() basta.
+    .setDescription('Abre el panel de configuración del bot para este servidor (solo staff)'),
+  // Sin setDefaultMemberPermissions: la política interna (nivelStaff: ManageGuild,
+  // dueño o roles admin/mod/helper configurados) es la única fuente de verdad. Si
+  // declarara ManageGuild acá, Discord le ocultaría el comando a un moderador
+  // configurado por rol aunque nivelStaff() lo aceptaría.
 
   async execute(interaction) {
     if (!isMod(interaction)) {
@@ -34,9 +33,9 @@ module.exports = {
     }
 
     // El panel es efímero: solo lo ve quien lo abrió, sin ensuciar el canal.
-    await interaction.reply({ ...panelCompleto(interaction.guild), flags: MessageFlags.Ephemeral });
+    await interaction.reply({ ...panelCompleto(interaction), flags: MessageFlags.Ephemeral });
   },
 };
 
-// Los botones/selectores/modales del panel pasan por el mismo chequeo de staff.
+// Los botones/selectores/modales del panel pasan por el mismo chequeo de nivel.
 void manejarComponente;

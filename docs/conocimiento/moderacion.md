@@ -47,5 +47,5 @@ sistema automático.
 
 ## "Me sancionaron y no entiendo por qué"
 Nadie te va a explicar la sanción por chat público: hay que abrir un ticket de
-soporte con el botón 📨 del canal de tickets. El historial de advertencias queda
+soporte con el botón para abrir tickets del canal de soporte. El historial de advertencias queda
 registrado con su motivo, así que el staff puede revisarlo.

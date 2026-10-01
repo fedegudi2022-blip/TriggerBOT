@@ -61,6 +61,6 @@ cuenta: si necesitás algo fuera de esa lista, ticket de soporte.
   `/buscar`
 
 ## Canales de voz temporales
-En el canal de voz «➕ Crear canal» entrás y el bot te crea tu propio canal de voz
+En el canal de voz «Crear canal» entrás y el bot te crea tu propio canal de voz
 (con tus controles: cerrar, renombrar, límite de usuarios, expulsar, etc.). Se borra
 solo cuando queda vacío. Es la forma de tener un canal de voz privado en el server.
