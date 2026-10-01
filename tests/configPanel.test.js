@@ -93,7 +93,7 @@ describe('menú y resumen según nivel', () => {
     const guild = guildFake();
     store.escribir(guild.id, { adminRole: 'r-admin', helperRole: 'r-helper' });
     const fila = panel.filaMenuPrincipal(interaccionFake(guild, { roles: ['r-helper'] }));
-    const valores = fila.components[0].data.options.map((o) => o.value);
+    const valores = fila.toJSON().components[0].options.map((o) => o.value);
 
     assert.ok(!valores.includes('staff'), 'sin staff');
     assert.ok(!valores.includes('escalada'), 'sin escalada');
@@ -105,7 +105,7 @@ describe('menú y resumen según nivel', () => {
     const guild = guildFake();
     store.escribir(guild.id, { adminRole: 'r-admin' });
     const fila = panel.filaMenuPrincipal(interaccionFake(guild, { roles: ['r-admin'] }));
-    const valores = fila.components[0].data.options.map((o) => o.value);
+    const valores = fila.toJSON().components[0].options.map((o) => o.value);
 
     for (const s of ['staff', 'escalada', 'proteccion']) assert.ok(valores.includes(s), `incluye ${s}`);
   });

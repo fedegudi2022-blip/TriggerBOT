@@ -21,7 +21,9 @@ const NIVELES = ['admin', 'mod', 'helper'];
 // Nivel de staff de un miembro, o null si no es staff.
 function nivelDe(guild, member) {
   if (!member) return null;
-  if (guild?.ownerId === member.id) return 'admin';
+  // Ojo: comparar `undefined === undefined` daría dueño falso si faltan los ids
+  // (por ejemplo, miembros armados a mano en tests o eventos a medio hidratar).
+  if (guild?.ownerId && member.id && guild.ownerId === member.id) return 'admin';
   if (member.permissions?.has?.(PermissionFlagsBits.ManageGuild)) return 'admin';
   const config = getGuildConfig(guild?.id);
   for (const nivel of NIVELES) {

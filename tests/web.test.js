@@ -331,7 +331,7 @@ describe('buscar — fuentes reales y costos', () => {
     web.usarFetch(impl);
 
     const texto = await web.respuestaSinIA('messi cuantos anios tiene');
-    assert.match(texto, /Fuentes/);
+    assert.match(texto, /Busqué esto/);
     assert.match(texto, /Wikipedia/);
     assert.match(texto, /Lionel Messi/);
     assert.match(texto, /24 de junio de 1987/);
