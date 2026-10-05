@@ -108,6 +108,22 @@ describe('XP por voz: presencia', () => {
   });
 });
 
+describe('XP por voz: enganche con el evento', () => {
+  test('el evento de voz anota la presencia y el canal también maneja los temporales', async () => {
+    xpVoz.resetear();
+    const { guild } = escenario();
+    const evento = require('../src/events/voiceStateUpdate');
+
+    // Con estados mínimos los canales temporales pueden fallar: van en su propio
+    // try/catch, y lo que se verifica acá es que la XP por voz quede anotada igual.
+    await evento.execute({}, { guild, id: 'a', channelId: CANAL_VOZ });
+    assert.equal(xpVoz.presencias.size, 1, 'sin el enganche, la XP por voz nunca pagaría');
+
+    await evento.execute({}, { guild, id: 'a', channelId: null });
+    assert.equal(xpVoz.presencias.size, 0);
+  });
+});
+
 describe('XP por voz: reglas de anti-abuso', () => {
   test('paga solo cuando corresponde', () => {
     const guild = { id: GUILD, afkChannelId: 'afk' };
