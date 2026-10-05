@@ -171,7 +171,7 @@ El monitoreo hace 2 intentos con timeout de 2,5 s antes de dar un server por ca�
 | `/rolnivel definir/quitar/lista` | Staff: roles que se otorgan automáticamente al alcanzar un nivel                               |
 | `/top [pagina]`                  | Ranking con podio, tu puesto y botones Anterior/Siguiente                                      |
 
-XP por escribir (15-25 por mensaje, máximo 1 por minuto para evitar farmeo) con **bonus acumulables**: +1% por día de racha (tope +35%), **x2 los fines de semana** y +10% de madrugada (00-06 h Argentina). **16 logros desbloqueables con recompensa de XP** (se pagan solos al cumplirlos), rangos por nivel (Novato → Activo → Experto → Veterano → Leyenda) y **roles por nivel**: el staff define con `/rolnivel` qué rol se otorga automáticamente al alcanzar cada nivel. El staff configura el canal de anuncios en el panel `/config → Niveles y XP`.
+XP por escribir (15-25 por mensaje, máximo 1 por minuto para evitar farmeo) con **bonus acumulables**: +1% por día de racha (tope +35%), **x2 los fines de semana** y +10% de madrugada (00-06 h Argentina). **16 logros desbloqueables con recompensa de XP** (se pagan solos al cumplirlos), rangos por nivel (Novato → Activo → Experto → Veterano → Leyenda) y **roles por nivel**: el staff define con `/rolnivel` qué rol se otorga automáticamente al alcanzar cada nivel. También hay **XP por voz**: 8 XP por minuto completo en un canal de voz, hasta 200 por día, y solo si estás acompañado y sin mutearte (no cuentan el canal AFK ni los canales que el staff marque como excluidos). El staff configura el canal de anuncios en el panel `/config → Niveles y XP`.
 
 ### Utilidades
 

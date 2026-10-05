@@ -16,6 +16,7 @@ const logApagado = crearLogger('apagado');
 const logSesion = crearLogger('sesion');
 const logVigilancia = crearLogger('vigilancia');
 const logTempbans = crearLogger('tempbans');
+const logXpVoz = crearLogger('xp-voz');
 
 const client = new Client({
   intents: [
@@ -145,6 +146,18 @@ const pasadaDeTempbans = () =>
   procesarTempbans(client).catch((error) => logTempbans.error('Error al desbanear los baneos temporales vencidos', error));
 setInterval(pasadaDeTempbans, 60 * 1000).unref();
 setTimeout(pasadaDeTempbans, 20 * 1000).unref();
+
+// ---------- XP por voz ----------
+// Paga por minuto completo en canal (con anti-abuso: solo, muteado, canal AFK, canales
+// excluidos y tope diario). La primera pasada siembra a quien ya estaba conectado cuando
+// arrancó el bot, porque esos usuarios no generan evento hasta que se muevan.
+const xpVoz = require('./utils/xpVoz');
+const pasadaDeVoz = () => xpVoz.pasada(client).catch((error) => logXpVoz.error('Error en la XP por voz', error));
+setInterval(pasadaDeVoz, 60 * 1000).unref();
+setTimeout(() => {
+  xpVoz.sembrar(client);
+  pasadaDeVoz();
+}, 20 * 1000).unref();
 
 // ---------- Componentes interactivos (botones, selectores y modales) ----------
 const { manejarBoton } = require('./utils/accionesIA');

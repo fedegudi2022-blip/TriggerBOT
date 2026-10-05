@@ -22,6 +22,12 @@ El XP necesario crece rápido. XP **acumulada** (no por nivel):
 El rango depende de tu nivel: **Novato** (0-4), **Activo** (5-9), **Experto** (10-19),
 **Veterano** (20-29) y **Leyenda** (30 o más).
 
+## XP por voz
+También se gana XP por estar en un canal de voz: **8 XP por minuto completo**, hasta 200 XP
+por día. No cuenta si estás solo en el canal, si estás muteado o sordo, si es el canal AFK
+o si el staff marcó ese canal como excluido: para sumar hay que estar acompañado y con el
+micrófono disponible. Mutearse o cambiarse de canal reinicia el minuto en curso.
+
 ## Cómo veo mi progreso
 - `/estadisticas` — tu ficha: XP, nivel, rango, racha, puesto y los logros que tenés más cerca.
 - `/logros` — todos los logros: los pendientes del más cercano al más lejano con cuánto falta

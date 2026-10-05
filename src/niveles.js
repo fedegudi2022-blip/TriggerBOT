@@ -314,6 +314,35 @@ function procesarMensaje(guildId, userId, fecha = new Date()) {
   };
 }
 
+// Suma XP fuera del flujo de mensajes (por ejemplo por tiempo en canales de voz) y
+// devuelve la misma forma que procesarMensaje, así el anuncio de subida sirve igual.
+// Los logros NO se reclaman acá: se pagan en el próximo mensaje, cuando procesarMensaje
+// vuelve a mirar las condiciones (se miden por estado, así que no se pierde ninguno).
+function otorgarXP(guildId, userId, cantidad) {
+  const premio = Math.max(Math.round(Number(cantidad) || 0), 0);
+  const u = usuario(guildId, userId);
+  const nivelAnterior = u.nivel;
+  if (premio > 0) u.xp += premio;
+  const nivelNuevo = nivelDe(u.xp);
+  u.nivel = nivelNuevo;
+
+  programarGuardado();
+  tocarMarca(guildId);
+  tocar(guildId, 'niveles');
+  marcarSucio(guildId, 'niveles', () => cache[guildId] ?? {});
+
+  return {
+    xpGanado: premio,
+    detalle: null,
+    premioTotal: 0,
+    subio: nivelNuevo > nivelAnterior,
+    nivelAnterior,
+    nivelNuevo,
+    logrosNuevos: [],
+    totalMensajes: u.mensajes,
+  };
+}
+
 function datosDe(guildId, userId) {
   const u = cache[guildId]?.[userId];
   if (!u) return { xp: 0, mensajes: 0, findes: 0, nivel: 0, racha: 0, logros: [] };
@@ -390,6 +419,8 @@ inicializarMarcas();
 
 module.exports = {
   procesarMensaje,
+  otorgarXP,
+  diaArg,
   datosDe,
   ranking,
   posicion,

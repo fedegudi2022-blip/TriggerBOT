@@ -11,7 +11,7 @@ const path = require('node:path');
 
 process.env.TRIGGER_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'tgb-anuncio-'));
 
-const { textoProgreso, anunciarProgreso } = require('../src/events/messageCreate');
+const { textoProgreso, anunciarProgreso } = require('../src/utils/anunciosNivel');
 const { asignarRolesNivel, definirRol } = require('../src/utils/rolesNivel');
 const niveles = require('../src/niveles');
 const { setGuildConfig } = require('../src/store');
