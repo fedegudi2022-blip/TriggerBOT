@@ -15,6 +15,7 @@
 const { getGuildConfig } = require('../store');
 const { miles } = require('./replies');
 const { esStaffDe } = require('./permisos');
+const { esSlash } = require('./guia');
 
 const FRESCURA_CS_MS = 5 * 60 * 1000; // un dato de servidor CS más viejo que esto se aclara
 
@@ -30,6 +31,7 @@ function catalogoComandos(client, { detallado = true } = {}) {
   if (!comandos?.size) return '';
 
   const entradas = [...comandos.values()]
+    .filter(esSlash) // los de menú contextual no se escriben: no van al catálogo
     .map((c) => ({ nombre: c?.data?.name, descripcion: c?.data?.description ?? '' }))
     .filter((c) => c.nombre)
     .sort((a, b) => a.nombre.localeCompare(b.nombre));

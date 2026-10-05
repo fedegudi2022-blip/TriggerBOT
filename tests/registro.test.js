@@ -30,6 +30,8 @@ const MAX_ELECCIONES = 25;
 const TIPOS_CON_ELECCIONES = [3, 4, 10]; // STRING, INTEGER, NUMBER
 const SUBCOMANDO = 1;
 const GRUPO = 2;
+const TIPO_CHAT_INPUT = 1;
+const TIPO_USUARIO = 2;
 
 const comandos = cargarComandos();
 
@@ -85,6 +87,18 @@ function revisarComando(comando) {
   const problemas = [];
   const json = comando.data.toJSON();
   const nombre = json.name;
+
+  // Los comandos de menú contextual tienen reglas propias: hasta 32 caracteres, con
+  // espacios y mayúsculas, y NO llevan descripción (Discord rechaza el registro si la
+  // mandás). Antes este validador los habría dado por inválidos a todos.
+  if ((json.type ?? TIPO_CHAT_INPUT) === TIPO_USUARIO) {
+    if (!nombre || nombre.length > 32 || nombre !== nombre.trim()) {
+      problemas.push(`${nombre ?? '(sin nombre)'}: nombre inválido para menú contextual (1-32, con espacios)`);
+    }
+    if (json.description) problemas.push(`${nombre}: un comando de menú contextual no lleva descripción`);
+    if (json.options) problemas.push(`${nombre}: un comando de menú contextual no lleva opciones`);
+    return { nombre, json, problemas };
+  }
 
   if (!nombre || !RE_NOMBRE.test(nombre) || nombre.length > MAX_NOMBRE) {
     problemas.push(`${nombre ?? '(sin nombre)'}: nombre inválido`);
@@ -176,8 +190,10 @@ describe('registro de comandos (payload real para Discord)', () => {
 
 describe('la guía /help cubre todo lo que existe', () => {
   test('la guía de staff menciona cada comando cargado', () => {
+    // Solo los slash: los comandos de menú contextual no se escriben con "/".
+    const deSlash = comandos.filter((c) => (c.data.toJSON().type ?? 1) === 1);
     const texto = textoDe(construirGuiaStaff(clientFake()));
-    const faltantes = comandos.map((c) => c.data.name).filter((n) => !texto.includes(`\`/${n}\``));
+    const faltantes = deSlash.map((c) => c.data.name).filter((n) => !texto.includes(`\`/${n}\``));
     assert.deepEqual(faltantes, [], `estos comandos no aparecen en /help staff: ${faltantes.join(', ')}`);
   });
 

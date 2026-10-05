@@ -17,10 +17,10 @@ module.exports = {
     .setDescription('Muestra tu ficha de niveles: XP, nivel, rango, racha y logros')
     .addUserOption((o) => o.setName('usuario').setDescription('Usuario a consultar (vacío = vos)')),
 
-  async execute(interaction) {
-    await interaction.deferReply();
-
-    const user = interaction.options.getUser('usuario') ?? interaction.user;
+  // `usuario` se pasa ya resuelto: así el mismo render lo usan el comando slash y el
+  // comando de menú contextual (click derecho sobre alguien → Ficha de niveles).
+  async ejecutar(interaction, usuario = null) {
+    const user = usuario ?? interaction.options.getUser('usuario') ?? interaction.user;
     const guildId = interaction.guild.id;
     const datos = datosDe(guildId, user.id);
     const puesto = posicion(guildId, user.id);
@@ -70,5 +70,10 @@ module.exports = {
     });
 
     return interaction.editReply({ embeds: [embed] });
+  },
+
+  async execute(interaction) {
+    await interaction.deferReply();
+    return module.exports.ejecutar(interaction);
   },
 };

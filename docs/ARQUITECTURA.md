@@ -114,6 +114,14 @@ Ambas devuelven `null` si todo está bien o un mensaje de error listo para mostr
 - La auto-acción (opcional, apagada por defecto) solo toca cuentas nuevas **sin roles** y nunca bots; si Discord rechaza, el resumen lo cuenta (`N rechazada(s) por Discord`).
 - Estado 100 % en memoria a propósito: un reinicio limpia ventanas y cooldowns, no hay datos sensibles que perder.
 
+## Comandos: slash y de menú contextual
+
+- El catálogo lo arma `commandLoader.js` leyendo `src/commands/*.js` y vive en `client.commands`, indexado por nombre. Conviven dos tipos: **slash** (`SlashCommandBuilder`, tipo 1) y **de menú contextual** (`ContextMenuCommandBuilder`, tipo 2, click derecho sobre un usuario). Cada uno tiene su handler en `index.js` y una sola pregunta los separa: `guia.esSlash()`.
+- Los contextuales **no se escriben**: no van en `/help` ni en el catálogo de comandos que ve la IA. Sin el filtro aparecían como `/Ficha de niveles`, que no es algo que exista.
+- Los contextuales **no llevan descripción ni opciones** (Discord rechaza el registro si las mandás) y su nombre admite espacios y mayúsculas hasta 32 caracteres: el validador de `tests/registro.test.js` lo sabe por tipo.
+- Reusan el comando de siempre: `ctx-ficha.js` llama a `estadisticas.ejecutar(interaction, usuario)` y `ctx-warnings.js` a `warnings.ejecutar(...)`. Ninguna lógica se duplica, así no pueden mostrar cosas distintas que el slash.
+- **Batería de contrato** (`tests/comandos-contrato.test.js`): ejecuta todos los comandos contra fakes en tres escenarios (sin permiso, con permiso y sin opciones opcionales) y exige que ninguno tire, que todos contesten y que los de staff avisen en efímero. Los que necesitan infraestructura real están en una lista de excluidos con el motivo a la vista.
+
 ## Niveles (`niveles.js`)
 
 - XP base 15-25 por mensaje con cooldown de 60 s (anti-farm). Bonus acumulables: racha (+1 %/día, tope 35 %), noche (+10 %, 00-06 h Argentina), finde (x2, sáb/dom).

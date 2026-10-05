@@ -152,10 +152,21 @@ function campos(client, categorias, usados) {
   return salida;
 }
 
+// Los comandos de menú contextual (click derecho sobre un usuario) NO son "/comandos":
+// la guía y el catálogo de la IA solo listan slash, y sin esta pregunta aparecerían como
+// `/Ficha de niveles`, que no es algo que se pueda escribir. La respuesta vive en un solo
+// lado para que la guía y la IA no se desincronicen.
+function esSlash(comando) {
+  return (comando?.data?.toJSON?.().type ?? 1) === 1;
+}
+
 // Comandos cargados que no figuran en ninguna categoría: se listan igual para que
 // la guía nunca quede incompleta. En la pública se omiten los de staff.
 function campoOtros(client, usados, { incluirStaff = true } = {}) {
-  const restantes = [...client.commands.keys()].filter((nombre) => !usados.has(nombre) && (incluirStaff || !SOLO_STAFF.has(nombre)));
+  const restantes = [...client.commands.values()]
+    .filter(esSlash)
+    .map((comando) => comando.data.name)
+    .filter((nombre) => !usados.has(nombre) && (incluirStaff || !SOLO_STAFF.has(nombre)));
   if (!restantes.length) return null;
   return {
     name: 'Otros',
@@ -252,6 +263,6 @@ function detalleDeComando(client, nombre) {
     fields,
     footer: 'TriggerBOT • /help para la guía completa',
   });
-}
-
-module.exports = { construirGuia, construirGuiaStaff, detalleDeComando, CATEGORIAS_PUBLICAS, CATEGORIAS_STAFF, SOLO_STAFF };
+}module.exports = {
+  esSlash,
+  construirGuia, construirGuiaStaff, detalleDeComando, CATEGORIAS_PUBLICAS, CATEGORIAS_STAFF, SOLO_STAFF };

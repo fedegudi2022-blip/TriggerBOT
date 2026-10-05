@@ -58,6 +58,8 @@ Los tests corren aislados del `data/` real (usan un directorio temporal) y no to
 
 `.github/workflows/check.yml` corre `npm run check` en cada push a `main` y en cada pull request. El bot se actualiza solo en cada reinicio (`git pull` + `npm install` + arranque), así que sin esta barrera un commit roto no espera a nadie: baja el bot en producción. Con los tests en verde, ese error se ve antes de llegar a `main`.
 
+Además de los comandos escritos, hay dos de **menú contextual** (click derecho sobre un usuario → Aplicaciones): **Ficha de niveles** y **Ver warnings** (staff, oculto para el resto).
+
 Los comandos además se validan con un **smoke test de registro** (`tests/registro.test.js`): recorre el payload real que se le manda a Discord y comprueba nombres, descripciones y opciones. Un comando mal armado hace que Discord rechace el registro **completo**, así que un solo error de tipeo deja al bot sin ningún comando.
 
 ## Comandos

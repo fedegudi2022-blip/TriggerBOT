@@ -260,6 +260,28 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
+// ---------- Comandos de menú contextual (click derecho sobre un usuario) ----------
+// Comparten el mapa de comandos con los slash (mismo nombre, otro tipo), así que el
+// mismo registro los resuelve; cambia solo cómo llega la interacción.
+client.on('interactionCreate', async (interaction) => {
+  if (!interaction.isUserContextMenuCommand()) return;
+
+  const command = client.commands.get(interaction.commandName);
+  if (!command) return;
+
+  try {
+    await command.execute(interaction, client);
+  } catch (error) {
+    logComandos.error(`Error en el comando contextual ${interaction.commandName}`, error, { comando: interaction.commandName });
+    const payload = { content: 'Ocurrió un error al ejecutar el comando.', flags: MessageFlags.Ephemeral };
+    if (interaction.replied || interaction.deferred) {
+      await interaction.followUp(payload).catch(() => {});
+    } else {
+      await interaction.reply(payload).catch(() => {});
+    }
+  }
+});
+
 // ---------- Errores globales (evita caídas por promesas rechazadas) ----------
 process.on('unhandledRejection', (error) => log.error('Promesa rechazada no manejada', error));
 

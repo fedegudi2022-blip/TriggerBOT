@@ -52,6 +52,7 @@ cuenta: si necesitás algo fuera de esa lista, ticket de soporte.
 - Información: `/help`, `/status`, `/ping`, `/userinfo`, `/serverinfo`, `/avatar`
 - Comunidad: `/redes`, `/web`, `/servidores`, `/ip`, `/voz`
 - Niveles: `/estadisticas`, `/logros`, `/top`
+- Menú contextual (click derecho sobre un usuario → Aplicaciones): **Ficha de niveles** y, para el staff, **Ver warnings**. Son los mismos datos que `/estadisticas` y `/warnings`.
 - Utilidades: `/afk`, `/encuesta`, `/dado`, `/moneda`, `/meme`, `/8ball`
 - Interacciones: `/beso`, `/abrazo`, `/caricia`, `/abofetear`, `/morder`,
   `/pellizco`, `/chocar`, `/guino`
