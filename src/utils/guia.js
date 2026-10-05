@@ -63,7 +63,8 @@ const CATEGORIAS_PUBLICAS = [
   },
   {
     nombre: 'Utilidades',
-    comandos: ['afk', 'encuesta'],
+    comandos: ['afk', 'encuesta', 'reportar'],
+    nota: '*`/reportar` abre un ticket privado con el staff para denunciar a un cheater: escribí qué hizo y, si podés, adjuntá la captura o la demo.*',
   },
   {
     nombre: 'Diversión',

@@ -155,7 +155,7 @@ const pingCmd = require('./commands/ping');
 const statusCmd = require('./commands/status');
 const diagCmd = require('./commands/diag');
 const topCmd = require('./commands/top');
-const { manejarBotonTicket, manejarModalTicket } = require('./utils/tickets');
+const { manejarBotonTicket, manejarModalTicket, manejarSelectTicket } = require('./utils/tickets');
 const voz = require('./utils/voz');
 const confirmaciones = require('./utils/confirmaciones');
 client.on('interactionCreate', async (interaction) => {
@@ -188,6 +188,9 @@ client.on('interactionCreate', async (interaction) => {
       await manejarBotonTicket(interaction);
     } else if (interaction.isButton() && interaction.customId.startsWith('voz:')) {
       await voz.manejarComponente(interaction);
+    } else if (interaction.isStringSelectMenu() && interaction.customId.startsWith('ticket:')) {
+      // Selector de tipo de ticket del panel de /ticket publicar.
+      await manejarSelectTicket(interaction);
     } else if (interaction.isStringSelectMenu() && interaction.customId.startsWith('voz:sel:')) {
       await voz.manejarSelect(interaction);
     } else if (interaction.isModalSubmit() && interaction.customId.startsWith('voz:modal:')) {

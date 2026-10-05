@@ -208,6 +208,11 @@ Sin esto, un reinicio del host perdía hasta 5 s de XP y 3 s de subidas.
 
 ## Tickets (`utils/tickets.js`)
 
+- **Tres tipos** en el catálogo `TIPOS`: `soporte`, `apelacion` y `reporte`. Cada uno aporta su etiqueta, el prefijo del canal (`soporte-001`, `reporte-002`…) y las preguntas de su formulario; el panel, los modales, el embed del ticket y el resumen del cierre salen de ahí, así agregar un tipo es agregar una entrada. `/reportar` abre un reporte directo (cualquier miembro, con opción de link a las pruebas).
+- **Estado en la config** (`tickets.activos[canalId]`): número, dueño, tipo, apertura y quién lo reclamó. Sobrevive un reinicio, y el topic del canal (última fuente) sigue sirviendo para tickets abiertos antes de este cambio.
+- **Reclamar / Agregar usuario**: el primero que reclama deja el ticket a su nombre (el segundo recibe el aviso de quién lo atiende); agregar usuario da acceso al canal por ID o mención y queda anunciado.
+- **Calificación al cerrar**: al dueño le llega un DM con botones 1-5 (el `customId` lleva el guild porque en DM no hay guild). El pendiente vive en `tickets.encuestas[userId]` y las respuestas en `tickets.calificaciones` (últimas 100), con el promedio de las últimas en el aviso al canal de logs. Si el DM no sale, no queda encuesta pendiente.
+- **Resumen del cierre** (canal, logs y transcript): tipo, abierto por, atendido por (o "nadie lo reclamó"), cerrado por, duración y cantidad de mensajes.
 - Apertura con **bloqueo por usuario**: dos clics casi simultáneos no crean dos canales (el segundo ve el bloqueo activo y no hace nada).
 - Transcript .txt hasta 50.000 mensajes (500 páginas). Si un `fetch` falla a mitad o se alcanza el tope, el transcript queda marcado como **INCOMPLETO**.
 - **Adjuntos grandes**: si el transcript supera el límite de adjunto de Discord (~8 MiB), `dividirTranscript()` lo parte en varios archivos numerados (`-parte-1`, `-parte-2`…) en vez de que el envío falle.

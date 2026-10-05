@@ -73,7 +73,8 @@ Los comandos además se validan con un **smoke test de registro** (`tests/regist
 | `/voz activar/hub/categoria/formato/contador/logs/estado` | Staff: activa los **canales de voz temporales** (ver abajo)                                                            | Staff (config)         |
 | `/servidores`                                             | Estado en vivo de los servers CS 1.6 (jugadores, mapa, IP). Staff: `publicar:true` fija un panel que se actualiza solo | Todos                  |
 | `/ip [servidor]`                                          | IP para conectarte, lista para copiar. Con filtro por nombre muestra mapa y jugadores de ahora                         | Todos                  |
-| `/ticket publicar/categoria/logs/mensaje`                 | Panel de soporte con botón, canales privados por ticket y transcript al cerrar                                         | Staff (config)         |
+| `/ticket publicar/categoria/logs/mensaje`                 | Panel de soporte con selector de tipo, canales privados por ticket, reclamar/agregar gente y transcript al cerrar       | Staff (config)         |
+| `/reportar usuario pruebas [adjunto]`                     | Abre un ticket de reporte con pruebas (cualquier miembro)                                                              | Todos                  |
 | `/diag`                                                   | Diagnóstico operativo: qué está roto y qué hacer, incluida la salida a internet del host                               | Staff                  |
 | `/buscar consulta`                                        | Búsqueda web a mano: resultados crudos con su fuente, y cómo clasificaría el bot esa pregunta                          | Staff                  |
 | `/help user [comando]`                                    | Guía de comandos para usuarios, por categorías; con `comando` muestra el detalle y el permiso que exige                | Todos                  |
@@ -118,9 +119,10 @@ Los comandos además se validan con un **smoke test de registro** (`tests/regist
 
 Se arma en 3 pasos: `/ticket logs` (dónde quedan los transcripts) → `/ticket categoria` (dónde se crean los canales) → `/ticket publicar` en tu canal de soporte.
 
-- **Panel con botón**: cada usuario abre su ticket con un clic; se crea un canal privado `ticket-001` visible solo por él y el staff (roles admin/mod/helper de `/config`). Un ticket abierto por persona.
-- **Al abrir**: el usuario cuenta el motivo en una ventana emergente y queda registrado con su cuenta.
-- **Al cerrar** (botón 🔒, disponible para el dueño o el staff): el bot genera un **transcript .txt** con toda la conversación, lo manda al canal de logs, se lo deja por **DM al usuario** y borra el canal 30 segundos después. Todo queda registrado.
+- **Panel con selector de tipo**: cada usuario elige **Soporte**, **Apelación** o **Reporte de cheater** y completa el formulario de ese tipo; se crea un canal privado `soporte-001` / `apelacion-002` / `reporte-003` visible solo por él y el staff (roles admin/mod/helper de `/config`). Un ticket abierto por persona. También hay `/reportar usuario pruebas [adjunto]` para reportar sin pasar por el panel.
+- **Al abrir**: el formulario del tipo registra lo que importa (motivo, qué sanción apelás, a quién reportás y con qué pruebas).
+- **Para el staff**: botón **Reclamar** (deja el ticket a nombre de quien lo atiende y avisa si ya lo tiene otro) y **Agregar usuario** (da acceso al canal por ID o mención).
+- **Al cerrar** (botón 🔒, disponible para el dueño o el staff): el bot arma un **resumen** (tipo, abierto por, atendido por, cerrado por, duración, mensajes), genera un **transcript .txt** con toda la conversación, lo manda al canal de logs, se lo deja por **DM al usuario** junto con una **encuesta 1-5** para calificar la atención, y borra el canal 30 segundos después. Todo queda registrado.
 - **Personalizable**: `/ticket mensaje` cambia el texto del panel. También se configura desde `/config → Tickets de soporte`.
 
 ### Protección automática (anti-spam y anti-raid)

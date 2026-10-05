@@ -1,5 +1,12 @@
 const { SlashCommandBuilder, MessageFlags } = require('discord.js');
-const { construirGuia, construirGuiaStaff, detalleDeComando, SOLO_STAFF } = require('../utils/guia');
+const { construirGuia, construirGuiaStaff, detalleDeComando, SOLO_STAFF, CATEGORIAS_PUBLICAS } = require('../utils/guia');
+
+// Orden en el que la guía pública presenta sus comandos (Información primero,
+// Diversión al final). Discord deja 25 opciones de autocompletado como máximo y hay
+// más comandos públicos que eso: con la casilla vacía se muestran primero los de las
+// categorías y en ese orden; lo que no esté en ninguna categoría va después, alfabético.
+// Sin esto, el orden alfabético puro dejaba afuera comandos como /top.
+const DESTACADOS = new Map(CATEGORIAS_PUBLICAS.flatMap((c) => c.comandos).map((nombre, i) => [nombre, i]));
 const { errorEmbed } = require('../utils/replies');
 const { esStaff } = require('../utils/permisos');
 
@@ -28,10 +35,13 @@ module.exports = {
   async autocomplete(interaction) {
     const esStaffSub = interaction.options.getSubcommand() === 'staff';
     const tipeado = String(interaction.options.getFocused() ?? '').toLowerCase();
+    // En la guía de staff va alfabético a secas: ahí no hay nada que destacar por encima
+    // del resto y el que la usa sabe qué busca.
+    const prioridad = (nombre) => (esStaffSub ? 0 : (DESTACADOS.get(nombre) ?? DESTACADOS.size));
     const opciones = [...interaction.client.commands.keys()]
       .filter((nombre) => esStaffSub || !SOLO_STAFF.has(nombre))
       .filter((nombre) => nombre.includes(tipeado))
-      .sort()
+      .sort((a, b) => prioridad(a) - prioridad(b) || a.localeCompare(b))
       .slice(0, 25)
       .map((nombre) => ({ name: `/${nombre}`, value: nombre }));
     await interaction.respond(opciones);
