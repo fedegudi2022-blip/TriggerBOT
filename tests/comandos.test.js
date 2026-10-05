@@ -22,6 +22,7 @@ const store = require('../src/store');
 
 const kick = require('../src/commands/kick');
 const ban = require('../src/commands/ban');
+const tempban = require('../src/commands/tempban');
 const timeout = require('../src/commands/timeout');
 const warn = require('../src/commands/warn');
 const clear = require('../src/commands/clear');
@@ -550,6 +551,126 @@ describe('/ban', () => {
     const boton = await clickBoton(interaction, deshacer.custom_id);
     assert.equal(desbaneado, 'user-undo');
     assert.match(textoDe(boton._edit.embeds[0]), /Baneo deshecho/);
+  });
+});
+
+describe('/tempban', () => {
+  test('no banea hasta confirmar y al confirmar deja el desbaneo pendiente', async () => {
+    const guild = guildFake();
+    const objetivo = miembroFake('user-tb');
+    guild.members.cache.set('user-tb', objetivo);
+    let baneado = null;
+    guild.members.ban = async (id, opciones) => {
+      baneado = { id, opciones };
+    };
+    const { interaction, llamadas } = interaccionFake(guild, { opciones: { usuario: objetivo.user, duracion: '2h', razon: 'spam' } });
+
+    await tempban.execute(interaction);
+
+    assert.equal(baneado, null, 'el panel de confirmación no toca la API');
+    const panel = llamadas.replies.at(-1) ?? llamadas.edits.at(-1);
+    assert.match(textoDe(panel.embeds[0]), /Confirmar baneo temporal/);
+    assert.match(textoDe(panel.embeds[0]), /2 h/, 'el panel dice la duración en claro');
+    assert.match(textoDe(panel.embeds[0]), /Se desbanea solo el <t:\d+:f>/, 'y cuándo vuelve');
+
+    const boton = await apretarBoton(interaction, llamadas);
+
+    assert.equal(baneado.id, 'user-tb');
+    assert.match(textoDe(boton._edit.embeds[0]), /Baneo temporal/);
+    assert.match(guild.canalModlog.enviados.at(-1).embeds[0].data.title, /Baneo temporal \(tempban\)/);
+
+    const pendientes = store.leer(guild.id).tempbans;
+    assert.equal(pendientes.length, 1, 'queda anotado para desbanearlo solo');
+    assert.equal(pendientes[0].userId, 'user-tb');
+    assert.equal(pendientes[0].razon, 'spam');
+    // Vence dentro de ~2 horas (con margen por el tiempo del test).
+    assert.ok(pendientes[0].hasta > Date.now() + 119 * 60_000, 'vence dentro de 2 horas');
+    assert.ok(pendientes[0].hasta < Date.now() + 121 * 60_000, 'ni mucho más');
+  });
+
+  test('sin duración usa 1 día por defecto', async () => {
+    const guild = guildFake();
+    const objetivo = miembroFake('user-tb-default');
+    guild.members.cache.set('user-tb-default', objetivo);
+    guild.members.ban = async () => {};
+    const { interaction, llamadas } = interaccionFake(guild, { opciones: { usuario: objetivo.user } });
+
+    await tempban.execute(interaction);
+    await apretarBoton(interaction, llamadas);
+
+    const pendiente = store.leer(guild.id).tempbans[0];
+    assert.ok(pendiente.hasta > Date.now() + 23 * 3600_000, 'un día');
+  });
+
+  test('una duración que no entiende corta antes de la confirmación', async () => {
+    const guild = guildFake();
+    const objetivo = miembroFake('user-tb-mal');
+    guild.members.cache.set('user-tb-mal', objetivo);
+    let baneado = null;
+    guild.members.ban = async () => {
+      baneado = true;
+    };
+    const { interaction, llamadas } = interaccionFake(guild, { opciones: { usuario: objetivo.user, duracion: 'una semana' } });
+
+    await tempban.execute(interaction);
+
+    assert.match(textoDe(llamadas.replies[0].embeds[0]), /No pude interpretar la duración/);
+    assert.equal(baneado, null);
+    assert.equal(store.leer(guild.id).tempbans, undefined);
+  });
+
+  test('fuera del rango permitido se rechaza en vez de recortar la duración en silencio', async () => {
+    const guild = guildFake();
+    const objetivo = miembroFake('user-tb-rango');
+    guild.members.cache.set('user-tb-rango', objetivo);
+    const { interaction, llamadas } = interaccionFake(guild, { opciones: { usuario: objetivo.user, duracion: '45d' } });
+
+    await tempban.execute(interaction);
+
+    assert.match(textoDe(llamadas.replies[0].embeds[0]), /No pude interpretar la duración/);
+    assert.equal(store.leer(guild.id).tempbans, undefined);
+  });
+
+  test('si Discord rechaza el baneo no queda un desbaneo pendiente', async () => {
+    const guild = guildFake();
+    const objetivo = miembroFake('user-tb-fail');
+    guild.members.cache.set('user-tb-fail', objetivo);
+    guild.members.ban = async () => {
+      throw new Error('Missing Permissions');
+    };
+    const { interaction, llamadas } = interaccionFake(guild, { opciones: { usuario: objetivo.user, duracion: '1h' } });
+
+    await tempban.execute(interaction);
+    const boton = await apretarBoton(interaction, llamadas);
+
+    assert.match(textoDe(boton._edit.embeds[0]), /No se pudo banear/);
+    assert.equal(store.leer(guild.id).tempbans, undefined, 'no se anota un desbaneo de un baneo que no pasó');
+  });
+
+  test('el botón Deshacer desbanea y cancela el pendiente', async () => {
+    const guild = guildFake();
+    const objetivo = miembroFake('user-tb-undo');
+    guild.members.cache.set('user-tb-undo', objetivo);
+    guild.members.ban = async () => {};
+    let desbaneado = null;
+    guild.members.unban = async (id) => {
+      desbaneado = id;
+    };
+    const { interaction, llamadas } = interaccionFake(guild, { opciones: { usuario: objetivo.user, duracion: '3h' } });
+
+    await tempban.execute(interaction);
+    const confirmado = await apretarBoton(interaction, llamadas);
+    assert.equal(store.leer(guild.id).tempbans.length, 1);
+
+    const botones = confirmado._edit.components[0].toJSON().components;
+    const deshacer = botones.find((b) => String(b.custom_id).startsWith('conf:deshacer:'));
+    assert.ok(deshacer, 'el resultado ofrece Deshacer');
+
+    const boton = await clickBoton(interaction, deshacer.custom_id);
+
+    assert.equal(desbaneado, 'user-tb-undo');
+    assert.match(textoDe(boton._edit.embeds[0]), /Baneo temporal deshecho/);
+    assert.equal(store.leer(guild.id).tempbans, undefined, 'sin desbaneos automáticos fantasma');
   });
 });
 

@@ -15,6 +15,7 @@ const logDiscord = crearLogger('discord');
 const logApagado = crearLogger('apagado');
 const logSesion = crearLogger('sesion');
 const logVigilancia = crearLogger('vigilancia');
+const logTempbans = crearLogger('tempbans');
 
 const client = new Client({
   intents: [
@@ -135,6 +136,15 @@ const pasadaDeVigilancia = () => vigilar(client).catch((error) => logVigilancia.
 setInterval(pasadaDeVigilancia, INTERVALO_VIGILANCIA_MS).unref();
 // Primera pasada a los 2 minutos: deja que la base, el monitoreo y la IA se inicialicen.
 setTimeout(pasadaDeVigilancia, 2 * 60 * 1000).unref();
+
+// ---------- Baneos temporales: desbaneo automático al vencer ----------
+// Cada minuto revisa los /tempban vencidos, desbanea y cierra el caso. La primera
+// pasada va a los 20 s: si el bot estuvo caído, los vencidos se levantan enseguida.
+const { procesar: procesarTempbans } = require('./utils/tempbans');
+const pasadaDeTempbans = () =>
+  procesarTempbans(client).catch((error) => logTempbans.error('Error al desbanear los baneos temporales vencidos', error));
+setInterval(pasadaDeTempbans, 60 * 1000).unref();
+setTimeout(pasadaDeTempbans, 20 * 1000).unref();
 
 // ---------- Componentes interactivos (botones, selectores y modales) ----------
 const { manejarBoton } = require('./utils/accionesIA');

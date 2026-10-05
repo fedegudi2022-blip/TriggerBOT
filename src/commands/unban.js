@@ -1,9 +1,10 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const { logAction } = require('../utils/modlog');
-const { errorEmbed, accionEmbed, COLORS } = require('../utils/replies');
+const { nombreDe, errorEmbed, accionEmbed, COLORS } = require('../utils/replies');
 const { avisarPorDM } = require('../utils/moderation');
 const { quiereSilencioso, diferir, intentar } = require('../utils/acciones');
 const { exigirStaff } = require('../utils/permisos');
+const { cancelar } = require('../utils/tempbans');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -47,8 +48,12 @@ module.exports = {
     }
 
     const resultado = await intentar('Discord rechazó el desbaneo', () =>
-      interaction.guild.members.unban(userId, reason ? `${reason} — por ${interaction.user.tag}` : `por ${interaction.user.tag}`)
+      interaction.guild.members.unban(userId, reason ? `${reason} — por ${nombreDe(interaction.user)}` : `por ${nombreDe(interaction.user)}`)
     );
+
+    // Si era un /tempban, el pendiente se cancela: el desbaneo automático ya no tiene
+    // nada que hacer (y no queda una entrada fantasma en la config del server).
+    const teniaPendiente = resultado.ok ? cancelar(interaction.guild.id, userId) : false;
 
     const caso = logAction(interaction.guild, {
       action: resultado.ok ? 'Desbaneo (unban)' : 'Desbaneo (unban) — rechazado',
@@ -56,12 +61,12 @@ module.exports = {
       target: ban.user,
       moderator: interaction.user,
       reason,
-      extra: resultado.ok ? undefined : resultado.error,
+      extra: resultado.ok ? (teniaPendiente ? 'Se canceló el desbaneo automático pendiente.' : undefined) : resultado.error,
     });
 
     if (!resultado.ok) {
       return interaction.editReply({
-        embeds: [errorEmbed(`No se pudo desbanear a **${ban.user.tag}**.\n> ${resultado.error}`, 'La acción no se aplicó')],
+        embeds: [errorEmbed(`No se pudo desbanear a **${nombreDe(ban.user)}**.\n> ${resultado.error}`, 'La acción no se aplicó')],
       });
     }
 
@@ -71,12 +76,14 @@ module.exports = {
       embeds: [
         accionEmbed({
           titulo: 'Desbaneo',
-          detalle: `**${ban.user.tag}** fue desbaneado. Ya puede volver a entrar al servidor.`,
+          detalle: `**${nombreDe(ban.user)}** fue desbaneado. Ya puede volver a entrar al servidor.`,
           motivo: reason,
           caso,
           moderador: interaction.member?.displayName ?? interaction.user.username,
           thumbnail: ban.user.displayAvatarURL({ size: 128 }),
-          footer: 'si vuelve a entrar, el bot lo recibe como miembro nuevo',
+          footer: teniaPendiente
+            ? 'también cancelé el desbaneo automático que estaba pendiente'
+            : 'si vuelve a entrar, el bot lo recibe como miembro nuevo',
         }),
       ],
     });

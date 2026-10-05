@@ -11,12 +11,13 @@ const { brandEmbed, COLORS } = require('./replies');
 // Comandos que solo puede usar el staff: no se muestran en la guía pública.
 const SOLO_STAFF = new Set([
   'ban',
+  'tempban',
   'unban',
   'softban',
   'kick',
   'warn',
   'warnings',
-  'quitarnota',
+  'unwarn',
   'casos',
   'nota',
   'timeout',
@@ -78,11 +79,12 @@ const CATEGORIAS_STAFF = [
     comandos: [
       'warn',
       'warnings',
-      'quitarnota',
+      'unwarn',
       'nota',
       'casos',
       'kick',
       'ban',
+      'tempban',
       'unban',
       'softban',
       'timeout',
@@ -92,7 +94,9 @@ const CATEGORIAS_STAFF = [
       'lockdown',
       'slowmode',
     ],
-    nota: '*Además: anti-spam y anti-raid automáticos (se prenden en `/config`).*',
+    nota:
+      '*`/tempban` banea por un tiempo y el bot desbanea solo. Además: anti-spam, automod por contenido y anti-raid ' +
+      'automáticos (se prenden en `/config`).*',
   },
   {
     nombre: 'Configuración',

@@ -79,6 +79,14 @@ Ambas devuelven `null` si todo está bien o un mensaje de error listo para mostr
 - Tras aplicarla, `/ban` y `/mute` (y `/lockdown bloquear`) ofrecen **Deshacer** (desbanear / quitar el rol Silenciado / desbloquear) con otro token de 60 s. Un kick o un borrado masivo no se pueden revertir con la API, así que solo confirman. El resultado se anuncia en el canal salvo `silencioso:true`; con `alEnviar`, `/clear` borra su confirmación pública a los 5 s para no dejar el mensaje pegado en el canal.
 - Los manejadores de los botones `conf:` y del **autocompletado** se despachan en `index.js` (`command.autocomplete()`): antes el autocompletado de motivos de `/warn`, `/plantillas`, etc. nunca respondía.
 
+## Baneos temporales (`tempbans.js` + `/tempban`)
+
+- `/tempban` acepta `30m`, `12h`, `7d` (sin unidad = minutos, de 1 minuto a 30 días) y pasa por el mismo panel de confirmación que `/ban`, con **Deshacer (desbanear)**.
+- Los pendientes viven en la config del server (`c.tempbans`), así que sobreviven reinicios y viajan con el respaldo de MariaDB. Se guardan **recién cuando el baneo salió bien**: un rechazo de Discord no deja una entrada que después "desbanee" a nadie.
+- `index.js` corre `procesar()` cada minuto (y a los 20 s del arranque, por si el bot estuvo caído). La pasada desbanea, deja el caso en el mod-log, avisa por DM y borra la entrada.
+- **Sin mentir**: si Discord rechaza el desbaneo, la entrada NO se borra: se reintenta en la próxima pasada y, tras 5 intentos, se descarta dejando el caso `Baneo temporal vencido — no se pudo desbanear`. Un baneo que ya no existe (error `10026`, lo levantó el staff a mano) cuenta como terminado.
+- `/unban` y el botón Deshacer de `/tempban` cancelan el pendiente (`cancelar()`), así no queda una entrada fantasma.
+
 ## Protección automática (`proteccion.js`)
 
 **Anti-spam** (por mensaje, en `messageCreate`):
