@@ -29,9 +29,16 @@ let cache = {};
 // Marca del último cambio local POR servidor (comparación guild-por-guild con la nube).
 // Al arrancar usa el mtime del archivo; cada mutación la actualiza con Date.now().
 const marcasCambio = new Map();
+
+// Versión de los datos POR servidor: sube en cada mutación real (mismo punto que la
+// marca de cambio) y es lo que invalida la caché del ranking. Va por contador y no por
+// timestamp porque dos cambios dentro del mismo milisegundo dejarían la caché vieja.
+const versiones = new Map();
+
 function tocarMarca(guildId) {
   const previa = marcasCambio.get(guildId) ?? 0;
   marcasCambio.set(guildId, Math.max(previa, Date.now()));
+  versiones.set(guildId, (versiones.get(guildId) ?? 0) + 1);
 }
 
 // Al arrancar: si el archivo existía, cada guild hereda su mtime como marca base.
@@ -277,21 +284,37 @@ function datosDe(guildId, userId) {
   return { ...u, logros: [...(u.logros ?? [])] };
 }
 
-// Ranking del servidor por XP. Los empates se desempatan por mensajes y después por id:
-// sin eso el orden dependía del orden de las claves del archivo, o sea que dos personas
-// con la misma XP podían intercambiarse entre reinicios (y /top con /estadisticas).
-function ranking(guildId, limite = 10) {
+// Ranking completo del servidor, ordenado y CACHEADO por versión de los datos:
+// `posicion()` lo pedía entero y reordenaba toda la guild en cada llamada, y
+// utils/contexto.js lo llama en cada mención a la IA. La caché se tira sola cuando los
+// datos del guild cambian (procesarMensaje, escribir, restauración desde la nube).
+// Los empates se desempatan por mensajes y después por id: sin eso el orden dependía del
+// orden de las claves del archivo, o sea que dos personas con la misma XP podían
+// intercambiarse entre reinicios (y /top con /estadisticas).
+const cacheRanking = new Map();
+
+function rankingCompleto(guildId) {
+  const version = versiones.get(guildId) ?? 0;
+  const guardado = cacheRanking.get(guildId);
+  if (guardado?.version === version) return guardado.lista;
+
   const guild = cache[guildId] || {};
-  return Object.entries(guild)
+  const lista = Object.entries(guild)
     .map(([userId, datos]) => ({ userId, xp: datos.xp, nivel: datos.nivel, mensajes: datos.mensajes }))
-    .sort((a, b) => b.xp - a.xp || b.mensajes - a.mensajes || a.userId.localeCompare(b.userId))
-    .slice(0, limite);
+    .sort((a, b) => b.xp - a.xp || b.mensajes - a.mensajes || a.userId.localeCompare(b.userId));
+
+  cacheRanking.set(guildId, { version, lista });
+  return lista;
 }
 
-// Posición de un usuario en el ranking (1 = primero).
+function ranking(guildId, limite = 10) {
+  return rankingCompleto(guildId).slice(0, limite);
+}
+
+// Posición de un usuario en el ranking (1 = primero; 0 si no tiene actividad).
 function posicion(guildId, userId) {
-  const lista = ranking(guildId, 9999);
-  return lista.findIndex((e) => e.userId === userId) + 1;
+  const indice = rankingCompleto(guildId).findIndex((e) => e.userId === userId);
+  return indice < 0 ? 0 : indice + 1;
 }
 
 // Cantidad total de usuarios con actividad registrada en el server.

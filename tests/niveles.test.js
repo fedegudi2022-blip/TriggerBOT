@@ -171,3 +171,49 @@ describe('Warns', () => {
     assert.ok((warns.marcasPorGuild()['g-warns-marcas'] ?? 0) > antes);
   });
 });
+
+describe('ranking cacheado', () => {
+  const G = 'g-cache';
+  const dato = (xp, mensajes = 1, nivel = 0) => ({ xp, mensajes, nivel });
+
+  test('el orden es estable entre llamadas y los empates se desempatan por mensajes', () => {
+    niveles.escribir(G, { a: dato(500, 10, 3), b: dato(500, 20, 3), c: dato(900, 1, 5) });
+    const esperado = ['c', 'b', 'a'];
+    assert.deepEqual(
+      niveles.ranking(G).map((e) => e.userId),
+      esperado
+    );
+    assert.deepEqual(
+      niveles.ranking(G).map((e) => e.userId),
+      esperado
+    );
+  });
+
+  test('posicion refleja el cambio apenas ocurre (la caché se invalida)', () => {
+    niveles.escribir(G, { a: dato(100), b: dato(200) });
+    assert.equal(niveles.posicion(G, 'a'), 2);
+
+    niveles.escribir(G, { a: dato(900, 3, 3), b: dato(200) });
+    assert.equal(niveles.posicion(G, 'a'), 1, 'el ranking viejo no puede quedar pegado');
+  });
+
+  test('la XP que entra por mensaje también invalida la caché', () => {
+    niveles.escribir(G, { viejo: dato(5) });
+    assert.equal(niveles.posicion(G, 'nuevo'), 0, 'todavía no existe');
+
+    niveles.procesarMensaje(G, 'nuevo', fechaSemana());
+    assert.equal(niveles.posicion(G, 'nuevo'), 1);
+  });
+
+  test('sin actividad no hay posición', () => {
+    niveles.escribir(G, { a: dato(100) });
+    assert.equal(niveles.posicion(G, 'nadie'), 0);
+  });
+
+  test('lo que se escribe en un servidor no ensucia el ranking de otro', () => {
+    niveles.escribir('g-cache-A', { a: dato(10) });
+    niveles.escribir('g-cache-B', { b: dato(20) });
+    assert.equal(niveles.ranking('g-cache-A')[0].userId, 'a');
+    assert.equal(niveles.ranking('g-cache-B')[0].userId, 'b');
+  });
+});

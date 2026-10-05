@@ -177,6 +177,22 @@ describe('/top, presentación del ranking', () => {
     assert.ok(interaccion.capturado.reply.content.includes('Todavía no hay actividad registrada'), interaccion.capturado.reply.content);
   });
 
+  test('no le suena el celular a los diez del ranking (allowedMentions vacío)', async () => {
+    sembrar(3);
+    const interaccion = interaccionFake();
+    await top.execute(interaccion);
+    assert.deepEqual(interaccion.capturado.reply.allowedMentions, { parse: [] }, 'los nombres se ven, los avisos no salen');
+
+    const boton = interaccionFake({ boton: 'top:page:1' });
+    await top.ejecutar(boton, 1);
+    assert.deepEqual(boton.capturado.update.allowedMentions, { parse: [] });
+
+    niveles.escribir(GUILD, {});
+    const vacio = interaccionFake();
+    await top.execute(vacio);
+    assert.deepEqual(vacio.capturado.reply.allowedMentions, { parse: [] });
+  });
+
   test('si un botón pide una página que ya no existe, se limpian los componentes', async () => {
     niveles.escribir(GUILD, {});
     const interaccion = interaccionFake({ boton: 'top:page:3' });

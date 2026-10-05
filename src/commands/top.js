@@ -6,6 +6,11 @@ const POR_PAGINA = 10;
 const MAX_PAGINAS = 10;
 const TOPE = POR_PAGINA * MAX_PAGINAS; // el ranking se corta a 100 a propósito
 
+// El ranking nombra a diez personas por página: sin esto Discord las notifica a todas
+// cada vez que alguien mira el /top. `parse: []` desactiva el aviso pero NO el nombre:
+// la mención se sigue viendo igual, solo deja de sonarle el celular a diez personas.
+const SIN_PINGS = { parse: [] };
+
 // Un renglón por usuario, a todo el ancho del embed. Antes los puestos 4+ se repartían en
 // tres campos inline (un tercio del ancho cada uno) y cada renglón se cortaba al medio,
 // así que la tabla era ilegible. El podio va entero en negrita; del 4º para abajo solo se
@@ -59,6 +64,7 @@ async function ejecutar(interaction, paginaPedida = 1) {
       content:
         'Todavía no hay actividad registrada en este servidor: el ranking se arma con la XP que se gana escribiendo (máximo un mensaje por minuto).',
       flags: MessageFlags.Ephemeral,
+      allowedMentions: SIN_PINGS,
     });
   }
 
@@ -99,8 +105,8 @@ async function ejecutar(interaction, paginaPedida = 1) {
     );
   }
 
-  if (esBoton) return interaction.update({ embeds: [embed], components: componentes });
-  return interaction.reply({ embeds: [embed], components: componentes });
+  if (esBoton) return interaction.update({ embeds: [embed], components: componentes, allowedMentions: SIN_PINGS });
+  return interaction.reply({ embeds: [embed], components: componentes, allowedMentions: SIN_PINGS });
 }
 
 module.exports = {
