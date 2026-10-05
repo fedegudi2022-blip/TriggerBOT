@@ -94,8 +94,8 @@ function responderPreguntaModeracion(texto) {
   if (/\b(silenciar|silencia|silencio|muteo|mutear|mute|timeout|timear)\b/.test(texto)) {
     return 'Usá `/timeout usuario duración` (temporal) o `/mute usuario` (con rol, hasta que lo quiten).';
   }
-  if (/\b(warns?|advertencias?|quitarnota)\b/.test(texto)) {
-    return 'Al **3er `/warn`** el usuario queda silenciado 1 hora automático. Con `/warnings` ves el historial y con `/quitarnota` borrás una.';
+  if (/\b(warns?|advertencias?|unwarn)\b/.test(texto)) {
+    return 'Al **3er `/warn`** el usuario queda silenciado 1 hora automático. Con `/warnings` ves el historial y con `/unwarn` borrás una.';
   }
   if (/\b(desbanear|desbaneo|desbanes|unban)\b/.test(texto)) {
     return 'Con `/unban usuario_id` revocás un baneo (la ID se copia con clic derecho sobre el usuario).';

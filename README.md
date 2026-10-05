@@ -92,7 +92,7 @@ Los comandos además se validan con un **smoke test de registro** (`tests/regist
 | ---------------------------------------- | ----------------------------------------------------------------------------------------------- | -------- |
 | `/warn usuario [razon]`                  | Advierte a un usuario. **Al 3er warn: timeout de 1 h automático**                               | Mods     |
 | `/warnings usuario`                      | Historial de advertencias, paginado con botones (aguanta historiales largos)                    | Mods     |
-| `/quitarnota usuario numero [razon]`     | Elimina una advertencia del historial                                                           | Mods     |
+| `/unwarn usuario numero [razon]`     | Elimina una advertencia del historial                                                           | Mods     |
 | `/nota agregar/ver/quitar`               | Notas internas sobre un usuario. **No cuentan** para el silencio automático de 3 warn           | Mods     |
 | `/casos [caso] [usuario]`                | Consulta el registro de casos del mod-log: uno puntual por número o el historial de una persona | Mods     |
 | `/kick usuario [razon]`                  | Expulsa a un usuario                                                                            | Mods     |

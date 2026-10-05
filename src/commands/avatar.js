@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, MessageFlags, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const { brandEmbed, COLORS } = require('../utils/replies');
+const { nombreDe, brandEmbed, COLORS } = require('../utils/replies');
 
 // Formatos que ofrece Discord y para qué sirve cada uno.
 const FORMATOS = [
@@ -38,7 +38,7 @@ module.exports = {
 
     const embed = brandEmbed({
       color,
-      title: `Avatar de ${user.tag}`,
+      title: `Avatar de ${nombreDe(user)}`,
       description:
         `[Descargar PNG · 1024px](${urlGlobal})` +
         (esGif ? ' · **¡tiene avatar animado!** probá el botón WEBP' : '') +

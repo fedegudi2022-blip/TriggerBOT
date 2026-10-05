@@ -1,6 +1,6 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const { logAction } = require('../utils/modlog');
-const { errorEmbed, accionEmbed, COLORS } = require('../utils/replies');
+const { nombreDe, errorEmbed, accionEmbed, COLORS } = require('../utils/replies');
 const { motivoNoModerable, avisarPorDM } = require('../utils/moderation');
 const { autocompletar } = require('../utils/plantillas');
 const { quiereSilencioso, resolverMiembro, intentar } = require('../utils/acciones');
@@ -52,14 +52,14 @@ module.exports = {
       silencioso,
       deshacerLabel: 'Deshacer (desbanear)',
       detalle:
-        `Vas a banear a **${user.tag}** (${user}).\n` +
+        `Vas a banear a **${nombreDe(user)}** (${user}).\n` +
         (deleteDays > 0 ? `Se borrarán sus mensajes de los últimos **${deleteDays}** día(s).\n` : '') +
         `**Motivo:** ${reason || '*no especificado*'}`,
       ejecutar: async (btn) => {
         const resultado = await intentar('Discord rechazó el baneo', () =>
           guild.members.ban(user.id, {
             deleteMessageSeconds: deleteDays * 86400,
-            reason: reason ? `${reason} — por ${btn.user.tag}` : `por ${btn.user.tag}`,
+            reason: reason ? `${reason} — por ${nombreDe(btn.user)}` : `por ${nombreDe(btn.user)}`,
           })
         );
 
@@ -98,7 +98,7 @@ module.exports = {
         };
       },
       deshacer: async (btn) => {
-        const resultado = await intentar('Discord rechazó el desbaneo', () => guild.members.unban(user.id, `Deshecho por ${btn.user.tag}`));
+        const resultado = await intentar('Discord rechazó el desbaneo', () => guild.members.unban(user.id, `Deshecho por ${nombreDe(btn.user)}`));
         const caso = logAction(guild, {
           action: resultado.ok ? 'Desbaneo (deshacer)' : 'Desbaneo (deshacer) — rechazado',
           color: resultado.ok ? COLORS.success : COLORS.warn,
@@ -114,7 +114,7 @@ module.exports = {
           embeds: [
             accionEmbed({
               titulo: 'Baneo deshecho',
-              detalle: `**${user.tag}** fue desbaneado.`,
+              detalle: `**${nombreDe(user)}** fue desbaneado.`,
               caso,
               moderador: btn.member?.displayName ?? btn.user.username,
               thumbnail: user.displayAvatarURL({ size: 128 }),

@@ -29,7 +29,12 @@ function guardarEnBuffer(message) {
 
   const key = clave(message.guild.id, message.channelId);
   const canal = message.client.buffersMensajes.get(key);
-  const registro = { contenido: message.content, autorId: message.author.id, autorTag: message.author.tag };
+  const registro = {
+    contenido: message.content,
+    autorId: message.author.id,
+    // Nombre de usuario (no el tag: Discord ya no garantiza discriminadores).
+    autorNombre: message.author.username ?? message.author.tag,
+  };
   if (canal) {
     canal.set(message.id, registro);
     if (canal.size > MAX_BUFFER) {

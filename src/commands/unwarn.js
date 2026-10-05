@@ -7,7 +7,7 @@ const { exigirStaff } = require('../utils/permisos');
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('quitarnota')
+    .setName('unwarn')
     .setDescription('Elimina una advertencia del historial de un usuario')
     .addUserOption((o) => o.setName('usuario').setDescription('Usuario al que quitar la advertencia').setRequired(true))
     .addIntegerOption((o) => o.setName('numero').setDescription('Número de advertencia a quitar (ver /warnings)').setRequired(true).setMinValue(1))

@@ -1,6 +1,6 @@
 const { Events } = require('discord.js');
 const { logEvent } = require('../utils/log');
-const { COLORS } = require('../utils/replies');
+const { nombreDe, COLORS } = require('../utils/replies');
 
 // Diferencia dos conjuntos de IDs y devuelve { agregados, quitados } como menciones.
 function diffRoles(antes, despues) {
@@ -21,7 +21,7 @@ module.exports = {
         color: COLORS.info,
         title: 'Apodo actualizado',
         thumbnail: newMember.user.displayAvatarURL({ size: 128 }),
-        description: `${newMember.user} (\`${newMember.user.tag}\`)`,
+        description: `${newMember.user} (\`${nombreDe(newMember.user)}\`)`,
         fields: [
           { name: 'Antes', value: oldMember.nickname ? `\`${oldMember.nickname}\`` : '*sin apodo*', inline: true },
           { name: 'Después', value: newMember.nickname ? `\`${newMember.nickname}\`` : '*sin apodo*', inline: true },
@@ -41,7 +41,7 @@ module.exports = {
       color: agregados.length ? COLORS.success : COLORS.naranja,
       title: 'Roles actualizados',
       thumbnail: newMember.user.displayAvatarURL({ size: 128 }),
-      description: `${newMember.user} (\`${newMember.user.tag}\`)`,
+      description: `${newMember.user} (\`${nombreDe(newMember.user)}\`)`,
       fields,
     });
   },

@@ -1,6 +1,6 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const { logAction } = require('../utils/modlog');
-const { errorEmbed, accionEmbed, COLORS } = require('../utils/replies');
+const { nombreDe, errorEmbed, accionEmbed, COLORS } = require('../utils/replies');
 // El límite de 14 días de Discord (y el 2-100 por llamada) vive en utils/acciones.js:
 // lo comparten este comando y las órdenes por chat con IA, para no responder con un
 // error engañoso ni perder el pedido del staff.
@@ -39,7 +39,7 @@ module.exports = {
       color: COLORS.warn,
       silencioso,
       detalle:
-        `Vas a borrar hasta **${amount}** mensaje(s)${user ? ` de **${user.tag}**` : ''} en <#${interaction.channelId}>.\n` +
+        `Vas a borrar hasta **${amount}** mensaje(s)${user ? ` de **${nombreDe(user)}**` : ''} en <#${interaction.channelId}>.\n` +
         `**Motivo:** ${reason || '*no especificado*'}`,
       // La confirmación pública no se queda pegada en el canal: se borra sola a los 5 s.
       alEnviar: (mensaje) => {
@@ -64,7 +64,7 @@ module.exports = {
         const aBorrar = frescos.slice(0, amount);
 
         if (!aBorrar.length) {
-          const quien = user ? ` de **${user.tag}**` : '';
+          const quien = user ? ` de **${nombreDe(user)}**` : '';
           return {
             ok: false,
             embeds: [

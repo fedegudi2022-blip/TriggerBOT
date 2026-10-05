@@ -1,7 +1,7 @@
 const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags } = require('discord.js');
 const { getGuildConfig, setGuildConfig } = require('../store');
 const { logAction } = require('../utils/modlog');
-const { errorEmbed, accionEmbed, COLORS } = require('../utils/replies');
+const { nombreDe, errorEmbed, accionEmbed, COLORS } = require('../utils/replies');
 const { motivoNoModerable, avisarPorDM } = require('../utils/moderation');
 const { autocompletar } = require('../utils/plantillas');
 const { quiereSilencioso, resolverMiembro, intentar } = require('../utils/acciones');
@@ -89,7 +89,7 @@ module.exports = {
       silencioso,
       deshacerLabel: 'Deshacer (quitar silencio)',
       detalle:
-        `Vas a silenciar a **${user.tag}** (${user}) con el rol Silenciado.\n` +
+        `Vas a silenciar a **${nombreDe(user)}** (${user}) con el rol Silenciado.\n` +
         `**Motivo:** ${reason || '*no especificado*'}\n` +
         `Dura hasta que alguien lo levante con \`/unmute\` o el botón Deshacer.`,
       ejecutar: async (btn) => {
@@ -104,7 +104,7 @@ module.exports = {
         }
 
         const resultado = await intentar('Discord rechazó asignar el rol de silenciado', () =>
-          member.roles.add(rolUsado, reason ? `${reason} — por ${btn.user.tag}` : `por ${btn.user.tag}`)
+          member.roles.add(rolUsado, reason ? `${reason} — por ${nombreDe(btn.user)}` : `por ${nombreDe(btn.user)}`)
         );
 
         const caso = logAction(guild, {
@@ -145,7 +145,7 @@ module.exports = {
           return { embeds: [errorEmbed('No encuentro el rol Silenciado para quitarlo. Usá `/unmute`.')] };
         }
         const resultado = await intentar('Discord rechazó quitar el rol de silenciado', () =>
-          member.roles.remove(role, `Deshecho por ${btn.user.tag}`)
+          member.roles.remove(role, `Deshecho por ${nombreDe(btn.user)}`)
         );
         const caso = logAction(guild, {
           action: resultado.ok ? 'Silencio levantado (deshacer)' : 'Silencio levantado (deshacer) — rechazado',

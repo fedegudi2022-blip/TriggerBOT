@@ -615,7 +615,7 @@ const PERFILES = {
 // Se agregan los datos que solo se consiguen en vivo (cotización, clima): "clima en
 // Rosario" sin signos de pregunta igual es una consulta y tiene que ir a buscar.
 const RE_CONSULTA =
-  /[¿?]|\b(que|qué|cómo|como|cuándo|cuando|dónde|donde|quién|quien|cuál|cual|cuántos|cuantos|por qué|porque|para qué|cuanto)\b|\b(d[oó]lar(es)?|euros?|clima|pron[oó]stico|temperatura|llueve|llover|lluvia|cotizaci[oó]n)\b|\/(help|status|ban|kick|warn|warnings|timeout|mute|unmute|clear|lockdown|slowmode|config|rolnivel|voz|ticket|ip|servidores|top|logros|estadisticas|redes|web|afk|encuesta|userinfo|serverinfo|avatar|ping|unban|softban|quitarnota|plantillas|frases|embed|dado|moneda|meme|8ball)\b|\b(mute(a|á|ame|alo|ar)?|silencias?|bane(a|á|alo|ame|ar)?|expuls(a|á|alo|ar)|kickea|advertir|advierte|warn|timeout|timea|unmutea)\b/i;
+  /[¿?]|\b(que|qué|cómo|como|cuándo|cuando|dónde|donde|quién|quien|cuál|cual|cuántos|cuantos|por qué|porque|para qué|cuanto)\b|\b(d[oó]lar(es)?|euros?|clima|pron[oó]stico|temperatura|llueve|llover|lluvia|cotizaci[oó]n)\b|\/(help|status|ban|kick|warn|warnings|timeout|mute|unmute|clear|lockdown|slowmode|config|rolnivel|voz|ticket|ip|servidores|top|logros|estadisticas|redes|web|afk|encuesta|userinfo|serverinfo|avatar|ping|unban|softban|unwarn|plantillas|frases|embed|dado|moneda|meme|8ball)\b|\b(mute(a|á|ame|alo|ar)?|silencias?|bane(a|á|alo|ame|ar)?|expuls(a|á|alo|ar)|kickea|advertir|advierte|warn|timeout|timea|unmutea)\b/i;
 
 function perfilDe(mensaje) {
   const texto = String(mensaje || '').trim();

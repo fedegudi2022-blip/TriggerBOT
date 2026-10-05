@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, MessageFlags, PermissionFlagsBits } = require('discord.js');
-const { brandEmbed, COLORS } = require('../utils/replies');
+const { nombreDe, brandEmbed, COLORS } = require('../utils/replies');
 const { getWarns } = require('../warns');
 const { getNotas } = require('../notas');
 const { listar } = require('../casos');
@@ -122,10 +122,10 @@ module.exports = {
 
     const embed = brandEmbed({
       color,
-      title: user.tag,
+      title: nombreDe(user, member),
       thumbnail: user.displayAvatarURL({ size: 256 }),
       description:
-        (member ? `<@${user.id}>` : `**${user.tag}** (no está en el server)`) +
+        (member ? `<@${user.id}>` : `**${nombreDe(user)}** (no está en el server)`) +
         (rolTop ? ` · máximo rol: <@&${rolTop.id}>` : '') +
         (user.bot ? '\nEsta cuenta es un bot' : ''),
       fields,

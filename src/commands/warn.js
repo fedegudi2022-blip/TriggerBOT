@@ -118,9 +118,10 @@ module.exports = {
     } else {
       campos.push({
         name: 'Historial',
-        value: politica.accion === 'ninguna'
-          ? `${total} advertencia(s) acumulada(s). La escalada está configurada para no sancionar.`
-          : `${total} advertencia(s) — le ${restantes === 1 ? 'queda' : 'quedan'} **${restantes}** para la escalada (${ACCIONES[politica.accion].toLowerCase()}).`,
+        value:
+          politica.accion === 'ninguna'
+            ? `${total} advertencia(s) acumulada(s). La escalada está configurada para no sancionar.`
+            : `${total} advertencia(s) — le ${restantes === 1 ? 'queda' : 'quedan'} **${restantes}** para la escalada (${ACCIONES[politica.accion].toLowerCase()}).`,
         inline: false,
       });
     }
@@ -136,7 +137,7 @@ module.exports = {
           moderador: interaction.member?.displayName ?? interaction.user.username,
           thumbnail: user.displayAvatarURL({ size: 128 }),
           campos,
-          footer: 'historial completo con /warnings · se quita con /quitarnota',
+          footer: 'historial completo con /warnings · se quita con /unwarn',
         }),
       ],
     });

@@ -100,6 +100,14 @@ function barra(n, total, ancho = 10) {
 
 // Motivo uniforme: nunca "*sin especificar*", "Sin especificar" y "—" en tres
 // comandos distintos por la misma razón.
+// Nombre para mostrar de un usuario en cualquier embed: el alias del server si lo
+// tenemos (displayName del miembro) y, si no, el nombre de usuario. `tag` queda solo
+// como último recurso para objetos sin username cargado: Discord ya no garantiza
+// discriminadores, así que "fede#0" no le dice nada a nadie.
+function nombreDe(user, member = null) {
+  return member?.displayName ?? user?.username ?? user?.tag ?? 'desconocido';
+}
+
 function motivoTexto(motivo, { vacio = 'No especificado' } = {}) {
   const limpio = String(motivo ?? '').trim();
   return limpio || `*${vacio}*`;
@@ -154,6 +162,7 @@ function nivel(valor, umbral) {
 }
 
 module.exports = {
+  nombreDe,
   COLORS,
   brandEmbed,
   successEmbed,

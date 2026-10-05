@@ -9,7 +9,7 @@
 // Severidad: 🟢 historial limpio · 🟡 con advertencias · 🔴 al límite (3 = silencio de 1 h).
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { getWarns } = require('../warns');
-const { brandEmbed, COLORS } = require('../utils/replies');
+const { nombreDe, brandEmbed, COLORS } = require('../utils/replies');
 const { exigirStaff } = require('../utils/permisos');
 
 const LIMITE_WARNS = 3; // mismo umbral que /warn (silencio automático de 1 h al tercer warn)
@@ -35,7 +35,7 @@ function vista(interaction, user, paginaPedida) {
   }
 
   // Del más nuevo al más viejo (el número es la posición original en el historial,
-  // que es la que pide /quitarnota).
+  // que es la que pide /unwarn).
   const entradas = warns
     .map((w, i) => ({
       numero: i + 1,
@@ -66,13 +66,13 @@ function vista(interaction, user, paginaPedida) {
 
   const embed = brandEmbed({
     color: alLimite ? COLORS.error : COLORS.warn,
-    title: `Advertencias de ${user.tag}`,
+    title: `Advertencias de ${nombreDe(user)}`,
     description:
       `**${warns.length}** advertencia(s) en total · ` +
       (alLimite ? 'ya alcanzó (o superó) el límite de silencio automático' : `**${restantes}** más y queda silenciado 1 h automáticamente`),
     thumbnail: user.displayAvatarURL({ size: 128 }),
     fields: campos,
-    footer: `TriggerBOT • página ${pagina}/${paginas} • ${warns.length} en total • /quitarnota numero para eliminar una`,
+    footer: `TriggerBOT • página ${pagina}/${paginas} • ${warns.length} en total • /unwarn numero para eliminar una`,
   });
 
   const componentes = [];

@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, MessageFlags } = require('discord.js');
-const { brandEmbed, errorEmbed, COLORS } = require('../utils/replies');
+const { nombreDe, brandEmbed, errorEmbed, COLORS } = require('../utils/replies');
 
 const VOTACION_ABIERTA = new Map(); // messageId → { autorId, tema, titulo }
 
@@ -35,7 +35,7 @@ module.exports = {
       color: COLORS.info,
       title: `${tema}`,
       description: cuerpo,
-      footer: `Encuesta de ${interaction.user.tag} • votá con las reacciones`,
+      footer: `Encuesta de ${nombreDe(interaction.user)} • votá con las reacciones`,
     });
 
     await interaction.reply({ embeds: [embed] });

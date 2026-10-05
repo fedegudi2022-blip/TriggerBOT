@@ -1,6 +1,6 @@
 const { Events } = require('discord.js');
 const { logEvent, tiempoRelativo } = require('../utils/log');
-const { COLORS } = require('../utils/replies');
+const { nombreDe, COLORS } = require('../utils/replies');
 
 module.exports = {
   name: Events.GuildMemberRemove,
@@ -8,7 +8,7 @@ module.exports = {
     if (member.user.bot) return;
 
     const fields = [
-      { name: 'Usuario', value: `${member.user} (\`${member.user.tag}\`)`, inline: true },
+      { name: 'Usuario', value: `${member.user} (\`${nombreDe(member.user)}\`)`, inline: true },
       { name: 'ID', value: `\`${member.id}\``, inline: true },
       { name: 'Miembros totales', value: String(member.guild.memberCount), inline: true },
     ];

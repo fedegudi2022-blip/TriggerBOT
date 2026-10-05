@@ -1,7 +1,7 @@
 # Moderación y sanciones
 
 ## Cómo se modera
-El staff usa comandos del bot: `/warn`, `/warnings`, `/quitarnota`, `/timeout`,
+El staff usa comandos del bot: `/warn`, `/warnings`, `/unwarn`, `/timeout`,
 `/mute`, `/unmute`, `/kick`, `/ban`, `/unban`, `/softban`, `/clear`, `/lockdown` y
 `/slowmode`. Todos requieren permisos de moderación o un rol de staff configurado en
 `/config staff` (admin, mod o helper). Un miembro común **no puede** usarlos.
@@ -10,7 +10,7 @@ El staff usa comandos del bot: `/warn`, `/warnings`, `/quitarnota`, `/timeout`,
 `/warn` con una razón deja una advertencia en el historial del usuario. **Al llegar a
 3 advertencias el usuario queda silenciado automáticamente durante 1 hora**. El
 historial se consulta con `/warnings` y una advertencia puntual se borra con
-`/quitarnota`.
+`/unwarn`.
 
 ## Silencio temporal (timeout) y mute
 - `/timeout` silencia por un tiempo limitado (se elige duración); el límite de

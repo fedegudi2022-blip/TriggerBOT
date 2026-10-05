@@ -1,6 +1,6 @@
 const { Events } = require('discord.js');
 const { logEvent, cita } = require('../utils/log');
-const { COLORS } = require('../utils/replies');
+const { nombreDe, COLORS } = require('../utils/replies');
 
 module.exports = {
   name: Events.MessageUpdate,
@@ -9,15 +9,13 @@ module.exports = {
     if (oldMessage.content === newMessage.content) return;
     if (!newMessage.content) return; // embeds/attachments: nada de texto que comparar
 
-    const antes = oldMessage.content
-      ? cita(oldMessage.content, 600)
-      : '*no disponible — el bot arrancó después de que se enviara*';
+    const antes = oldMessage.content ? cita(oldMessage.content, 600) : '*no disponible — el bot arrancó después de que se enviara*';
 
     logEvent(newMessage.guild, {
       color: COLORS.warn,
       title: 'Mensaje editado',
       fields: [
-        { name: 'Autor', value: `<@${newMessage.author.id}> (\`${newMessage.author.tag}\`)`, inline: true },
+        { name: 'Autor', value: `<@${newMessage.author.id}> (\`${nombreDe(newMessage.author)}\`)`, inline: true },
         { name: 'Canal', value: `<#${newMessage.channelId}>`, inline: true },
         { name: 'Ir al mensaje', value: `[Ver edición](${newMessage.url})`, inline: true },
         { name: 'Antes', value: antes },

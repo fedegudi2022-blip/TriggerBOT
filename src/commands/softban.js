@@ -1,6 +1,6 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const { logAction } = require('../utils/modlog');
-const { errorEmbed, accionEmbed, COLORS } = require('../utils/replies');
+const { nombreDe, errorEmbed, accionEmbed, COLORS } = require('../utils/replies');
 const { motivoNoModerable, avisarPorDM } = require('../utils/moderation');
 const { autocompletar } = require('../utils/plantillas');
 const { quiereSilencioso, resolverMiembro, intentar } = require('../utils/acciones');
@@ -45,7 +45,7 @@ module.exports = {
       color: COLORS.naranja,
       silencioso,
       detalle:
-        `**${user.tag}** (${user}) será expulsado y podrá volver a entrar, borrando sus mensajes de los últimos **${deleteDays}** día(s).\n` +
+        `**${nombreDe(user)}** (${user}) será expulsado y podrá volver a entrar, borrando sus mensajes de los últimos **${deleteDays}** día(s).\n` +
         `**Motivo:** ${reason || '*no especificado*'}`,
       ejecutar: async (btn) => {
         // Dos pasos, dos resultados: si el unban falla el usuario queda baneado, y eso
@@ -53,12 +53,12 @@ module.exports = {
         const baneo = await intentar('Discord rechazó el baneo', () =>
           guild.members.ban(user.id, {
             deleteMessageSeconds: deleteDays * 86400,
-            reason: `[softban] ${reason || 'no especificado'} — por ${btn.user.tag}`,
+            reason: `[softban] ${reason || 'no especificado'} — por ${nombreDe(btn.user)}`,
           })
         );
         const desbaneo = baneo.ok
           ? await intentar('Discord rechazó el desbaneo posterior', () =>
-              guild.members.unban(user.id, `[softban] purga de mensajes — por ${btn.user.tag}`)
+              guild.members.unban(user.id, `[softban] purga de mensajes — por ${nombreDe(btn.user)}`)
             )
           : { ok: false, error: 'no se intentó: el baneo no se aplicó' };
 
@@ -89,7 +89,7 @@ module.exports = {
             ok: false,
             embeds: [
               errorEmbed(
-                `**${user.tag}** quedó baneado (no se pudo desbanear).\n> ${desbaneo.error}\n\nDesbanealo con \`/unban usuario_id:${user.id}\`.`,
+                `**${nombreDe(user)}** quedó baneado (no se pudo desbanear).\n> ${desbaneo.error}\n\nDesbanealo con \`/unban usuario_id:${user.id}\`.`,
                 'Softban incompleto'
               ),
             ],

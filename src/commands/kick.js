@@ -1,6 +1,6 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const { logAction } = require('../utils/modlog');
-const { errorEmbed, accionEmbed, COLORS } = require('../utils/replies');
+const { nombreDe, errorEmbed, accionEmbed, COLORS } = require('../utils/replies');
 const { motivoNoModerable, avisarPorDM } = require('../utils/moderation');
 const { autocompletar } = require('../utils/plantillas');
 const { quiereSilencioso, resolverMiembro, intentar } = require('../utils/acciones');
@@ -44,10 +44,10 @@ module.exports = {
       titulo: 'Confirmar expulsión',
       color: COLORS.error,
       silencioso,
-      detalle: `Vas a expulsar a **${user.tag}** (${user}).\n**Motivo:** ${reason || '*no especificado*'}`,
+      detalle: `Vas a expulsar a **${nombreDe(user)}** (${user}).\n**Motivo:** ${reason || '*no especificado*'}`,
       ejecutar: async (btn) => {
         const resultado = await intentar('Discord rechazó la expulsión', () =>
-          member.kick(reason ? `${reason} — por ${btn.user.tag}` : `por ${btn.user.tag}`)
+          member.kick(reason ? `${reason} — por ${nombreDe(btn.user)}` : `por ${nombreDe(btn.user)}`)
         );
 
         const caso = logAction(guild, {

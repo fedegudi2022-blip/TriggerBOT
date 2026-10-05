@@ -6,7 +6,7 @@
 // observación terminaría sancionando.
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const { getNotas, addNota, removeNota } = require('../notas');
-const { brandEmbed, COLORS } = require('../utils/replies');
+const { nombreDe, brandEmbed, COLORS } = require('../utils/replies');
 const { exigirStaff } = require('../utils/permisos');
 
 const fecha = (ts) => `<t:${Math.floor(ts / 1000)}:d>`;
@@ -15,7 +15,7 @@ function vista(usuario, notas) {
   if (!notas.length) {
     return brandEmbed({
       color: COLORS.success,
-      title: `Notas de ${usuario.tag}`,
+      title: `Notas de ${nombreDe(usuario)}`,
       description: 'Sin notas internas.',
       thumbnail: usuario.displayAvatarURL?.({ size: 128 }),
     });
@@ -23,7 +23,7 @@ function vista(usuario, notas) {
   const cuerpo = notas.map((n, i) => `**#${i + 1}** — ${fecha(n.timestamp)} por <@${n.moderatorId}>\n> ${n.texto}`).join('\n\n');
   return brandEmbed({
     color: COLORS.info,
-    title: `Notas de ${usuario.tag} (${notas.length})`,
+    title: `Notas de ${nombreDe(usuario)} (${notas.length})`,
     description: cuerpo.slice(0, 4000),
     thumbnail: usuario.displayAvatarURL?.({ size: 128 }),
     footer: 'TriggerBOT • las notas NO cuentan como advertencias • /nota quitar para borrar',

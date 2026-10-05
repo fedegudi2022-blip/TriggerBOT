@@ -5,7 +5,7 @@
 // que es lo que el staff necesita para revisar una sanción.
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const { obtener, listar } = require('../casos');
-const { brandEmbed, COLORS } = require('../utils/replies');
+const { nombreDe, brandEmbed, COLORS } = require('../utils/replies');
 const { exigirStaff } = require('../utils/permisos');
 
 const MAX_LISTA = 10; // casos por consulta (un embed aguanta 25 campos; 10 se lee cómodo)
@@ -44,7 +44,7 @@ function embedDeLista(casos, { usuario, total }) {
   }));
   return brandEmbed({
     color: COLORS.info,
-    title: usuario ? `Casos de ${usuario.tag}` : 'Últimos casos de moderación',
+    title: usuario ? `Casos de ${nombreDe(usuario)}` : 'Últimos casos de moderación',
     description: total > casos.length ? `Mostrando los **${casos.length}** más recientes de **${total}**.` : `**${total}** caso(s).`,
     fields: fields.length
       ? fields

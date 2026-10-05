@@ -5,7 +5,7 @@
 // Config (config.tickets en store.js): { categoriaId, canalLogs, mensajes }
 // Estado de cada ticket (en el topic del canal): guildId:userId:numero
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits, ChannelType, MessageFlags, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
-const { brandEmbed, COLORS } = require('./replies');
+const { nombreDe, brandEmbed, COLORS } = require('./replies');
 const { getGuildConfig, setGuildConfig } = require('../store');
 const { autorizadoDe } = require('./permisos');
 const crearLogger = require('../logger');
@@ -129,7 +129,7 @@ async function abrirTicketInterno(interaction, motivo, { config, raiz }) {
     parent: config.categoriaId && guild.channels.cache.has(config.categoriaId) ? config.categoriaId : null,
     permissionOverwrites: overrides,
     topic: `${guild.id}:${user.id}:${numeroTxt}`,
-    reason: `Ticket de ${user.tag}`,
+    reason: `Ticket de ${nombreDe(user)}`,
   });
 
   await canal.send({
@@ -138,7 +138,7 @@ async function abrirTicketInterno(interaction, motivo, { config, raiz }) {
       brandEmbed({
         color: COLORS.info,
         title: `Ticket #${numeroTxt}`,
-        description: `**Usuario:** ${user} (\`${user.tag}\`)\n**Motivo:** ${motivo || 'sin especificar'}`,
+        description: `**Usuario:** ${user} (\`${nombreDe(user)}\`)\n**Motivo:** ${motivo || 'sin especificar'}`,
         footer: 'TriggerBOT • usá el botón para cerrar cuando esté resuelto',
       }),
     ],
@@ -184,7 +184,7 @@ async function cerrarTicket(interaction, cerradoPor) {
     for (const m of lote.values()) {
       const stamp = new Date(m.createdTimestamp).toISOString().replace('T', ' ').slice(0, 19);
       const adjuntos = m.attachments.size ? `\n   [adjunto: ${[...m.attachments.values()].map((a) => a.url).join(', ')}]` : '';
-      lineas.push(`[${stamp}] ${m.author.tag}: ${m.content || '(sin texto)'}${adjuntos}`);
+      lineas.push(`[${stamp}] ${nombreDe(m.author)}: ${m.content || '(sin texto)'}${adjuntos}`);
     }
     antes = lote.last().id;
     if (lote.size < 100) break;
@@ -195,7 +195,7 @@ async function cerrarTicket(interaction, cerradoPor) {
 
   const cabecera =
     `Transcript del ticket #${numero} — ${guild.name}\n` +
-    `Canal: #${canal.name} · Cerrado por: ${cerradoPor.tag} · ${new Date().toISOString()}\n` +
+    `Canal: #${canal.name} · Cerrado por: ${nombreDe(cerradoPor)} · ${new Date().toISOString()}\n` +
     `Mensajes: ${lineas.length}` +
     (integro ? '' : `  ⚠️ INCOMPLETO (${parcial ? 'falló la lectura de mensajes' : 'se superó el tope de mensajes'})`) +
     '\n' +
@@ -300,7 +300,7 @@ async function cerrarTicket(interaction, cerradoPor) {
     embeds: [
       brandEmbed({
         color: COLORS.error,
-        title: `Ticket cerrado por ${cerradoPor.tag}`,
+        title: `Ticket cerrado por ${nombreDe(cerradoPor)}`,
         description: `Se guardó un transcript con **${lineas.length}** mensajes. El canal se borra en **30 segundos**.`,
       }),
     ],
@@ -315,7 +315,7 @@ async function cerrarTicket(interaction, cerradoPor) {
   await new Promise((r) => {
     setTimeout(r, 30_000);
   });
-  await canal.delete(`Ticket cerrado por ${cerradoPor.tag}`).catch(() => {});
+  await canal.delete(`Ticket cerrado por ${nombreDe(cerradoPor)}`).catch(() => {});
 }
 
 // ---------- Logs ----------
@@ -355,7 +355,7 @@ async function manejarBotonTicket(interaction) {
     const modal = new ModalBuilder().setCustomId('ticket:modal').setTitle('Abrir ticket de soporte');
     modal.addComponents(
       new ActionRowBuilder().addComponents(
-        new TextInputBuilder().setCustomId('motivo').setLabel('Contáanos brevemente qué pasa').setStyle(TextInputStyle.Paragraph).setMaxLength(500).setRequired(true)
+        new TextInputBuilder().setCustomId('motivo').setLabel('Contanos brevemente qué pasa').setStyle(TextInputStyle.Paragraph).setMaxLength(500).setRequired(true)
       )
     );
     return interaction.showModal(modal);

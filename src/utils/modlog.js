@@ -30,7 +30,8 @@ function logAction(guild, { action, color = COLORS.error, target, moderator, rea
     .setColor(color)
     .setTitle(`Caso #${caso} — ${action}`)
     .setTimestamp()
-    .setFooter({ text: `TriggerBOT • registro de moderación • moderador: ${moderator?.tag ?? 'sistema'}` });
+    // Nombre de usuario, no el tag: Discord ya no garantiza discriminadores.
+    .setFooter({ text: `TriggerBOT • registro de moderación • moderador: ${moderator?.username ?? moderator?.tag ?? 'sistema'}` });
 
   // Avatar del sancionado como miniatura, si tenemos el usuario real.
   if (target?.displayAvatarURL) {
@@ -40,7 +41,7 @@ function logAction(guild, { action, color = COLORS.error, target, moderator, rea
   embed.addFields(
     {
       name: 'Usuario',
-      value: target?.raw ?? `<@${target.id}> (\`${target.tag ?? target.id}\`)`,
+      value: target?.raw ?? `<@${target.id}> (\`${target.username ?? target.tag ?? target.id}\`)`,
       inline: true,
     },
     { name: 'Moderador', value: `<@${moderator?.id ?? guild.client.user.id}>`, inline: true }
@@ -59,10 +60,10 @@ function logAction(guild, { action, color = COLORS.error, target, moderator, rea
     action,
     color,
     targetId: target?.id ?? null,
-    targetTag: target?.tag ?? null,
+    targetTag: target?.username ?? target?.tag ?? null,
     targetRaw: target?.raw ?? null,
     moderatorId: moderator?.id ?? guild.client.user.id,
-    moderatorTag: moderator?.tag ?? 'sistema',
+    moderatorTag: moderator?.username ?? moderator?.tag ?? 'sistema',
     reason: reason ?? null,
     duration: duration ?? null,
     extra: extra ?? null,

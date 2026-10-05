@@ -1,6 +1,6 @@
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const { logAction } = require('./modlog');
-const { successEmbed, errorEmbed, brandEmbed, COLORS } = require('./replies');
+const { nombreDe, successEmbed, errorEmbed, brandEmbed, COLORS } = require('./replies');
 const { validarAccionDelBot } = require('./moderation');
 const { LIMITE_14_DIAS_MS } = require('./acciones');
 const { esStaffDe } = require('./permisos');
@@ -436,7 +436,7 @@ async function pedirConfirmacion(message, solicitud) {
     color: COLORS.warn,
     title: `${label.titulo} — confirmación requerida`,
     description:
-      `${message.author} pidió por chat que ${label.verbo} a **${miembro.user.tag}**.\n` +
+      `${message.author} pidió por chat que ${label.verbo} a **${nombreDe(miembro.user, miembro)}**.\n` +
       `**Motivo:** ${solicitud.motivo || '*sin especificar*'}` +
       (solicitud.accion === 'timeout' ? `\n**Duración:** ${solicitud.duracionMin} minutos` : ''),
     footer: 'Solo el staff puede confirmar esta acción',

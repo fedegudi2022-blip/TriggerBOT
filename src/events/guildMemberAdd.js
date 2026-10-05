@@ -1,5 +1,5 @@
 const { Events } = require('discord.js');
-const { brandEmbed, COLORS } = require('../utils/replies');
+const { nombreDe, brandEmbed, COLORS } = require('../utils/replies');
 const { registrarIngreso } = require('../utils/proteccion');
 
 function renderWelcome(message, member) {
@@ -36,7 +36,7 @@ module.exports = {
       if (channel) {
         const embed = brandEmbed({
           color: COLORS.success,
-          title: `¡${member.user.tag} se unió!`,
+          title: `¡${nombreDe(member.user)} se unió!`,
           description: renderWelcome(config.welcome.message, member),
         });
         embed.setThumbnail(member.user.displayAvatarURL({ size: 256 }));

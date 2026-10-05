@@ -55,7 +55,7 @@ cuenta: si necesitás algo fuera de esa lista, ticket de soporte.
 - Utilidades: `/afk`, `/encuesta`, `/dado`, `/moneda`, `/meme`, `/8ball`
 - Interacciones: `/beso`, `/abrazo`, `/caricia`, `/abofetear`, `/morder`,
   `/pellizco`, `/chocar`, `/guino`
-- De staff: `/warn`, `/warnings`, `/quitarnota`, `/timeout`, `/mute`, `/unmute`,
+- De staff: `/warn`, `/warnings`, `/unwarn`, `/timeout`, `/mute`, `/unmute`,
   `/kick`, `/ban`, `/unban`, `/softban`, `/clear`, `/lockdown`, `/slowmode`,
   `/config`, `/rolnivel`, `/ticket`, `/embed`, `/plantillas`, `/frases`, `/diag`,
   `/buscar`

@@ -15,11 +15,11 @@ module.exports = {
     if (!contenido) return; // sin contenido registrado no hay nada útil que reportar
 
     const autorId = cached?.autorId ?? message.author?.id;
-    const autorTag = cached?.autorTag ?? message.author?.tag;
+    const autorNombre = cached?.autorNombre ?? message.author?.username ?? message.author?.tag ?? 'desconocido';
     const edad = message.createdTimestamp ? tiempoRelativo(Date.now() - message.createdTimestamp) : null;
 
     const fields = [
-      { name: 'Autor', value: `<@${autorId}> (\`${autorTag}\`)`, inline: true },
+      { name: 'Autor', value: `<@${autorId}> (\`${autorNombre}\`)`, inline: true },
       { name: 'Canal', value: `<#${message.channelId}>`, inline: true },
     ];
     if (edad) fields.push({ name: 'Enviado', value: `hace ${edad}`, inline: true });

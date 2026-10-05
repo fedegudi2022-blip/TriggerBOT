@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
-const { brandEmbed, errorEmbed, accionEmbed, COLORS } = require('../utils/replies');
+const { nombreDe, brandEmbed, errorEmbed, accionEmbed, COLORS } = require('../utils/replies');
 const { quiereSilencioso, diferir, intentar } = require('../utils/acciones');
 const { exigirStaff } = require('../utils/permisos');
 
@@ -43,7 +43,7 @@ module.exports = {
       description: texto,
       image: imagen ? { url: imagen } : undefined,
       thumbnail: miniatura ? miniatura : undefined,
-      footer: `Anuncio de ${interaction.user.tag}`,
+      footer: `Anuncio de ${nombreDe(interaction.user)}`,
     });
 
     const destino = interaction.guild.channels.cache.get(canal.id) ?? canal;
