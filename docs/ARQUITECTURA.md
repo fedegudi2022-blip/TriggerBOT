@@ -91,6 +91,15 @@ Ambas devuelven `null` si todo está bien o un mensaje de error listo para mostr
 - **`ventanaSpam` acotada**: `limpiarViejo()` descarta entradas sin actividad dentro del rango máximo de ventana (120 s), con throttle (una pasada completa cada 30 s o si el mapa supera 5.000 claves); antes solo se limpiaba al castigar y el mapa podía crecer sin control.
 - **Resultado honesto**: cada acción devuelve `{ ok, error }` y el **DM y el embed** muestran lo que realmente pasó (`⚠️ ... falló: <motivo de Discord>`, o que no se pudo borrar por falta de permiso), nunca la acción configurada como si se hubiera aplicado. El fallback de mute (sin rol de silenciado) **ejecuta de verdad** un timeout de 10 minutos.
 
+**Automod por contenido** (por mensaje, en `messageCreate`, antes del anti-spam):
+
+- Cinco filtros independientes, todos apagados por defecto y bajo el mismo interruptor (`proteccion.activado`): `filtroInvites` (links `discord.gg` / `discord.com/invite` / `discord.me`), `filtroLinks` (cualquier URL fuera de `linksPermitidos`, que además cubre los subdominios), `filtroMenciones` (`@everyone`/`@here` siempre, o más de `mencionesMaximas`), `filtroMayusculas` (`mayusculasPorcentaje` de letras en mayúscula en mensajes de `mayusculasMinimo`+ letras) y `filtroRepetidos` (el mismo texto `repetidosVeces` veces seguidas, normalizado: sin mayúsculas, espacios ni caracteres invisibles).
+- Los números se **acotan al leer** (`LIMITES_FILTROS`), no solo al guardar: la config también se edita desde la web y a mano.
+- Al filtrar: borra el mensaje (agrupado por canal), avisa por DM al autor y deja el caso en el mod-log. **No aplica castigos** (eso es del anti-spam): un link de un miembro nuevo no debería terminar en un ban automático.
+- El filtro de repetidos solo mira el **último** mensaje de cada usuario (`ultimoMensaje`) y reinicia el contador si pasó más de 1 minuto sin escribir.
+- Avisos con **cooldown de 30 s por usuario y filtro** (`castigadoHasta`): en una ráfaga de links se borra todo, pero el staff recibe un solo aviso. El borrado nunca depende del aviso.
+- Igual que el anti-spam, el resultado que se informa es el **real**: si el bot no puede borrar, la alerta lo dice.
+
 **Anti-raid** (por ingreso, en `guildMemberAdd`):
 
 - Ventana por guild (`raidJoins` ingresos en `raidSegundos`, por defecto 8 en 60). Siempre alerta al staff con la lista de ingresos y marca cuentas de menos de 7 días 🆕.

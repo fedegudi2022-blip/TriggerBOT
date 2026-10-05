@@ -24,10 +24,7 @@ function guildFake({ ownerId = 'dueno-1' } = {}) {
 }
 
 // Interacción fake de componente: `tipo` define qué is*() responde true.
-function interaccionFake(
-  guild,
-  { userId = 'u-1', customId = '', values = [], tipo = 'button', permisos = false, roles = [], fields = null } = {}
-) {
+function interaccionFake(guild, { userId = 'u-1', customId = '', values = [], tipo = 'button', permisos = false, roles = [], fields = null } = {}) {
   const llamadas = { replies: [], updates: [], modales: 0 };
   const member = {
     id: userId,
@@ -229,5 +226,97 @@ describe('vistaSeccion — defensa en profundidad', () => {
     const vista = panel.vistaSeccion(interaccionFake(guild, { roles: ['r-admin'] }), 'staff');
 
     assert.doesNotMatch(texto(vista), /Solo un admin/);
+  });
+});
+
+// ---------- Automod en el panel: filtros y sus parámetros ----------
+describe('vistaSeccion — automod', () => {
+  test('la sección de protección muestra los 5 filtros y no pasa de 5 filas', () => {
+    const guild = guildFake();
+    store.escribir(guild.id, {
+      adminRole: 'r-admin',
+      proteccion: { activado: true, filtroInvites: true, linksPermitidos: ['nostalgia.ar'] },
+    });
+    const vista = panel.vistaSeccion(interaccionFake(guild, { roles: ['r-admin'] }), 'proteccion');
+
+    const filas = vista.components.map((r) => r.toJSON());
+    assert.ok(filas.length <= 5, 'Discord acepta 5 filas como máximo');
+    const ids = filas.flatMap((f) => f.components.map((c) => c.custom_id));
+    for (const clave of ['filtroInvites', 'filtroLinks', 'filtroMenciones', 'filtroMayusculas', 'filtroRepetidos']) {
+      assert.ok(ids.includes(`cfg:toggle:proteccion:${clave}`), `falta el botón de ${clave}`);
+    }
+    assert.ok(ids.includes('cfg:modalpedir:proteccion:filtros'), 'falta el botón de parámetros');
+    assert.match(texto(vista), /permitidos: nostalgia\.ar/, 'el panel muestra la lista permitida real');
+    assert.match(texto(vista), /\*\*Menciones:\*\* Apagado/, 'muestra los filtros apagados');
+    assert.match(texto(vista), /\*\*Invitaciones:\*\* Prendido/, 'y los prendidos');
+  });
+
+  test('un admin prende un filtro con su botón', async () => {
+    const guild = guildFake();
+    store.escribir(guild.id, { adminRole: 'r-admin' });
+    const ix = interaccionFake(guild, { customId: 'cfg:toggle:proteccion:filtroMenciones', roles: ['r-admin'] });
+
+    await panel.manejarComponente(ix);
+
+    assert.equal(store.leer(guild.id).proteccion.filtroMenciones, true);
+    assert.equal(ix.llamadas.updates.length, 1);
+  });
+
+  test('el modal guarda los parámetros y normaliza la lista de dominios', async () => {
+    const guild = guildFake();
+    store.escribir(guild.id, { adminRole: 'r-admin' });
+    const valores = {
+      mencionesMaximas: '3',
+      mayusculasPorcentaje: '80',
+      mayusculasMinimo: '15',
+      repetidosVeces: '4',
+      linksPermitidos: 'WWW.Nostalgia.AR, bit.ly',
+    };
+    const ix = interaccionFake(guild, {
+      customId: 'cfg:modal:proteccion:filtros',
+      tipo: 'modal',
+      roles: ['r-admin'],
+      fields: { getTextInputValue: (id) => valores[id] },
+    });
+
+    await panel.manejarComponente(ix);
+
+    const prot = store.leer(guild.id).proteccion;
+    assert.equal(prot.mencionesMaximas, 3);
+    assert.equal(prot.mayusculasPorcentaje, 80);
+    assert.equal(prot.mayusculasMinimo, 15);
+    assert.equal(prot.repetidosVeces, 4);
+    assert.deepEqual(prot.linksPermitidos, ['nostalgia.ar', 'bit.ly']);
+  });
+
+  test('el modal acota los valores fuera de rango en vez de guardarlos crudos', async () => {
+    const guild = guildFake();
+    store.escribir(guild.id, { adminRole: 'r-admin' });
+    const valores = { mencionesMaximas: '99', mayusculasPorcentaje: '10', mayusculasMinimo: '1', repetidosVeces: '50', linksPermitidos: '' };
+    const ix = interaccionFake(guild, {
+      customId: 'cfg:modal:proteccion:filtros',
+      tipo: 'modal',
+      roles: ['r-admin'],
+      fields: { getTextInputValue: (id) => valores[id] },
+    });
+
+    await panel.manejarComponente(ix);
+
+    const prot = store.leer(guild.id).proteccion;
+    assert.equal(prot.mencionesMaximas, 20);
+    assert.equal(prot.mayusculasPorcentaje, 50);
+    assert.equal(prot.mayusculasMinimo, 5);
+    assert.equal(prot.repetidosVeces, 10);
+  });
+
+  test('un helper no puede tocar los filtros del automod', async () => {
+    const guild = guildFake();
+    store.escribir(guild.id, { adminRole: 'r-admin', helperRole: 'r-helper' });
+    const ix = interaccionFake(guild, { customId: 'cfg:toggle:proteccion:filtroInvites', roles: ['r-helper'] });
+
+    await panel.manejarComponente(ix);
+
+    assert.match(texto(ix.llamadas.replies[0]), /Solo un admin/);
+    assert.equal(store.leer(guild.id).proteccion, undefined);
   });
 });

@@ -242,6 +242,12 @@ echo json_encode([
 | `iaActivada`, `proteccionActivada`, `accionesRapidas`, `servidoresAlertas` | bool | true/false (toma `'true'`/`1`) |
 | `accionSpam` | enum | `aviso` `timeout` `mute` `kick` `ban` |
 | `accionRaid` | enum | `nada` `kick` `ban` |
+| `filtroInvites`, `filtroLinks`, `filtroMenciones`, `filtroMayusculas`, `filtroRepetidos` | bool | Filtros del automod (borran el mensaje) |
+| `linksPermitidos` | lista | `["nostalgia.ar"]` o `"nostalgia.ar, bit.ly"`; max. 20 dominios |
+| `mencionesMaximas` | int | 2 a 20 |
+| `mayusculasPorcentaje` | int | 50 a 100 |
+| `mayusculasMinimo` | int | 5 a 50 |
+| `repetidosVeces` | int | 2 a 10 |
 | `spamMensajes` | int | 3–20 |
 | `spamSegundos` | int | 2–120 |
 | `raidJoins` | int | 3–50 |
@@ -261,6 +267,7 @@ Todos se insertan igual que en la sección 4, cambiando `comando` y `argumentos`
 | `set_canales` | `{ modlog?, logs?, avisos?, canalNiveles?, bienvenida? }` | Cambia varios canales a la vez |
 | `set_mute_role` | `{ rol_id }` | Rol de silenciado |
 | `set_proteccion` | `{ activado?, accionSpam?, accionRaid?, spamMensajes?, ... }` | Anti-spam/raid (igual que set_config) |
+| `set_config` (`filtroInvites`, `filtroLinks`, `filtroMenciones`, `filtroMayusculas`, `filtroRepetidos`, `linksPermitidos`) | bool / lista | Prende o apaga los filtros del automod |
 | `set_ia` | `{ activada }` | Prende/apaga el chat con IA |
 | `agregar_frase` | `{ texto, autor? }` | Suma frase al rotativo (máx. 100, 300 chars) |
 | `quitar_frase` | `{ numero }` | Elimina la frase N (desde 1) |

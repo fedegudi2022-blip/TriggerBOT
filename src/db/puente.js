@@ -75,6 +75,17 @@ const ESQUEMA_CONFIG = {
   raidJoins: { ruta: 'proteccion.raidJoins', tipo: 'int', min: 3, max: 50 },
   raidSegundos: { ruta: 'proteccion.raidSegundos', tipo: 'int', min: 10, max: 600 },
   accionesRapidas: { ruta: 'proteccion.accionesRapidas', tipo: 'bool' },
+  // Automod por contenido (filtros que borran el mensaje y avisan al staff).
+  filtroInvites: { ruta: 'proteccion.filtroInvites', tipo: 'bool' },
+  filtroLinks: { ruta: 'proteccion.filtroLinks', tipo: 'bool' },
+  linksPermitidos: { ruta: 'proteccion.linksPermitidos', tipo: 'lista' },
+  filtroMenciones: { ruta: 'proteccion.filtroMenciones', tipo: 'bool' },
+  mencionesMaximas: { ruta: 'proteccion.mencionesMaximas', tipo: 'int', min: 2, max: 20 },
+  filtroMayusculas: { ruta: 'proteccion.filtroMayusculas', tipo: 'bool' },
+  mayusculasPorcentaje: { ruta: 'proteccion.mayusculasPorcentaje', tipo: 'int', min: 50, max: 100 },
+  mayusculasMinimo: { ruta: 'proteccion.mayusculasMinimo', tipo: 'int', min: 5, max: 50 },
+  filtroRepetidos: { ruta: 'proteccion.filtroRepetidos', tipo: 'bool' },
+  repetidosVeces: { ruta: 'proteccion.repetidosVeces', tipo: 'int', min: 2, max: 10 },
   ticketsCategoria: { ruta: 'tickets.categoriaId', tipo: 'snowflake' },
   ticketsLogs: { ruta: 'tickets.canalLogs', tipo: 'snowflake' },
   welcomeMessage: { ruta: 'welcome.message', tipo: 'string', max: 1000 },
@@ -98,6 +109,15 @@ function validarContraEsquema(regla, valor) {
       return null;
     case 'enum':
       return regla.valores.includes(valor) ? valor : null;
+    case 'lista': {
+      // Lista de dominios permitidos: acepta ["a.com"] o "a.com, b.com" y devuelve
+      // dominios normalizados. Si no queda ninguno válido, se rechaza el cambio
+      // (mandar "" sí borra la lista: es una intención explícita).
+      const crudo = Array.isArray(valor) ? valor : String(valor).split(/[,;\s]+/);
+      const limpios = require('../utils/proteccion').normalizarDominios(crudo.filter(Boolean));
+      if (!limpios.length && String(valor).trim()) return null;
+      return limpios;
+    }
     case 'string': {
       if (typeof valor !== 'string' && typeof valor !== 'number') return null;
       const texto = String(valor).trim();
@@ -305,13 +325,24 @@ async function procesarFila(fila, client) {
     }
 
     case 'agregar_server_cs': {
-      const nombre = String(args.nombre || '').trim().slice(0, MAX_TEXTOS);
+      const nombre = String(args.nombre || '')
+        .trim()
+        .slice(0, MAX_TEXTOS);
       const host = String(args.host || '').trim();
       if (!nombre || !host || !/^[\w.-]+$/.test(host)) return { ok: false, error: 'nombre u host inválido' };
       const puerto = enteroEnRango(args.puerto, 1, 65535) ?? 27015;
-      const modo = String(args.modo || '').trim().slice(0, 40) || undefined;
-      const descripcion = String(args.descripcion || '').trim().slice(0, 300) || undefined;
-      const imagen = String(args.imagen || '').trim().slice(0, 300) || undefined;
+      const modo =
+        String(args.modo || '')
+          .trim()
+          .slice(0, 40) || undefined;
+      const descripcion =
+        String(args.descripcion || '')
+          .trim()
+          .slice(0, 300) || undefined;
+      const imagen =
+        String(args.imagen || '')
+          .trim()
+          .slice(0, 300) || undefined;
       let okFinal = true;
       let detalle = `server "${nombre}" agregado`;
       setGuildConfig(guildId, (c) => {
@@ -563,12 +594,7 @@ function resetearEjecutados() {
 
 // Marca la intención de ejecución sin sellar procesado_en (opción de mariadb).
 async function marcarEnEjecucion(id) {
-  return actualizar(
-    'bot_cmd',
-    { id },
-    { resultado: { estado: 'en_ejecucion', iniciado_en: new Date().toISOString() } },
-    { marcarProcesado: false }
-  );
+  return actualizar('bot_cmd', { id }, { resultado: { estado: 'en_ejecucion', iniciado_en: new Date().toISOString() } }, { marcarProcesado: false });
 }
 
 // ---------- Tick: procesar comandos + publicar estado ----------
@@ -629,7 +655,7 @@ async function tick(client) {
         ejecutados.delete(id);
         log.info(
           `Comando web "${fila.comando}" → ${resultado.ok ? 'OK' : 'fallo'}` +
-          (resultado.detalle ? `: ${resultado.detalle}` : resultado.error ? `: ${resultado.error}` : '')
+            (resultado.detalle ? `: ${resultado.detalle}` : resultado.error ? `: ${resultado.error}` : '')
         );
       } else {
         log.warn(`No se pudo marcar el comando web #${id} ("${fila.comando}") como procesado; se reintenta el marcado sin repetir la acción`);

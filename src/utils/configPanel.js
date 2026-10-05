@@ -15,13 +15,14 @@ const {
 const { getGuildConfig, setGuildConfig } = require('../store');
 const { brandEmbed, errorEmbed, COLORS } = require('./replies');
 const { nivelStaff, esStaff } = require('./permisos');
-const { POR_DEFECTO: PROTECCION_DEFECTO } = require('./proteccion');
 const {
-  ACCIONES: ACCIONES_ESCALADA,
-  LIMITES: LIMITES_ESCALADA,
-  resolver: resolverEscalada,
-  describir: describirEscalada,
-} = require('./escalada');
+  POR_DEFECTO: PROTECCION_DEFECTO,
+  configDe: configProteccion,
+  normalizarDominios,
+  FILTROS: FILTROS_AUTOMOD,
+  LIMITES_FILTROS,
+} = require('./proteccion');
+const { ACCIONES: ACCIONES_ESCALADA, LIMITES: LIMITES_ESCALADA, resolver: resolverEscalada, describir: describirEscalada } = require('./escalada');
 
 // ---------- Definición de secciones ----------
 const SECCIONES = [
@@ -153,8 +154,9 @@ function vistaSeccion(interaction, seccion, guardado = false) {
   const nota = guardado ? '\n\n**Guardado.**' : '';
   const components = [];
   let embed;
-  // Valores de la sección de protección (completados con los por defecto).
-  const p = { ...PROTECCION_DEFECTO, ...(config.proteccion || {}) };
+  // Valores de la sección de protección (por defecto + acotados, igual que los lee
+  // el automod: así lo que se ve en el panel es lo que realmente se aplica).
+  const p = configProteccion(guild.id);
 
   if (seccion === 'bienvenida') {
     embed = new EmbedBuilder()
@@ -189,7 +191,11 @@ function vistaSeccion(interaction, seccion, guardado = false) {
   } else if (seccion === 'modlog' || seccion === 'logs' || seccion === 'avisos') {
     const datos = {
       modlog: { titulo: 'Mod-log', actual: canalActual(config.modlog), desc: 'Registra kick/ban/timeout/warn/clear/lockdown.' },
-      logs: { titulo: 'Logs de eventos', actual: canalActual(config.logs), desc: 'Mensajes borrados/editados, salidas, roles y apodos. Si no hay, usa el mod-log.' },
+      logs: {
+        titulo: 'Logs de eventos',
+        actual: canalActual(config.logs),
+        desc: 'Mensajes borrados/editados, salidas, roles y apodos. Si no hay, usa el mod-log.',
+      },
       avisos: { titulo: 'Avisos al staff', actual: canalActual(config.avisosChannel), desc: 'Notificaciones para el equipo de moderación.' },
     }[seccion];
 
@@ -200,10 +206,7 @@ function vistaSeccion(interaction, seccion, guardado = false) {
 
     components.push(
       new ActionRowBuilder().addComponents(
-        new ChannelSelectMenuBuilder()
-          .setCustomId(`cfg:set:${seccion}:canal`)
-          .setPlaceholder('Elegí el canal')
-          .setChannelTypes(ChannelType.GuildText)
+        new ChannelSelectMenuBuilder().setCustomId(`cfg:set:${seccion}:canal`).setPlaceholder('Elegí el canal').setChannelTypes(ChannelType.GuildText)
       )
     );
     components.push(new ActionRowBuilder().addComponents(filaDesactivar(seccion).components[0], filaVolver().components[0]));
@@ -222,9 +225,7 @@ function vistaSeccion(interaction, seccion, guardado = false) {
       ['helper', 'Rol helper del bot'],
     ]) {
       components.push(
-        new ActionRowBuilder().addComponents(
-          new RoleSelectMenuBuilder().setCustomId(`cfg:set:staff:${nivel}`).setPlaceholder(placeholder)
-        )
+        new ActionRowBuilder().addComponents(new RoleSelectMenuBuilder().setCustomId(`cfg:set:staff:${nivel}`).setPlaceholder(placeholder))
       );
     }
     components.push(filaVolver());
@@ -238,9 +239,7 @@ function vistaSeccion(interaction, seccion, guardado = false) {
       );
 
     components.push(
-      new ActionRowBuilder().addComponents(
-        new RoleSelectMenuBuilder().setCustomId('cfg:set:mute:rol').setPlaceholder('Elegí el rol de silenciado')
-      )
+      new ActionRowBuilder().addComponents(new RoleSelectMenuBuilder().setCustomId('cfg:set:mute:rol').setPlaceholder('Elegí el rol de silenciado'))
     );
     components.push(new ActionRowBuilder().addComponents(filaDesactivar('mute').components[0], filaVolver().components[0]));
   } else if (seccion === 'escalada') {
@@ -316,10 +315,7 @@ function vistaSeccion(interaction, seccion, guardado = false) {
 
     components.push(
       new ActionRowBuilder().addComponents(
-        new ChannelSelectMenuBuilder()
-          .setCustomId(`cfg:set:${seccion}:canal`)
-          .setPlaceholder('Elegí el canal')
-          .setChannelTypes(ChannelType.GuildText)
+        new ChannelSelectMenuBuilder().setCustomId(`cfg:set:${seccion}:canal`).setPlaceholder('Elegí el canal').setChannelTypes(ChannelType.GuildText)
       )
     );
     components.push(new ActionRowBuilder().addComponents(filaDesactivar(seccion).components[0], filaVolver().components[0]));
@@ -338,15 +334,30 @@ function vistaSeccion(interaction, seccion, guardado = false) {
       { valor: 'ban', etiqueta: 'Banear' },
     ];
 
+    // Detalle de cada filtro del automod: estado + con qué umbral está trabajando.
+    const detalleFiltro = (clave) => {
+      if (clave === 'filtroLinks') {
+        return p.linksPermitidos.length ? `permitidos: ${p.linksPermitidos.join(', ')}` : 'sin dominios permitidos';
+      }
+      if (clave === 'filtroMenciones') return `máx. ${p.mencionesMaximas} menciones`;
+      if (clave === 'filtroMayusculas') return `${p.mayusculasPorcentaje}% en ${p.mayusculasMinimo}+ letras`;
+      if (clave === 'filtroRepetidos') return `${p.repetidosVeces} veces seguidas`;
+      return 'links a otros servidores';
+    };
+    const lineasFiltros = FILTROS_AUTOMOD.map((f) => `• **${f.nombre}:** ${p[f.clave] ? 'Prendido' : 'Apagado'} — ${detalleFiltro(f.clave)}`).join(
+      '\n'
+    );
+
     embed = new EmbedBuilder()
-      .setTitle('Anti-spam y anti-raid')
+      .setTitle('Anti-spam, automod y anti-raid')
       .setColor(COLORS.info)
       .setDescription(
         `**Estado:** ${p.activado ? '🟢 Prendida' : '🔴 Apagada'}${nota}\n\n` +
           `**Spam:** ${p.spamMensajes} mensajes en ${p.spamSegundos} s → **${ETIQUETA_ACCION_SPAM[p.accionSpam] ?? p.accionSpam}**\n` +
           `**Raid:** ${p.raidJoins} ingresos en ${p.raidSegundos} s → **${ETIQUETA_ACCION_RAID[p.accionRaid] ?? p.accionRaid}**\n` +
           `**Auto-acción en raids:** ${p.accionesRapidas ? 'Prendida (actúa sola sobre cuentas nuevas sin roles)' : 'Apagada (solo alerta)'}\n\n` +
-          'El staff con permiso de gestionar mensajes está exento del anti-spam. Las alertas van al canal de avisos (o logs/mod-log si no hay).'
+          `**Automod por contenido** (borra el mensaje, avisa por DM y deja el caso):\n${lineasFiltros}\n\n` +
+          'El staff con permiso de gestionar mensajes está exento del anti-spam y del automod. Las alertas van al canal de avisos (o logs/mod-log si no hay).'
       );
 
     components.push(
@@ -377,9 +388,21 @@ function vistaSeccion(interaction, seccion, guardado = false) {
           .addOptions(OPCIONES_RAID.map((o) => ({ label: o.etiqueta, value: o.valor, default: p.accionRaid === o.valor })))
       )
     );
+    // Un botón por filtro (prendido = verde) + los umbrales en un modal.
+    components.push(
+      new ActionRowBuilder().addComponents(
+        FILTROS_AUTOMOD.map((f) =>
+          new ButtonBuilder()
+            .setCustomId(`cfg:toggle:proteccion:${f.clave}`)
+            .setLabel(p[f.clave] ? `${f.nombre}: prendido` : f.nombre)
+            .setStyle(p[f.clave] ? ButtonStyle.Success : ButtonStyle.Secondary)
+        )
+      )
+    );
     components.push(
       new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('cfg:modalpedir:proteccion').setLabel('Ajustar umbrales').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('cfg:modalpedir:proteccion:filtros').setLabel('Ajustar filtros').setStyle(ButtonStyle.Primary),
         filaVolver().components[0]
       )
     );
@@ -426,9 +449,10 @@ function vistaSeccion(interaction, seccion, guardado = false) {
 
     components.push(
       new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('cfg:toggle:servMonitoreo').setLabel(
-          config.servidores?.monitoreo === false ? 'Prender alertas' : 'Apagar alertas'
-        ).setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+          .setCustomId('cfg:toggle:servMonitoreo')
+          .setLabel(config.servidores?.monitoreo === false ? 'Prender alertas' : 'Apagar alertas')
+          .setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId('cfg:servers:limpiarPanel').setLabel('Olvidar panel publicado').setStyle(ButtonStyle.Secondary),
         filaVolver().components[0]
       )
@@ -451,7 +475,7 @@ function vistaSeccion(interaction, seccion, guardado = false) {
         new ChannelSelectMenuBuilder()
           .setCustomId('cfg:set:tickets:categoria')
           .setPlaceholder('Elegí la categoría donde se crean los tickets')
-          .setChannelTypes(ChannelType.GuildCategory),
+          .setChannelTypes(ChannelType.GuildCategory)
       )
     );
     components.push(
@@ -531,7 +555,7 @@ function seccionDeComponente(interaction) {
   if (accion === 'servers') return 'servidores';
   if (accion === 'off') {
     // cfg:off:menu (la sección viene en values) | cfg:off:ask:<feature> | cfg:off:si:<feature>
-    return partes[2] === 'menu' ? interaction.values?.[0] ?? null : partes[3] ?? null;
+    return partes[2] === 'menu' ? (interaction.values?.[0] ?? null) : (partes[3] ?? null);
   }
   return null;
 }
@@ -665,7 +689,10 @@ async function manejarComponente(interaction) {
     if (interaction.isFromMessage()) {
       return interaction.update(vistaSeccion(interaction, 'bienvenida', true));
     }
-    return interaction.reply({ embeds: [brandEmbed({ color: COLORS.success, title: 'Mensaje de bienvenida guardado' })], flags: MessageFlags.Ephemeral });
+    return interaction.reply({
+      embeds: [brandEmbed({ color: COLORS.success, title: 'Mensaje de bienvenida guardado' })],
+      flags: MessageFlags.Ephemeral,
+    });
   }
 
   // Toggle de la IA
@@ -739,8 +766,21 @@ async function manejarComponente(interaction) {
     });
   }
 
+  // Toggle de un filtro del automod (cfg:toggle:proteccion:<clave>)
+  if (accion === 'toggle' && partes[2] === 'proteccion' && partes[3] && interaction.isButton()) {
+    const filtro = FILTROS_AUTOMOD.find((f) => f.clave === partes[3]);
+    if (!filtro) return interaction.reply({ embeds: [errorEmbed('Ese filtro no existe.')], flags: MessageFlags.Ephemeral });
+    const config = getGuildConfig(guild.id);
+    const nuevo = config.proteccion?.[filtro.clave] !== true;
+    setGuildConfig(guild.id, (c) => {
+      c.proteccion = { ...PROTECCION_DEFECTO, ...(c.proteccion || {}) };
+      c.proteccion[filtro.clave] = nuevo;
+    });
+    return interaction.update(vistaSeccion(interaction, 'proteccion', true));
+  }
+
   // Toggle de la protección (anti-spam y anti-raid)
-  if (accion === 'toggle' && partes[2] === 'proteccion' && interaction.isButton()) {
+  if (accion === 'toggle' && partes[2] === 'proteccion' && !partes[3] && interaction.isButton()) {
     const config = getGuildConfig(guild.id);
     const nuevo = config.proteccion?.activado !== true;
     setGuildConfig(guild.id, (c) => {
@@ -759,6 +799,87 @@ async function manejarComponente(interaction) {
       c.proteccion.accionesRapidas = nuevo;
     });
     return interaction.update(vistaSeccion(interaction, 'proteccion', true));
+  }
+
+  // Botón que pide el modal de los parámetros del automod (cfg:modalpedir:proteccion:filtros)
+  if (accion === 'modalpedir' && partes[2] === 'proteccion' && partes[3] === 'filtros' && interaction.isButton()) {
+    const p = configProteccion(guild.id);
+    const lim = (clave) => `${LIMITES_FILTROS[clave][0]}-${LIMITES_FILTROS[clave][1]}`;
+    const modal = new ModalBuilder()
+      .setCustomId('cfg:modal:proteccion:filtros')
+      .setTitle('Parámetros del automod')
+      .addComponents(
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder()
+            .setCustomId('mencionesMaximas')
+            .setLabel(`Menciones por mensaje (${lim('mencionesMaximas')})`)
+            .setStyle(TextInputStyle.Short)
+            .setValue(String(p.mencionesMaximas))
+            .setMaxLength(2)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder()
+            .setCustomId('mayusculasPorcentaje')
+            .setLabel(`Mayúsculas: % mínimo (${lim('mayusculasPorcentaje')})`)
+            .setStyle(TextInputStyle.Short)
+            .setValue(String(p.mayusculasPorcentaje))
+            .setMaxLength(3)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder()
+            .setCustomId('mayusculasMinimo')
+            .setLabel(`Mayúsculas: letras mínimas (${lim('mayusculasMinimo')})`)
+            .setStyle(TextInputStyle.Short)
+            .setValue(String(p.mayusculasMinimo))
+            .setMaxLength(2)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder()
+            .setCustomId('repetidosVeces')
+            .setLabel(`Repetidos: veces seguidas (${lim('repetidosVeces')})`)
+            .setStyle(TextInputStyle.Short)
+            .setValue(String(p.repetidosVeces))
+            .setMaxLength(2)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder()
+            .setCustomId('linksPermitidos')
+            .setLabel('Enlaces permitidos (dominios separados por coma)')
+            .setStyle(TextInputStyle.Short)
+            .setValue(p.linksPermitidos.join(', '))
+            .setMaxLength(300)
+            .setRequired(false)
+        )
+      );
+    return interaction.showModal(modal);
+  }
+
+  // Modal de parámetros del automod enviado: validar, guardar y redibujar
+  if (accion === 'modal' && partes[2] === 'proteccion' && partes[3] === 'filtros' && interaction.isModalSubmit()) {
+    const num = (id, clave, defecto) => {
+      const n = Number(interaction.fields.getTextInputValue(id));
+      return Number.isFinite(n) ? Math.min(Math.max(Math.round(n), LIMITES_FILTROS[clave][0]), LIMITES_FILTROS[clave][1]) : defecto;
+    };
+    const base = configProteccion(guild.id);
+    const mencionesMaximas = num('mencionesMaximas', 'mencionesMaximas', base.mencionesMaximas);
+    const mayusculasPorcentaje = num('mayusculasPorcentaje', 'mayusculasPorcentaje', base.mayusculasPorcentaje);
+    const mayusculasMinimo = num('mayusculasMinimo', 'mayusculasMinimo', base.mayusculasMinimo);
+    const repetidosVeces = num('repetidosVeces', 'repetidosVeces', base.repetidosVeces);
+    // La lista se escribe a mano: se acepta coma, espacio o punto y coma como separador.
+    const linksPermitidos = normalizarDominios(
+      String(interaction.fields.getTextInputValue('linksPermitidos') ?? '')
+        .split(/[,;\s]+/)
+        .filter(Boolean)
+    );
+    setGuildConfig(guild.id, (c) => {
+      c.proteccion = { ...PROTECCION_DEFECTO, ...(c.proteccion || {}) };
+      Object.assign(c.proteccion, { mencionesMaximas, mayusculasPorcentaje, mayusculasMinimo, repetidosVeces, linksPermitidos });
+    });
+    if (interaction.isFromMessage()) return interaction.update(vistaSeccion(interaction, 'proteccion', true));
+    return interaction.reply({
+      embeds: [brandEmbed({ color: COLORS.success, title: 'Parámetros del automod guardados' })],
+      flags: MessageFlags.Ephemeral,
+    });
   }
 
   // Botón que pide el modal de umbrales de spam/raid
@@ -806,7 +927,7 @@ async function manejarComponente(interaction) {
   }
 
   // Modal de umbrales enviado: validar, guardar y redibujar
-  if (accion === 'modal' && partes[2] === 'proteccion' && interaction.isModalSubmit()) {
+  if (accion === 'modal' && partes[2] === 'proteccion' && !partes[3] && interaction.isModalSubmit()) {
     const num = (id, min, max, defecto) => {
       const n = Number(interaction.fields.getTextInputValue(id));
       return Number.isFinite(n) ? Math.min(Math.max(Math.round(n), min), max) : defecto;

@@ -5,17 +5,11 @@ const { decidirBusqueda, respuestaSinIA } = require('../utils/web');
 const { pedirConfirmacion } = require('../utils/accionesIA');
 const { DUENO_ID } = require('../comunidad');
 const { getAFK, quitarAFK } = require('../commands/afk');
-const {
-  procesarMensaje,
-  datosDe,
-  xpParaNivel,
-  canalAnuncios,
-  rangoDe,
-} = require('../niveles');
+const { procesarMensaje, datosDe, xpParaNivel, canalAnuncios, rangoDe } = require('../niveles');
 const { asignarRolesNivel } = require('../utils/rolesNivel');
 const { brandEmbed, COLORS } = require('../utils/replies');
 const { getGuildConfig } = require('../store');
-const { procesarMensajeParaSpam } = require('../utils/proteccion');
+const { procesarMensajeParaSpam, procesarMensajeParaFiltros } = require('../utils/proteccion');
 
 // Limita el tamaño del buffer de mensajes recientes por canal para no crecer sin control.
 const MAX_BUFFER = 100;
@@ -148,12 +142,7 @@ async function manejarMencion(message) {
   if (estaEnCooldown(message.author.id)) return;
 
   // Texto que quedó después de la mención: "@TriggerBOT hola" → "hola"
-  const texto = normalizar(
-    message.content
-      .replaceAll(`<@${client.user.id}>`, '')
-      .replaceAll(`<@!${client.user.id}>`, '')
-      .trim()
-  );
+  const texto = normalizar(message.content.replaceAll(`<@${client.user.id}>`, '').replaceAll(`<@!${client.user.id}>`, '').trim());
 
   // Ping rápido con formato del bot; el resto es charla o acciones con IA.
   if (texto === 'ping') {
@@ -223,6 +212,14 @@ module.exports = {
   name: Events.MessageCreate,
   async execute(message) {
     if (!message.guild || message.author?.bot) return;
+
+    // Automod: invitaciones, enlaces, menciones masivas, mayúsculas y repetidos.
+    // Va antes del anti-spam: un mensaje filtrado no se cuenta ni se responde.
+    try {
+      if (await procesarMensajeParaFiltros(message)) return;
+    } catch (error) {
+      console.error('[TriggerBOT] Error en el automod:', error.message);
+    }
 
     // Anti-spam: si tomó una acción, no se suma XP ni se responde por el burst.
     try {

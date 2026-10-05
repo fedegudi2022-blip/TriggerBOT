@@ -52,8 +52,18 @@ function miembroFake(id, guild, { posicionRol = 1, creado = Date.now(), rolesCac
   };
 }
 
-function mensajeFake(id, guild, member) {
-  return { id, guildId: guild.id, channelId: 'canal-1', guild, member, author: member.user };
+function mensajeFake(id, guild, member, extra = {}) {
+  return {
+    id,
+    guildId: guild.id,
+    channelId: 'canal-1',
+    guild,
+    member,
+    author: member.user,
+    content: '',
+    mentions: { everyone: false, users: { size: 0 }, roles: { size: 0 } },
+    ...extra,
+  };
 }
 
 function activar(guildId, extras = {}) {
@@ -69,7 +79,9 @@ describe('procesarMensajeParaSpam', () => {
   test('no actúa si la protección está desactivada', async () => {
     const guild = guildFake('g-spam-off');
     const member = miembroFake('u-1', guild);
-    store.setGuildConfig(guild.id, (c) => { c.proteccion = { activado: false }; });
+    store.setGuildConfig(guild.id, (c) => {
+      c.proteccion = { activado: false };
+    });
     for (let i = 0; i < 6; i++) {
       const r = await proteccion.procesarMensajeParaSpam(mensajeFake(`m${i}`, guild, member));
       assert.equal(r, false);
@@ -195,17 +207,23 @@ describe('ejecutarAccion y aplicarMute', () => {
   test('baneo rechazado por Discord reporta el error concreto', async () => {
     const guild = guildFake('g-acc-3', { permisosBot: [PermissionFlagsBits.BanMembers] });
     const member = miembroFake('u-1', guild);
-    member.ban = async () => { throw new Error('falta jerarquía'); };
+    member.ban = async () => {
+      throw new Error('falta jerarquía');
+    };
     const texto = await proteccion.ejecutarAccion(member, 'ban', 'razón', 'spam');
     assert.match(texto, /⚠️ Discord rechazó el baneo: falta jerarquía/);
   });
 
   test('aplicarMute con rol configurado: asigna el rol de verdad', async () => {
     const guild = guildFake('g-acc-4', { permisosBot: [PermissionFlagsBits.ManageRoles], muteRole: 'rol-mute' });
-    store.setGuildConfig(guild.id, (c) => { c.muteRole = 'rol-mute'; }); // el rol viene de la config del server
+    store.setGuildConfig(guild.id, (c) => {
+      c.muteRole = 'rol-mute';
+    }); // el rol viene de la config del server
     const member = miembroFake('u-1', guild);
     let rolAsignado = false;
-    member.roles.add = async () => { rolAsignado = true; };
+    member.roles.add = async () => {
+      rolAsignado = true;
+    };
     const res = await proteccion.aplicarMute(member, 'razón');
     assert.deepEqual(res, { ok: true, fallback: false });
     assert.equal(rolAsignado, true);
@@ -215,7 +233,9 @@ describe('ejecutarAccion y aplicarMute', () => {
     const guild = guildFake('g-acc-5', { permisosBot: [PermissionFlagsBits.ModerateMembers] });
     const member = miembroFake('u-1', guild);
     let timeoutAplicado = false;
-    member.timeout = async () => { timeoutAplicado = true; };
+    member.timeout = async () => {
+      timeoutAplicado = true;
+    };
     const res = await proteccion.aplicarMute(member, 'razón');
     assert.deepEqual(res, { ok: true, fallback: true });
     assert.equal(timeoutAplicado, true, 'el fallback debe EJECUTAR el timeout, no solo anunciarlo');
@@ -245,7 +265,9 @@ describe('registrarIngreso (anti-raid)', () => {
         rolesCacheSize: conRoles ? 3 : 1,
       });
       m.user.bot = bot;
-      m.kick = async () => { expulsados += 1; };
+      m.kick = async () => {
+        expulsados += 1;
+      };
       guild.members.cache.set(id, m);
       return m;
     };
@@ -275,7 +297,9 @@ describe('registrarIngreso (anti-raid)', () => {
     let expulsados = 0;
     const hacerMiembro = (id) => {
       const m = miembroFake(id, guild);
-      m.kick = async () => { expulsados += 1; };
+      m.kick = async () => {
+        expulsados += 1;
+      };
       guild.members.cache.set(id, m);
       return m;
     };
@@ -284,5 +308,170 @@ describe('registrarIngreso (anti-raid)', () => {
     await proteccion.registrarIngreso(hacerMiembro('n-2'));
     await proteccion.registrarIngreso(hacerMiembro('n-3'));
     assert.equal(expulsados, 0);
+  });
+});
+
+// ---------- Automod por contenido ----------
+describe('procesarMensajeParaFiltros — automod por contenido', () => {
+  // Guild con permisos de borrado y un canal que registra qué ids se borran.
+  function guildConBorrado(id) {
+    const guild = guildFake(id, { permisosBot: [PermissionFlagsBits.ManageMessages] });
+    const borrados = [];
+    guild.channels.cache.set('canal-1', {
+      id: 'canal-1',
+      bulkDelete: async (ids) => {
+        borrados.push(...ids);
+        return new Map(ids.map((i) => [i, {}]));
+      },
+    });
+    return { guild, borrados };
+  }
+
+  test('con la protección apagada no filtra nada', async () => {
+    const { guild, borrados } = guildConBorrado('g-fil-off');
+    store.setGuildConfig(guild.id, (c) => {
+      c.proteccion = { activado: false, filtroInvites: true };
+    });
+    const member = miembroFake('u-1', guild);
+    assert.equal(await proteccion.procesarMensajeParaFiltros(mensajeFake('m1', guild, member, { content: 'entren a discord.gg/trigger' })), false);
+    assert.deepEqual(borrados, []);
+  });
+
+  test('borra las invitaciones cuando el filtro está prendido y deja pasar el resto', async () => {
+    const { guild, borrados } = guildConBorrado('g-fil-inv');
+    activar(guild.id, { filtroInvites: true });
+    const member = miembroFake('u-2', guild);
+
+    assert.equal(
+      await proteccion.procesarMensajeParaFiltros(mensajeFake('m1', guild, member, { content: 'metanse en discord.gg/trigger-arena' })),
+      true
+    );
+    assert.deepEqual(borrados, ['m1']);
+    assert.equal(await proteccion.procesarMensajeParaFiltros(mensajeFake('m2', guild, member, { content: 'buenas tardes a todos' })), false);
+    assert.deepEqual(borrados, ['m1'], 'un mensaje normal no se toca');
+  });
+
+  test('el filtro de enlaces respeta la lista permitida (y sus subdominios)', async () => {
+    const { guild, borrados } = guildConBorrado('g-fil-links');
+    activar(guild.id, { filtroLinks: true, linksPermitidos: ['nostalgia.ar'] });
+    const member = miembroFake('u-3', guild);
+
+    assert.equal(
+      await proteccion.procesarMensajeParaFiltros(mensajeFake('m1', guild, member, { content: 'entren a https://cs.nostalgia.ar:27015' })),
+      false
+    );
+    assert.equal(await proteccion.procesarMensajeParaFiltros(mensajeFake('m2', guild, member, { content: 'miren https://bit.ly/estafa' })), true);
+    assert.deepEqual(borrados, ['m2']);
+  });
+
+  test('el filtro de menciones corta @everyone y las menciones por encima del máximo', async () => {
+    const { guild, borrados } = guildConBorrado('g-fil-menc');
+    activar(guild.id, { filtroMenciones: true, mencionesMaximas: 2 });
+    const member = miembroFake('u-4', guild);
+    const conMenciones = (id, usuarios) =>
+      mensajeFake(id, guild, member, { content: 'miren esto', mentions: { everyone: false, users: { size: usuarios }, roles: { size: 0 } } });
+
+    assert.equal(await proteccion.procesarMensajeParaFiltros(conMenciones('m1', 2)), false);
+    assert.equal(await proteccion.procesarMensajeParaFiltros(conMenciones('m2', 3)), true);
+    assert.equal(
+      await proteccion.procesarMensajeParaFiltros(
+        mensajeFake('m3', guild, member, { content: '@everyone entren', mentions: { everyone: true, users: { size: 0 }, roles: { size: 0 } } })
+      ),
+      true,
+      '@everyone se corta aunque haya pocas menciones'
+    );
+    assert.deepEqual(borrados, ['m2', 'm3']);
+  });
+
+  test('el filtro de mayúsculas mide letras (no números ni emojis) y respeta el largo mínimo', async () => {
+    const { guild, borrados } = guildConBorrado('g-fil-may');
+    activar(guild.id, { filtroMayusculas: true, mayusculasPorcentaje: 70, mayusculasMinimo: 10 });
+    const member = miembroFake('u-5', guild);
+
+    assert.equal(await proteccion.procesarMensajeParaFiltros(mensajeFake('m1', guild, member, { content: 'ESTE MENSAJE 100% GRITA 🔥' })), true);
+    assert.equal(await proteccion.procesarMensajeParaFiltros(mensajeFake('m2', guild, member, { content: 'GG WP' })), false, 'corto: no se evalúa');
+    assert.equal(
+      await proteccion.procesarMensajeParaFiltros(
+        mensajeFake('m3', guild, member, { content: 'Buenas noches a toda la banda, entrando a jugar un rato' })
+      ),
+      false,
+      'texto normal: no dispara'
+    );
+    assert.deepEqual(borrados, ['m1']);
+  });
+
+  test('el filtro de repetidos cuenta solo los iguales SEGUIDOS', async () => {
+    const { guild, borrados } = guildConBorrado('g-fil-rep');
+    activar(guild.id, { filtroRepetidos: true, repetidosVeces: 3 });
+    const member = miembroFake('u-6', guild);
+
+    assert.equal(await proteccion.procesarMensajeParaFiltros(mensajeFake('m1', guild, member, { content: 'hola' })), false);
+    assert.equal(
+      await proteccion.procesarMensajeParaFiltros(mensajeFake('m2', guild, member, { content: 'HOLA ' })),
+      false,
+      'normaliza mayúsculas y espacios'
+    );
+    assert.equal(await proteccion.procesarMensajeParaFiltros(mensajeFake('m3', guild, member, { content: 'hola' })), true);
+    assert.deepEqual(borrados, ['m3']);
+
+    const otro = miembroFake('u-7', guild);
+    assert.equal(await proteccion.procesarMensajeParaFiltros(mensajeFake('m4', guild, otro, { content: 'hola' })), false);
+    assert.equal(await proteccion.procesarMensajeParaFiltros(mensajeFake('m5', guild, otro, { content: 'chau' })), false);
+    assert.equal(await proteccion.procesarMensajeParaFiltros(mensajeFake('m6', guild, otro, { content: 'hola' })), false, 'no son seguidos');
+    assert.deepEqual(borrados, ['m3']);
+  });
+
+  test('avisa por DM una sola vez por usuario y filtro (cooldown), pero borra siempre', async () => {
+    const { guild, borrados } = guildConBorrado('g-fil-dm');
+    activar(guild.id, { filtroInvites: true });
+    const member = miembroFake('u-8', guild);
+    const dms = [];
+    member.user.send = async (texto) => {
+      dms.push(texto);
+    };
+
+    assert.equal(await proteccion.procesarMensajeParaFiltros(mensajeFake('m1', guild, member, { content: 'discord.gg/uno' })), true);
+    assert.equal(await proteccion.procesarMensajeParaFiltros(mensajeFake('m2', guild, member, { content: 'discord.gg/dos' })), true);
+    assert.deepEqual(borrados, ['m1', 'm2'], 'borra todos los mensajes filtrados');
+    assert.equal(dms.length, 1, 'el aviso no se repite dentro del cooldown');
+    assert.match(dms[0], /invitación a otro servidor/);
+  });
+
+  test('exime al staff del automod', async () => {
+    const { guild, borrados } = guildConBorrado('g-fil-staff');
+    activar(guild.id, { filtroInvites: true });
+    const staff = miembroFake('staff-9', guild);
+    staff.permissions.has = (p) => p === PermissionFlagsBits.ManageMessages;
+
+    assert.equal(await proteccion.procesarMensajeParaFiltros(mensajeFake('m1', guild, staff, { content: 'discord.gg/nuestro' })), false);
+    assert.deepEqual(borrados, []);
+  });
+
+  test('sin permiso de borrar, la alerta dice que NO se pudo borrar', async () => {
+    const guild = guildFake('g-fil-sinperm'); // el bot NO tiene Gestionar mensajes
+    const alertas = [];
+    guild.channels.cache.set('canal-avisos', {
+      id: 'canal-avisos',
+      send: async ({ embeds }) => {
+        alertas.push(...embeds);
+      },
+    });
+    store.setGuildConfig(guild.id, (c) => {
+      c.avisosChannel = 'canal-avisos';
+      c.proteccion = { activado: true, filtroInvites: true };
+    });
+    const member = miembroFake('u-9', guild);
+
+    assert.equal(await proteccion.procesarMensajeParaFiltros(mensajeFake('m1', guild, member, { content: 'discord.gg/uno' })), true);
+    assert.equal(alertas.length, 1);
+    const campos = alertas[0].data.fields.map((f) => `${f.name}: ${f.value}`).join(' | ');
+    assert.match(campos, /no pude borrar el mensaje/, 'la alerta informa el resultado real');
+  });
+});
+
+describe('normalizarDominios', () => {
+  test('baja a minúsculas, saca www./*. , descarta lo inválido y no repite', () => {
+    const limpios = proteccion.normalizarDominios(['WWW.Nostalgia.AR', '*.cs.nostalgia.ar', 'no-es-un-dominio', 'nostalgia.ar', '']);
+    assert.deepEqual(limpios, ['nostalgia.ar', 'cs.nostalgia.ar']);
   });
 });
