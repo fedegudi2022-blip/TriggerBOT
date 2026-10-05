@@ -1,5 +1,5 @@
 const { SlashCommandBuilder } = require('discord.js');
-const { datosDe, xpParaNivel, posicion, rangoDe, multiplicador, LOGROS } = require('../niveles');
+const { datosDe, xpParaNivel, posicion, totalUsuarios, rangoDe, multiplicador, LOGROS, XP_PROMEDIO, logrosConProgreso } = require('../niveles');
 const { brandEmbed, miles } = require('../utils/replies');
 
 // Barra de progreso ASCII entre el nivel actual y el siguiente (20 celdas: más detalle).
@@ -31,42 +31,42 @@ module.exports = {
     const siguienteNivel = datos.nivel + 1;
     const xpSiguiente = xpParaNivel(siguienteNivel);
     const faltan = Math.max(xpSiguiente - datos.xp, 0);
+    const mensajes = Math.ceil(faltan / XP_PROMEDIO);
+    const porcentaje = Math.round(((datos.xp - xpParaNivel(datos.nivel)) / (xpSiguiente - xpParaNivel(datos.nivel))) * 100);
 
-    // XP ganado por logros ya cobrados.
+    // XP que ya pagaron los logros cobrados.
     const ganadoLogros = LOGROS.filter((l) => logrosObtenidos.includes(l.id)).reduce((s, l) => s + (l.premio || 0), 0);
 
-    // Logros en dos columnas compactas: [x] conseguidos y [ ] pendientes.
-    const check = (l) => (logrosObtenidos.includes(l.id) ? '[x]' : '[ ]');
-    const linea = (l) => `${check(l)} **${l.nombre}** · ${miles(l.premio)} XP`;
-    const mitad = Math.ceil(LOGROS.length / 2);
-    const colA = LOGROS.slice(0, mitad).map(linea).join('\n');
-    const colB = LOGROS.slice(mitad).map(linea).join('\n');
+    // Próximos logros: los tres más cercanos, con lo que falta. La lista completa vive en
+    // /logros: acá entraban los 16 renglones con [x]/[ ] en dos columnas, que era el
+    // bloque más ilegible de la ficha y el que menos se leía.
+    const pendientes = logrosConProgreso(datos);
+    const proximos = pendientes.slice(0, 3);
+    const lineaProximo = ({ logro, faltan: restan, unidad }) =>
+      `**${logro.nombre}** — faltan **${miles(restan)} ${unidad}** · +${miles(logro.premio || 0)} XP`;
 
     const embed = brandEmbed({
       color: rango.color,
       title: `Perfil de niveles — ${user.username}`,
       thumbnail: user.displayAvatarURL({ size: 256 }),
       description:
-        `**${rango.nombre}** · Nivel **${datos.nivel}** · Puesto **#${puesto || '—'}** del server\n` +
-        `Le faltan **${miles(faltan)} XP** para el nivel ${siguienteNivel}`,
+        `**${rango.nombre}** · Nivel **${datos.nivel}** · Puesto **#${puesto || '—'}** de ${miles(totalUsuarios(guildId))}\n` +
+        `**${miles(datos.xp)} XP** de ${miles(xpSiguiente)} · faltan **${miles(faltan)}** (~${miles(mensajes)} mensajes)`,
       fields: [
-        { name: 'XP total', value: `**${miles(datos.xp)}** / ${miles(xpSiguiente)}`, inline: true },
+        { name: 'Progreso al siguiente nivel', value: `\`${barra(datos.xp, datos.nivel)}\` ${porcentaje}%`, inline: false },
         { name: 'Mensajes', value: `**${miles(datos.mensajes)}**`, inline: true },
         { name: 'Racha', value: `**${datos.racha || 0}** día(s)`, inline: true },
-        { name: 'Progreso al siguiente nivel', value: `\`${barra(datos.xp, datos.nivel)}\` ${Math.round(((datos.xp - xpParaNivel(datos.nivel)) / (xpSiguiente - xpParaNivel(datos.nivel))) * 100)}%`, inline: false },
+        { name: `Logros ${logrosObtenidos.length}/${LOGROS.length}`, value: `**${miles(ganadoLogros)} XP** cobrados`, inline: true },
         {
           name: 'Bonus activos',
           value: bono.partes.length ? bono.partes.join(' · ') + ` → total **x${bono.total.toFixed(2)}**` : 'Ninguno ahora (activá racha con actividad diaria)',
           inline: false,
         },
-        {
-          name: `Logros — ${logrosObtenidos.length}/${LOGROS.length} · ${miles(ganadoLogros)} XP cobrado`,
-          value: colA,
-          inline: true,
-        },
-        { name: '\u200b', value: colB, inline: true },
+        ...(proximos.length
+          ? [{ name: `Próximos logros (${pendientes.length} en progreso)`, value: proximos.map(lineaProximo).join('\n'), inline: false }]
+          : []),
       ],
-      footer: 'TriggerBOT • ganás XP escribiendo (máx. 1 mensaje por minuto) • findes: x2',
+      footer: 'TriggerBOT • ganás XP escribiendo (máx. 1 mensaje por minuto) • /logros para el detalle completo',
     });
 
     return interaction.editReply({ embeds: [embed] });

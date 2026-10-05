@@ -166,8 +166,8 @@ El monitoreo hace 2 intentos con timeout de 2,5 s antes de dar un server por ca�
 
 | Comando                          | Qué hace                                                                                       |
 | -------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `/estadisticas [usuario]`        | Perfil completo: rango, nivel, XP con barra, bonus activos, racha, puesto y logros con premios |
-| `/logros [usuario]`              | Progreso logro por logro: barra, cuánto falta para cada uno y XP pendiente de cobro            |
+| `/estadisticas [usuario]`        | Perfil completo: rango, nivel, XP con barra, bonus activos, racha, puesto y próximos logros   |
+| `/logros [usuario]`              | Progreso logro por logro, del más cercano al más lejano, con cuánto falta para cada uno     |
 | `/rolnivel definir/quitar/lista` | Staff: roles que se otorgan automáticamente al alcanzar un nivel                               |
 | `/top [pagina]`                  | Ranking con podio, tu puesto y botones Anterior/Siguiente                                      |
 

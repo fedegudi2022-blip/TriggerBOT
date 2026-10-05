@@ -1,15 +1,12 @@
 const { SlashCommandBuilder } = require('discord.js');
-const { datosDe, posicion, totalUsuarios, LOGROS } = require('../niveles');
+const { datosDe, posicion, totalUsuarios, LOGROS, logrosConProgreso } = require('../niveles');
 const { brandEmbed, miles, COLORS } = require('../utils/replies');
 
-// Barra ASCII de 10 celdas para el progreso de cada logro (estilo /estadisticas).
+// Barra corta (10 celdas) que va al lado del nombre de cada logro pendiente.
 function barraLogro(progreso) {
   const llenos = Math.round(Math.min(Math.max(progreso, 0), 1) * 10);
   return `${'█'.repeat(llenos)}${'░'.repeat(10 - llenos)}`;
 }
-
-// Unidades por campo, para el "faltan X mensajes más".
-const UNIDADES = { mensajes: 'mensaje(s)', racha: 'día(s)', xp: 'XP', nivel: 'nivel(es)', findes: 'mensaje(s) de finde' };
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -25,62 +22,54 @@ module.exports = {
     const datos = datosDe(guildId, user.id);
     const obtenidos = datos.logros ?? [];
 
-    // Estadísticas crudas para calcular el progreso (0 en lo que no existe aún).
-    const stats = { xp: datos.xp || 0, mensajes: datos.mensajes || 0, findes: datos.findes || 0, nivel: datos.nivel || 0, racha: datos.racha || 0 };
-
     const desbloqueados = LOGROS.filter((l) => obtenidos.includes(l.id));
     const pendientes = LOGROS.filter((l) => !obtenidos.includes(l.id));
     const xpCobrado = desbloqueados.reduce((s, l) => s + (l.premio || 0), 0);
     const xpPendiente = pendientes.reduce((s, l) => s + (l.premio || 0), 0);
 
-    // Logros con meta: línea con barra y cuánto falta (ordenados por cercanía a cumplir).
-    const conMeta = pendientes
-      .filter((l) => l.meta)
-      .map((l) => {
-        const actual = stats[l.meta.campo] || 0;
-        const objetivo = l.meta.objetivo;
-        return { logro: l, actual, objetivo, progreso: actual / objetivo };
-      })
-      .sort((a, b) => b.progreso - a.progreso);
-
-    const lineaPendiente = ({ logro, actual, objetivo, progreso }) => {
-      const faltan = Math.max(objetivo - actual, 0);
-      const unidad = UNIDADES[logro.meta.campo] ?? 'puntos';
-      return `**${logro.nombre}** — ${miles(logro.premio)} XP\n\`${barraLogro(progreso)}\` faltan **${miles(faltan)} ${unidad}**`;
-    };
-
-    // Los de una sola vez (madrugador, búho) van al final, sin barra.
-    const sinMeta = pendientes.filter((l) => !l.meta).map((l) => `**${l.nombre}** — ${miles(l.premio)} XP · *se desbloquea al cumplirlo*`);
-
-    // Próximo más cercano: primero de la lista de progreso.
+    // Progreso medible, del más cercano a cumplir al más lejano (lo calcula niveles.js,
+    // así /estadisticas y /logros no pueden decir cosas distintas).
+    const conMeta = logrosConProgreso(datos);
+    // Los de una sola vez (madrugador, búho) no tienen progreso: van compactos en una línea.
+    const sinMeta = pendientes.filter((l) => !l.meta);
     const proximo = conMeta[0];
 
-    // Si ya los tiene todos, no tiene sentido mostrar secciones de progreso vacías.
-    const quedanPendientes = pendientes.length > 0;
+    // Un logro por renglón, en una sola línea cada uno (antes iban separados por un
+    // renglón vacío, así que 11 logros ocupaban 22 líneas de embed).
+    const linea = ({ logro, faltan, unidad, progreso }) =>
+      `\`${barraLogro(progreso)}\` **${logro.nombre}** — faltan ${miles(faltan)} ${unidad} · +${miles(logro.premio || 0)} XP`;
 
     const embed = brandEmbed({
       color: desbloqueados.length >= LOGROS.length ? COLORS.logro : COLORS.info,
       title: `Logros de ${user.username}`,
       thumbnail: user.displayAvatarURL({ size: 256 }),
       description:
-        `**${desbloqueados.length}/${LOGROS.length}** desbloqueados · **${miles(xpCobrado)} XP** cobrados\n` +
+        `**${desbloqueados.length}/${LOGROS.length}** desbloqueados · **${miles(xpCobrado)} XP** cobrados · **${miles(xpPendiente)} XP** por cobrar\n` +
         (proximo
-          ? `Próximo más cercano: **${proximo.logro.nombre}** — te faltan **${miles(Math.max(proximo.objetivo - proximo.actual, 0))} ${UNIDADES[proximo.logro.meta.campo] ?? 'puntos'}**`
+          ? `Más cerca: **${proximo.logro.nombre}** — te faltan **${miles(proximo.faltan)} ${proximo.unidad}**`
           : '¡Los tenés todos!'),
       fields: [
-        ...(desbloqueados.length
-          ? [{ name: `Desbloqueados (${desbloqueados.length})`, value: desbloqueados.map((l) => `**${l.nombre}** · +${miles(l.premio)} XP`).join('\n'), inline: false }]
-          : []),
-        ...(quedanPendientes && conMeta.length
+        ...(conMeta.length ? [{ name: `En progreso (${conMeta.length})`, value: conMeta.map(linea).join('\n'), inline: false }] : []),
+        ...(sinMeta.length
           ? [
-              { name: `En progreso (${conMeta.length})`, value: conMeta.map(lineaPendiente).join('\n\n'), inline: false },
-              { name: 'Sin progreso medible', value: sinMeta.join('\n') || '*—*', inline: false },
+              {
+                name: `Sin progreso medible (${sinMeta.length})`,
+                value: `${sinMeta.map((l) => `**${l.nombre}**`).join(' · ')} — se desbloquean cumpliéndolos`,
+                inline: false,
+              },
             ]
-          : quedanPendientes
-            ? [{ name: 'En progreso', value: sinMeta.join('\n') || '*—*', inline: false }]
-            : []),
+          : []),
+        ...(desbloqueados.length
+          ? [
+              {
+                name: `Desbloqueados (${desbloqueados.length})`,
+                value: desbloqueados.map((l) => `**${l.nombre}** +${miles(l.premio || 0)}`).join(' · '),
+                inline: false,
+              },
+            ]
+          : []),
       ],
-      footer: `TriggerBOT • quedan ${miles(xpPendiente)} XP por cobrar • puesto #${posicion(guildId, user.id) || '—'} de ${miles(totalUsuarios(guildId))} en el ranking`,
+      footer: `TriggerBOT • puesto #${posicion(guildId, user.id) || '—'} de ${miles(totalUsuarios(guildId))} en el ranking`,
     });
 
     return interaction.editReply({ embeds: [embed] });

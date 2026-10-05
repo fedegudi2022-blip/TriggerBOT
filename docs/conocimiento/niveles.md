@@ -23,8 +23,9 @@ El rango depende de tu nivel: **Novato** (0-4), **Activo** (5-9), **Experto** (1
 **Veterano** (20-29) y **Leyenda** (30 o más).
 
 ## Cómo veo mi progreso
-- `/estadisticas` — tu ficha: XP, nivel, rango, racha y logros.
-- `/logros` — todos los logros, cuáles tenés y cuánto te falta para cada uno.
+- `/estadisticas` — tu ficha: XP, nivel, rango, racha, puesto y los logros que tenés más cerca.
+- `/logros` — todos los logros: los pendientes del más cercano al más lejano con cuánto falta
+  para cada uno, y los que ya desbloqueaste.
 - `/top` — el ranking del servidor: podio, cuánta gente participa y en qué puesto estás
   (con lo que te falta para pasar al de arriba), de 10 en 10 por página.
 La subida de nivel se anuncia en el canal que el staff configuró, en **un solo mensaje**

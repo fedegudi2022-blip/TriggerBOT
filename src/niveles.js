@@ -184,6 +184,42 @@ const LOGROS = [
   { id: 'mito', nombre: 'Mito', desc: '5.000 mensajes', emoji: '🐐', premio: 3000, meta: { campo: 'mensajes', objetivo: 5000 }, cond: (s) => s.mensajes >= 5000 },
 ];
 
+// Unidades del campo que mide cada logro, para el "faltan X ...".
+const UNIDADES_LOGRO = { mensajes: 'mensaje(s)', racha: 'día(s)', xp: 'XP', nivel: 'nivel(es)', findes: 'mensaje(s) de finde' };
+
+// Logros pendientes que tienen progreso medible, del más cercano a cumplir al más lejano.
+// Lo comparten /logros (la lista completa) y /estadisticas (los próximos), así los dos
+// cuentan exactamente lo mismo en vez de calcularlo cada uno por su lado.
+function logrosConProgreso(datos) {
+  const stats = {
+    xp: datos.xp || 0,
+    mensajes: datos.mensajes || 0,
+    findes: datos.findes || 0,
+    nivel: datos.nivel || 0,
+    racha: datos.racha || 0,
+  };
+  const obtenidos = datos.logros ?? [];
+
+  return LOGROS.filter((logro) => !obtenidos.includes(logro.id) && logro.meta)
+    .map((logro) => {
+      const actual = stats[logro.meta.campo] || 0;
+      const objetivo = logro.meta.objetivo;
+      return {
+        logro,
+        actual,
+        objetivo,
+        faltan: Math.max(objetivo - actual, 0),
+        progreso: Math.min(actual / objetivo, 1),
+        unidad: UNIDADES_LOGRO[logro.meta.campo] ?? 'puntos',
+      };
+    })
+    // Una meta ya cumplida no está "en progreso": se paga en el próximo mensaje. Sin
+    // esto se listaba igual, con un "faltan 0" sin sentido (pasa si los datos llegaron
+    // restaurados de la nube o de un respaldo viejo sin el logro cobrado).
+    .filter((entrada) => entrada.faltan > 0)
+    .sort((a, b) => b.progreso - a.progreso);
+}
+
 // ---------- Acceso por guild/usuario ----------
 function usuario(guildId, userId) {
   cache[guildId] = cache[guildId] || {};
@@ -364,6 +400,8 @@ module.exports = {
   multiplicador,
   esFinde,
   LOGROS,
+  UNIDADES_LOGRO,
+  logrosConProgreso,
   RANGOS,
   canalAnuncios,
   XP_MIN,
