@@ -95,6 +95,10 @@ const XP_MIN = 15;
 const XP_MAX = 25;
 const COOLDOWN_MS = 60_000;
 
+// XP promedio de un mensaje (sin bonus). Traduce una cifra de XP a algo comparable en
+// mensajes ("faltan 1.544 XP" → "~78 mensajes"), que es como lo piensa la gente.
+const XP_PROMEDIO = (XP_MIN + XP_MAX) / 2;
+
 // Bonus configurables (en porcentaje).
 const BONO_RACHA_MAX = 35; // +1% por día de racha, tope 35%
 const BONO_NOCHE = 10; // de 00:00 a 06:00 (Argentina)
@@ -273,12 +277,14 @@ function datosDe(guildId, userId) {
   return { ...u, logros: [...(u.logros ?? [])] };
 }
 
-// Ranking del servidor por XP.
+// Ranking del servidor por XP. Los empates se desempatan por mensajes y después por id:
+// sin eso el orden dependía del orden de las claves del archivo, o sea que dos personas
+// con la misma XP podían intercambiarse entre reinicios (y /top con /estadisticas).
 function ranking(guildId, limite = 10) {
   const guild = cache[guildId] || {};
   return Object.entries(guild)
     .map(([userId, datos]) => ({ userId, xp: datos.xp, nivel: datos.nivel, mensajes: datos.mensajes }))
-    .sort((a, b) => b.xp - a.xp)
+    .sort((a, b) => b.xp - a.xp || b.mensajes - a.mensajes || a.userId.localeCompare(b.userId))
     .slice(0, limite);
 }
 
@@ -339,6 +345,7 @@ module.exports = {
   canalAnuncios,
   XP_MIN,
   XP_MAX,
+  XP_PROMEDIO,
   marcasPorGuild,
   leer,
   escribir,

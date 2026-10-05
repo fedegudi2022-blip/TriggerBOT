@@ -5,7 +5,7 @@ const { decidirBusqueda, respuestaSinIA } = require('../utils/web');
 const { pedirConfirmacion } = require('../utils/accionesIA');
 const { DUENO_ID } = require('../comunidad');
 const { getAFK, quitarAFK } = require('../commands/afk');
-const { procesarMensaje, datosDe, xpParaNivel, canalAnuncios, rangoDe, XP_MIN, XP_MAX, LOGROS } = require('../niveles');
+const { procesarMensaje, datosDe, xpParaNivel, canalAnuncios, rangoDe, XP_PROMEDIO, LOGROS } = require('../niveles');
 const { asignarRolesNivel } = require('../utils/rolesNivel');
 const { brandEmbed, COLORS, miles } = require('../utils/replies');
 const { getGuildConfig } = require('../store');
@@ -66,10 +66,6 @@ function estaEnCooldown(userId) {
 // cortas: qué pasó y con cuánta XP, dónde quedó parado, logros, rol ganado y cambio de
 // rango. Las líneas que no aplican no se agregan, así el mensaje queda corto cuando
 // pasó una sola cosa.
-
-// XP base promedio de un mensaje (sin bonus): traduce "faltan 1.544 XP" a algo
-// comparable, como "~78 mensajes".
-const XP_PROMEDIO = (XP_MIN + XP_MAX) / 2;
 
 // Arma el texto del anuncio. Separado de anunciarProgreso para poder probarlo sin
 // Discord de por medio.
