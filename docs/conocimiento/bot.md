@@ -61,6 +61,15 @@ cuenta: si necesitás algo fuera de esa lista, ticket de soporte.
   `/config`, `/rolnivel`, `/ticket`, `/embed`, `/plantillas`, `/frases`, `/diag`,
   `/buscar`
 
+## Quién puede usar los comandos de staff
+Los comandos de moderación y de configuración son para el staff: el dueño, quien
+tenga Gestionar servidor, y los roles admin/mod/helper cargados en `/config`. Aparecen
+en la lista para todos **a propósito**, para que un moderador configurado por rol no
+pierda el comando; si lo usa alguien que no es del staff, recibe un aviso privado de
+que la acción es solo para el staff. Si querés que el resto directamente no los vea,
+eso se configura en el servidor (Server Settings → Integrations → TriggerBOT), no
+desde el bot: Discord no deja que las aplicaciones manejen esa visibilidad.
+
 ## Canales de voz temporales
 En el canal de voz «Crear canal» entrás y el bot te crea tu propio canal de voz
 (con tus controles: cerrar, renombrar, límite de usuarios, expulsar, etc.). Se borra

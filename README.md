@@ -117,6 +117,8 @@ Los comandos además se validan con un **smoke test de registro** (`tests/regist
 
 > Los errores de Discord se reportan tal cual (permisos, jerarquía, límites) y **todo intento queda en el mod-log**, aplicado o no: es lo que permite auditar el servidor después.
 
+> **Quién ve los comandos de staff:** los comandos de moderación y configuración quedan visibles para todos en el selector **a propósito**. El bot autoriza por staff de `/config` (dueño, roles admin/mod/helper) y no por permisos nativos, justamente para que un moderador configurado por rol no pierda el comando. Si querés ocultárselos al resto, se hace por rol en **Server Settings → Integrations → TriggerBOT**: Discord no permite que las aplicaciones manejen esa visibilidad, así que es un paso del dueño del servidor (ahí también podés habilitar tus roles de staff aunque no tengan permisos nativos).
+
 ### Tickets de soporte
 
 Se arma en 3 pasos: `/ticket logs` (dónde quedan los transcripts) → `/ticket categoria` (dónde se crean los canales) → `/ticket publicar` en tu canal de soporte.

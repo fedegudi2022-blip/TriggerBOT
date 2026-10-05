@@ -122,6 +122,13 @@ Ambas devuelven `null` si todo está bien o un mensaje de error listo para mostr
 - Reusan el comando de siempre: `ctx-ficha.js` llama a `estadisticas.ejecutar(interaction, usuario)` y `ctx-warnings.js` a `warnings.ejecutar(...)`. Ninguna lógica se duplica, así no pueden mostrar cosas distintas que el slash.
 - **Batería de contrato** (`tests/comandos-contrato.test.js`): ejecuta todos los comandos contra fakes en tres escenarios (sin permiso, con permiso y sin opciones opcionales) y exige que ninguno tire, que todos contesten y que los de staff avisen en efímero. Los que necesitan infraestructura real están en una lista de excluidos con el motivo a la vista.
 
+## Visibilidad de los comandos en Discord (`permisos.js`)
+
+- Los comandos de staff **no declaran permisos nativos** (`setDefaultMemberPermissions`) a propósito. La autoridad es la política interna de `permisos.js`: dueño, `ManageGuild`, o los roles admin/mod/helper de `/config`; `exigirStaff()` la aplica dentro de `execute()`.
+- El motivo es concreto: si `/config` declarara `ManageGuild`, Discord **ocultaría** el comando a un moderador configurado por rol que no tenga ese permiso nativo, aunque `nivelStaff()` lo aceptaría. Declarar el permiso reintroduce el bug que este diseño evita.
+- La regla está fijada por tests: `tests/buscar.test.js` y `tests/vigilancia.test.js` exigen `default_member_permissions == null`, así que agregarlo a un comando de staff hace fallar la batería.
+- **Consecuencia visible**: un miembro raso ve los comandos de staff en el selector y recibe el aviso efímero de «solo staff» al usarlos. Ocultarlos **no es algo que el bot pueda hacer**: desde 2022 Discord no permite que las aplicaciones administren los overrides de comandos (la API de permisos devuelve `403`). Solo el dueño del servidor, en **Server Settings → Integrations → TriggerBOT**, puede permitir o denegar cada comando por rol —y ahí sí puede habilitar los roles de staff configurados, aunque no tengan permisos nativos—.
+
 ## Niveles (`niveles.js`)
 
 - XP base 15-25 por mensaje con cooldown de 60 s (anti-farm). Bonus acumulables: racha (+1 %/día, tope 35 %), noche (+10 %, 00-06 h Argentina), finde (x2, sáb/dom).
@@ -256,3 +263,4 @@ Sin esto, un reinicio del host perdía hasta 5 s de XP y 3 s de subidas.
 3. **Ningún módulo escribe a disco en caliente**: mutación → caché → `tocarMarca(guildId)` → `marcarSucio(...)`; el disco con debounce y `volcar()` en el apagado.
 4. **Nada de secretos en logs**: pasar errores por el logger (sanitiza solo).
 5. **Funciones puras para lógica decidible** (jerarquía, comparaciones de sync): son las que se testean sin red ni disco.
+6. **Comandos de staff**: no agregar `setDefaultMemberPermissions` (ver [Visibilidad de los comandos](#visibilidad-de-los-comandos-en-discord-permisosjs)). La visibilidad de los roles se resuelve en Integrations, no en el código.
