@@ -26,7 +26,10 @@ El rango depende de tu nivel: **Novato** (0-4), **Activo** (5-9), **Experto** (1
 - `/estadisticas` — tu ficha: XP, nivel, rango, racha y logros.
 - `/logros` — todos los logros, cuáles tenés y cuánto te falta para cada uno.
 - `/top` — el ranking del servidor, con podio.
-Los mensajes de subida de nivel se anuncian en el canal que el staff configuró.
+La subida de nivel se anuncia en el canal que el staff configuró, en **un solo mensaje**
+que dice cuánta XP ganaste, cuánto te falta para el nivel siguiente (y a cuántos mensajes
+equivale), qué logros desbloqueaste y qué rol te entregaron, avisando aparte si cambiaste
+de rango.
 
 ## Logros
 Hay 16 logros y cada uno paga una recompensa de XP al desbloquearse (por ejemplo:

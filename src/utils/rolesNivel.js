@@ -25,22 +25,32 @@ function definirRol(guildId, nivel, roleId) {
 // ---------- Asignación automática ----------
 // Al subir de nivel, otorga el rol del mayor umbral alcanzado (si no lo tiene ya).
 // No quita roles de niveles anteriores: son acumulativos (progresión, no jerarquía).
+// Devuelve SOLO los roles que se otorgaron en esta llamada ({ id, nombre }) para que
+// el anuncio de la subida pueda nombrarlos: si la asignación falla (permisos o
+// jerarquía) el rol no entra en la lista, así el mensaje no promete algo que no pasó.
 async function asignarRolesNivel(member, nivel) {
-  if (!member || !member.guild) return;
+  if (!member || !member.guild) return [];
   const mapa = rolesConfigurados(member.guild.id);
   const umbrales = Object.keys(mapa)
     .map(Number)
     .filter((n) => n <= nivel)
     .sort((a, b) => b - a);
 
+  const otorgados = [];
   for (const umbral of umbrales) {
     const roleId = mapa[String(umbral)];
     if (!roleId || member.roles.cache.has(roleId)) continue;
     const rol = member.guild.roles.cache.get(roleId);
     if (!rol || rol.managed || !member.guild.members.me.permissions.has('ManageRoles')) continue;
     if (rol.position >= member.guild.members.me.roles.highest.position) continue; // jerarquía
-    await member.roles.add([roleId], 'Recompensa por nivel alcanzado (TriggerBOT)').catch(() => {});
+    try {
+      await member.roles.add([roleId], 'Recompensa por nivel alcanzado (TriggerBOT)');
+      otorgados.push({ id: roleId, nombre: rol.name });
+    } catch {
+      // Sin permiso real o problema puntual de Discord: se ignora, como antes.
+    }
   }
+  return otorgados;
 }
 
 // Sincroniza todos los roles que corresponden al nivel actual (usado por /rolnivel).

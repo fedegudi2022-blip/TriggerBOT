@@ -5,9 +5,9 @@ const { decidirBusqueda, respuestaSinIA } = require('../utils/web');
 const { pedirConfirmacion } = require('../utils/accionesIA');
 const { DUENO_ID } = require('../comunidad');
 const { getAFK, quitarAFK } = require('../commands/afk');
-const { procesarMensaje, datosDe, xpParaNivel, canalAnuncios, rangoDe } = require('../niveles');
+const { procesarMensaje, datosDe, xpParaNivel, canalAnuncios, rangoDe, XP_MIN, XP_MAX, LOGROS } = require('../niveles');
 const { asignarRolesNivel } = require('../utils/rolesNivel');
-const { brandEmbed, COLORS } = require('../utils/replies');
+const { brandEmbed, COLORS, miles } = require('../utils/replies');
 const { getGuildConfig } = require('../store');
 const { procesarMensajeParaSpam, procesarMensajeParaFiltros } = require('../utils/proteccion');
 
@@ -60,36 +60,72 @@ function estaEnCooldown(userId) {
   return false;
 }
 
-// ---------- Anuncios de niveles: frases y colores según el nivel ----------
-const FRASES_SUBIDA = [
-  'subió al nivel **{n}**',
-  'alcanzó el nivel **{n}**',
-  'llegó al nivel **{n}**, sigue así',
-  'se anota nivel **{n}**',
-  'sumó el nivel **{n}** a su cuenta',
-];
+// ---------- Anuncios de niveles: un solo mensaje de texto por evento ----------
+// Antes: un embed por logro más el de la subida (una subida con 3 logros nuevos eran
+// 4 mensajes). Ahora todo lo que pasó se cuenta UNA vez y en UN mensaje, en líneas
+// cortas: qué pasó y con cuánta XP, dónde quedó parado, logros, rol ganado y cambio de
+// rango. Las líneas que no aplican no se agregan, así el mensaje queda corto cuando
+// pasó una sola cosa.
 
-function barra(xp, nivel) {
-  const actual = xpParaNivel(nivel);
-  const siguiente = xpParaNivel(nivel + 1);
-  const progreso = Math.min(Math.max((xp - actual) / (siguiente - actual), 0), 1);
-  const llenos = Math.round(progreso * 12);
-  return `${'█'.repeat(llenos)}${'░'.repeat(12 - llenos)}`;
+// XP base promedio de un mensaje (sin bonus): traduce "faltan 1.544 XP" a algo
+// comparable, como "~78 mensajes".
+const XP_PROMEDIO = (XP_MIN + XP_MAX) / 2;
+
+// Arma el texto del anuncio. Separado de anunciarProgreso para poder probarlo sin
+// Discord de por medio.
+function textoProgreso(message, progreso, rolesOtorgados = []) {
+  const datos = datosDe(message.guild.id, message.author.id);
+  const lineas = [];
+  const salto = progreso.nivelNuevo - progreso.nivelAnterior > 1;
+
+  // 1) Qué pasó, con la XP que lo causó y el bonus que la explica.
+  const bonus = [];
+  if (progreso.detalle?.finde) bonus.push('x2 finde');
+  if (progreso.detalle?.noche) bonus.push('+10% noche');
+  if (progreso.detalle?.bonoRacha) bonus.push(`+${progreso.detalle.bonoRacha}% racha`);
+  const conBonus = bonus.length ? ` (${bonus.join(' · ')})` : '';
+
+  if (progreso.subio) {
+    const rango = rangoDe(progreso.nivelNuevo);
+    const cuanto = salto ? `del nivel **${progreso.nivelAnterior}** al **${progreso.nivelNuevo}**` : `al nivel **${progreso.nivelNuevo}**`;
+    lineas.push(`${message.author} subió ${cuanto} (${rango.nombre}) · +${miles(progreso.xpGanado)} XP${conBonus}`);
+  } else {
+    const cuantos = progreso.logrosNuevos.length;
+    lineas.push(`${message.author} desbloqueó ${cuantos === 1 ? 'un logro nuevo' : `${cuantos} logros nuevos`}`);
+  }
+
+  // 2) Dónde quedó parado.
+  if (progreso.subio) {
+    const faltan = Math.max(xpParaNivel(progreso.nivelNuevo + 1) - datos.xp, 0);
+    const mensajes = Math.ceil(faltan / XP_PROMEDIO);
+    lineas.push(`**${miles(datos.xp)} XP** · faltan **${miles(faltan)}** para el nivel ${progreso.nivelNuevo + 1} (~${miles(mensajes)} mensajes)`);
+  } else {
+    lineas.push(`**${miles(datos.xp)} XP** en total · ${datos.logros?.length ?? 0}/${LOGROS.length} logros`);
+  }
+
+  // 3) Logros nuevos, agrupados en una línea con lo que pagó cada uno.
+  if (progreso.logrosNuevos.length) {
+    const lista = progreso.logrosNuevos.map((l) => `**${l.nombre}** +${miles(l.premio || 0)} XP`).join(' · ');
+    lineas.push(`Logros: ${lista}`);
+  }
+
+  // 4) Rol(es) ganados: la recompensa configurable del servidor, que antes era invisible.
+  if (rolesOtorgados.length) {
+    lineas.push(`Rol: ${rolesOtorgados.map((r) => `**${r.nombre}**`).join(', ')}`);
+  }
+
+  // 5) Cambio de rango: el hito que la gente nota, antes escondido entre paréntesis.
+  const rangoAntes = rangoDe(progreso.nivelAnterior ?? 0);
+  const rangoAhora = rangoDe(progreso.nivelNuevo);
+  if (progreso.subio && rangoAntes.nombre !== rangoAhora.nombre) {
+    lineas.push(`Nuevo rango: **${rangoAntes.nombre} → ${rangoAhora.nombre}**`);
+  }
+
+  return lineas.join('\n');
 }
 
-// Elige una frase al azar sin repetir la última usada.
-let ultimaFrase = -1;
-function fraseSubida(nivel) {
-  let i;
-  do {
-    i = Math.floor(Math.random() * FRASES_SUBIDA.length);
-  } while (i === ultimaFrase && FRASES_SUBIDA.length > 1);
-  ultimaFrase = i;
-  return FRASES_SUBIDA[i].replaceAll('{n}', String(nivel));
-}
-
-// Anuncia subida de nivel o logros en el canal configurado (si existe).
-async function anunciarProgreso(message, progreso) {
+// Manda el anuncio en el canal configurado (si existe y si hubo algo que contar).
+async function anunciarProgreso(message, progreso, rolesOtorgados = []) {
   if (!progreso.subio && progreso.logrosNuevos.length === 0) return;
 
   const canalId = canalAnuncios(message.guild.id);
@@ -97,43 +133,7 @@ async function anunciarProgreso(message, progreso) {
   const canal = message.guild.channels.cache.get(canalId);
   if (!canal) return;
 
-  const datos = datosDe(message.guild.id, message.author.id);
-
-  if (progreso.subio) {
-    const rango = rangoDe(progreso.nivelNuevo);
-    const faltan = Math.max(xpParaNivel(progreso.nivelNuevo + 1) - datos.xp, 0);
-    const detalle = progreso.detalle;
-    const partesBonus = [];
-    if (detalle?.bonoRacha) partesBonus.push(`+${detalle.bonoRacha}% racha`);
-    if (detalle?.finde) partesBonus.push('x2 finde');
-    if (detalle?.noche) partesBonus.push('+10% nocturno');
-
-    const embed = brandEmbed({
-      color: rango.color,
-      title: `Nivel ${progreso.nivelNuevo} alcanzado`,
-      description:
-        `${message.author} ${fraseSubida(progreso.nivelNuevo)} (${rango.nombre}).\n\n` +
-        `\`${barra(datos.xp, progreso.nivelNuevo)}\` **${datos.xp} XP**\n` +
-        `Le faltan **${faltan} XP** para el nivel ${progreso.nivelNuevo + 1}.` +
-        (partesBonus.length ? `\nBonus activo: ${partesBonus.join(' · ')}` : ''),
-      thumbnail: message.author.displayAvatarURL({ size: 128 }),
-    });
-    await canal.send({ embeds: [embed] }).catch(() => {});
-  }
-
-  for (const definicion of progreso.logrosNuevos) {
-    if (!definicion?.id) continue;
-    const embed = brandEmbed({
-      color: COLORS.logro,
-      title: `${definicion.nombre}`,
-      description:
-        `**${message.author}** desbloqueó un logro nuevo.\n` +
-        `> ${definicion.desc}\n\n` +
-        (definicion.premio ? `Recompensa: **+${definicion.premio} XP**` : ''),
-      thumbnail: message.author.displayAvatarURL({ size: 128 }),
-    });
-    await canal.send({ embeds: [embed] }).catch(() => {});
-  }
+  await canal.send({ content: textoProgreso(message, progreso, rolesOtorgados) }).catch(() => {});
 }
 
 // Responde cuando alguien menciona al bot: siempre contesta con un mensaje.
@@ -239,10 +239,13 @@ module.exports = {
     // Sistema de niveles: XP, logros, anuncios y roles por nivel.
     try {
       const progreso = procesarMensaje(message.guild.id, message.author.id);
-      await anunciarProgreso(message, progreso);
+      // Los roles primero: el anuncio cuenta cuál se otorgó (antes se asignaban
+      // después, así que la recompensa nunca se podía nombrar).
+      let rolesOtorgados = [];
       if (progreso.subio || progreso.logrosNuevos.length) {
-        await asignarRolesNivel(message.member, progreso.nivelNuevo);
+        rolesOtorgados = await asignarRolesNivel(message.member, progreso.nivelNuevo);
       }
+      await anunciarProgreso(message, progreso, rolesOtorgados);
     } catch (error) {
       console.error('[TriggerBOT] Error procesando niveles:', error.message);
     }
@@ -269,4 +272,8 @@ module.exports = {
 
     await manejarMencion(message);
   },
+
+  // Exportados para los tests: armar el texto no necesita Discord, solo el fake.
+  textoProgreso,
+  anunciarProgreso,
 };

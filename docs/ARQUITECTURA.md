@@ -118,6 +118,8 @@ Ambas devuelven `null` si todo está bien o un mensaje de error listo para mostr
 
 - XP base 15-25 por mensaje con cooldown de 60 s (anti-farm). Bonus acumulables: racha (+1 %/día, tope 35 %), noche (+10 %, 00-06 h Argentina), finde (x2, sáb/dom).
 - Nivel = `floor(0.1 * sqrt(xp))` (curva cuadrática); 16 logros con premio de XP que pueden encadenar subidas de nivel.
+- **Anuncio en un solo mensaje de texto** (`textoProgreso()`, nada de embeds): línea 1 qué pasó con la XP que lo causó y el bonus (x2 finde, racha, noche), línea 2 el total y cuánto falta traducido a mensajes, y solo si aplican las líneas de logros agrupados, rol otorgado y cambio de rango. Antes era un embed por logro más el de nivel: una subida con 3 logros nuevos eran 4 mensajes.
+- Los **roles por nivel** (`utils/rolesNivel.js`) se asignan *antes* de anunciar y `asignarRolesNivel()` devuelve solo los que otorgó de verdad, así el anuncio nombra el rol sin prometer uno que Discord rechazó.
 - **Escritura con debounce de 5 s**: `procesarMensaje()` deja todo en memoria y agenda el guardado; nunca escribe a disco por mensaje. `volcar()` fuerza el guardado (lo llama el apagado).
 
 ## Persistencia local (los almacenes)
