@@ -1,79 +1,55 @@
-// Guía del bot. Se arma a partir de los comandos REALMENTE cargados
-// (`client.commands`), no de una lista escrita a mano: antes, cada vez que se
-// agregaba o renombraba un comando, la guía quedaba desactualizada en silencio.
+// Guía del bot, armada a partir de los comandos REALMENTE cargados (`client.commands`).
 //
-// Hay dos versiones: la pública (que ven todos con /help) y la de staff (completa,
-// solo con /help staff). Cada categoría aporta su texto; los comandos que no estén
-// en ninguna categoría se listan igual, en «Otros», así nunca desaparecen de la guía.
+// Hay dos versiones: la pública y la de staff (completa). Cada categoría aporta su lista
+// de comandos y, si hace falta, UNA línea corta de contexto. Las listas se generan solas:
+// la guía no puede quedar desactualizada cuando se agrega o renombra un comando.
+//
+// ---------- Qué es público y qué es de staff ----------
+// La guía pública muestra SOLO los comandos de las categorías públicas; todo lo demás es
+// de staff. Antes había una lista negra escrita a mano (`SOLO_STAFF`, 25 nombres) y la
+// regla estaba al revés: un comando de staff nuevo aparecía en la guía pública hasta que
+// alguien se acordaba de sumarlo. Con esta regla el olvido es seguro: si no está en una
+// categoría pública (o no declara `publico: true`), no se muestra.
+// `tests/guia.test.js` fija las dos mitades: ningún comando de staff se filtra y ningún
+// comando público desaparece.
 const { PermissionsBitField } = require('discord.js');
 const { brandEmbed, COLORS } = require('./replies');
 
-// Comandos que solo puede usar el staff: no se muestran en la guía pública.
-const SOLO_STAFF = new Set([
-  'ban',
-  'tempban',
-  'unban',
-  'softban',
-  'kick',
-  'warn',
-  'warnings',
-  'unwarn',
-  'casos',
-  'nota',
-  'timeout',
-  'mute',
-  'unmute',
-  'clear',
-  'lockdown',
-  'slowmode',
-  'config',
-  'rolnivel',
-  'voz',
-  'ticket',
-  'embed',
-  'plantillas',
-  'frases',
-  'diag',
-  'buscar',
-]);
-
 // ---------- Categorías públicas ----------
+// Esta lista es la declaración de qué puede usar cualquiera. Sumar un comando público es
+// sumarlo acá; no hay ningún otro lugar que mantener.
 const CATEGORIAS_PUBLICAS = [
   {
     nombre: 'Información',
     comandos: ['help', 'ping', 'status', 'userinfo', 'serverinfo', 'avatar'],
-    nota: '*`/ping` y `/status` tienen botón de refrescar, sin reescribir el comando.*',
   },
   {
     nombre: 'Comunidad',
     comandos: ['redes', 'web'],
-    intro: '`/redes` · `/web` — redes sociales oficiales (WhatsApp, Steam, Instagram) y el sitio triggerarena.pro, con botones directos.',
-    nota: 'En el canal «Crear canal» tenés **canales de voz temporales**: entrás y se te crea tu propio canal con controles (cerrar, renombrar, límite, expulsar). Se borra solo cuando queda vacío.',
+    nota: 'Los canales de voz temporales se crean solos al entrar a «Crear canal».',
   },
   {
     nombre: 'Servidores CS 1.6',
-    comandos: ['servidores', 'ip'],
-    intro: '`/servidores` · `/ip` — estado en vivo, mapa actual e IP para copiar.',
+    comandos: ['servidores', 'ip', 'jugadores'],
   },
   {
     nombre: 'Niveles y logros',
     comandos: ['estadisticas', 'logros', 'top'],
-    intro: 'Ganás XP escribiendo: la racha suma bonus, los findes es x2 y los logros pagan XP.',
-    nota: '*`/top` tiene podio y páginas con botones; `/logros` te muestra cuánto falta para cada uno.*',
+    nota: 'Ganás XP escribiendo (máx. 1 mensaje por minuto); la racha suma bonus y los findes es x2.',
   },
   {
     nombre: 'Utilidades',
     comandos: ['afk', 'encuesta', 'reportar'],
-    nota: '*`/reportar` abre un ticket privado con el staff para denunciar a un cheater: escribí qué hizo y, si podés, adjuntá la captura o la demo.*',
   },
   {
     nombre: 'Diversión',
     comandos: ['dado', 'moneda', 'meme', '8ball', 'beso', 'abrazo', 'caricia', 'abofetear', 'morder', 'pellizco', 'chocar', 'guino'],
-    intro: 'Juegos rápidos y comandos de interacción con GIFs y contadores.',
   },
 ];
 
 // ---------- Categorías de staff ----------
+// Un comando que ya salió en una categoría pública no se repite acá: `/servidores`, por
+// ejemplo, aparecía dos veces en la guía de staff (una por cada lista).
 const CATEGORIAS_STAFF = [
   {
     nombre: 'Moderación',
@@ -83,6 +59,8 @@ const CATEGORIAS_STAFF = [
       'unwarn',
       'nota',
       'casos',
+      'logs',
+      'sanciones',
       'kick',
       'ban',
       'tempban',
@@ -95,54 +73,61 @@ const CATEGORIAS_STAFF = [
       'lockdown',
       'slowmode',
     ],
-    nota:
-      '*`/tempban` banea por un tiempo y el bot desbanea solo. Además: anti-spam, automod por contenido y anti-raid ' +
-      'automáticos (se prenden en `/config`).*',
+    nota: 'Los baneos temporales se levantan solos al vencer y cada acción queda en el mod-log con número de caso.',
   },
   {
     nombre: 'Configuración',
-    comandos: ['config', 'rolnivel', 'ticket', 'voz', 'frases'],
-    intro: '`/config` abre el panel interactivo con todas las secciones del servidor.',
-    nota: '`/diag` revisa todo el bot y dice qué está roto y qué hacer: si algo se degrada, el bot también avisa solo en el canal de avisos.',
+    comandos: ['config', 'bienvenida', 'rolnivel', 'ticket', 'voz', 'frases'],
+    nota: 'Desde el panel se prenden el anti-spam, el anti-raid y la escalada de advertencias.',
   },
   {
-    nombre: 'Diagnóstico y búsqueda',
+    nombre: 'Diagnóstico',
     comandos: ['diag', 'buscar'],
-    intro: '`/diag` revisa los sistemas (incluida la salida a internet).`/buscar` muestra qué encuentra la IA en la web, con fuentes.',
+    nota: 'Los dos salen a internet a propósito: el diagnóstico prueba la salida del host.',
   },
   {
-    nombre: 'Mensajes y utilidades internas',
+    nombre: 'Mensajes internos',
     comandos: ['embed', 'plantillas'],
-    intro: '`/embed` publica anuncios; `/plantillas` administra los motivos rápidos de sanción.',
   },
   {
     nombre: 'Panel de servidores CS 1.6',
-    comandos: ['servidores'],
-    nota: '`/servidores → publicar` deja el panel que se actualiza solo cada 90 s.',
+    comandos: [],
+    nota: 'El panel se publica una vez y se actualiza solo cada 90 s.',
   },
 ];
 
-// Arma el valor de un campo a partir de los comandos reales de esa categoría.
-// Si un comando de la lista ya no existe, se omite; si existe y no está en ninguna
-// categoría, se agrega al final (ver «Otros»).
+// Nombres declarados públicos. Es la única fuente de verdad de la visibilidad.
+const NOMBRES_PUBLICOS = new Set(CATEGORIAS_PUBLICAS.flatMap((c) => c.comandos));
+
+// ¿Lo puede usar cualquiera? Sí si está en una categoría pública o si el comando declara
+// `publico: true`. Todo lo demás es de staff.
+function esPublico(comando) {
+  if (!comando?.data?.name) return false;
+  return comando.publico === true || NOMBRES_PUBLICOS.has(comando.data.name);
+}
+
+// Un comando de menú contextual (click derecho sobre un usuario) NO es "/comando": la guía
+// y el catálogo de la IA solo listan slash. La respuesta vive en un solo lado para que la
+// guía y la IA no se desincronicen.
+function esSlash(comando) {
+  return (comando?.data?.toJSON?.().type ?? 1) === 1;
+}
+
+// Valor de un campo: los comandos de esa categoría en un renglón y, si la categoría la
+// tiene, una nota corta debajo. La nota es SIEMPRE una línea aparte: antes el texto de
+// intro repetía la lista ("/redes · /web — redes sociales…") y después la lista aparecía
+// otra vez, así que la guía decía lo mismo dos veces.
 function valorDeCategoria(client, categoria, usados) {
+  const nombres = (categoria.comandos ?? []).filter((nombre) => client.commands.has(nombre) && !usados.has(nombre));
+  for (const nombre of nombres) usados.add(nombre);
+
   const lineas = [];
-  if (categoria.intro) lineas.push(categoria.intro);
-
-  const nombres = categoria.comandos.filter((nombre) => client.commands.has(nombre));
-  if (nombres.length) {
-    const lista = nombres.map((nombre) => {
-      usados.add(nombre);
-      return `\`/${nombre}\``;
-    });
-    lineas.push(lista.join(' · '));
-  }
-
+  if (nombres.length) lineas.push(nombres.map((nombre) => `\`/${nombre}\``).join(' · '));
   if (categoria.nota) lineas.push(categoria.nota);
   return lineas.join('\n');
 }
 
-// Campos de las categorías indicadas, más «Otros» con lo que quedó sin clasificar.
+// Campos de las categorías indicadas. Una categoría sin comandos y sin nota no se muestra.
 function campos(client, categorias, usados) {
   const salida = [];
   for (const categoria of categorias) {
@@ -152,46 +137,39 @@ function campos(client, categorias, usados) {
   return salida;
 }
 
-// Los comandos de menú contextual (click derecho sobre un usuario) NO son "/comandos":
-// la guía y el catálogo de la IA solo listan slash, y sin esta pregunta aparecerían como
-// `/Ficha de niveles`, que no es algo que se pueda escribir. La respuesta vive en un solo
-// lado para que la guía y la IA no se desincronicen.
-function esSlash(comando) {
-  return (comando?.data?.toJSON?.().type ?? 1) === 1;
-}
-
-// Comandos cargados que no figuran en ninguna categoría: se listan igual para que
-// la guía nunca quede incompleta. En la pública se omiten los de staff.
-function campoOtros(client, usados, { incluirStaff = true } = {}) {
+// Comandos cargados que no figuran en ninguna categoría: se listan igual, en «Otros», para
+// que la guía de staff nunca quede incompleta. En la pública solo entran los que declaran
+// `publico: true`: un comando sin declarar es de staff.
+function campoOtros(client, usados, { soloPublicos = false } = {}) {
   const restantes = [...client.commands.values()]
     .filter(esSlash)
-    .map((comando) => comando.data.name)
-    .filter((nombre) => !usados.has(nombre) && (incluirStaff || !SOLO_STAFF.has(nombre)));
+    .filter((comando) => !usados.has(comando.data.name))
+    .filter((comando) => !soloPublicos || comando.publico === true)
+    .map((comando) => comando.data.name);
   if (!restantes.length) return null;
   return {
     name: 'Otros',
     value: restantes
       .sort()
-      .map((n) => `\`/${n}\``)
+      .map((nombre) => `\`/${nombre}\``)
       .join(' · '),
   };
 }
 
-// Guía pública: la ve cualquiera con /help. Sin comandos de staff.
+// Guía pública: la ve cualquiera con /help.
 function construirGuia(client) {
   const usados = new Set();
   const fields = campos(client, CATEGORIAS_PUBLICAS, usados);
 
-  // Lo que no sea de staff y haya quedado sin categoría también se muestra.
-  const otros = campoOtros(client, usados, { incluirStaff: false });
+  const otros = campoOtros(client, usados, { soloPublicos: true });
   if (otros) fields.push(otros);
 
   return brandEmbed({
     color: COLORS.info,
     title: `Hola! Soy ${client.user.username}`,
-    description: 'Bot de la comunidad Trigger. Acá tenés lo que podés usar, por categoría:',
+    description: 'Lo que podés usar, por categoría:',
     fields,
-    footer: 'TriggerBOT • usá /help cuando necesites la guía',
+    footer: 'TriggerBOT • /help user comando para ver el detalle de uno',
   });
 }
 
@@ -201,21 +179,21 @@ function construirGuiaStaff(client) {
   const fields = campos(client, CATEGORIAS_PUBLICAS, usados);
   fields.push(...campos(client, CATEGORIAS_STAFF, usados));
 
+  // Acá entran todos: es la guía que tiene que estar completa siempre.
   const otros = campoOtros(client, usados);
   if (otros) fields.push(otros);
 
   return brandEmbed({
     color: COLORS.info,
     title: `Guía completa de ${client.user.username} (staff)`,
-    description: 'Todo lo que sé hacer, incluida la parte de moderación y configuración:',
     fields,
     footer: 'TriggerBOT • guía de staff, no la compartas en canales públicos',
   });
 }
 
 // ---------- Detalle de un comando (para /help <comando>) ----------
-// Traduce los nombres de permiso de Discord a etiquetas en español. Lo que no esté
-// acá se muestra con su nombre técnico: mejor que decir "requiere permisos" a secas.
+// Traduce los nombres de permiso de Discord a etiquetas en español. Lo que no esté acá se
+// muestra con su nombre técnico: mejor que decir "requiere permisos" a secas.
 const PERMISOS_ES = {
   BanMembers: 'Banear miembros',
   KickMembers: 'Expulsar miembros',
@@ -237,10 +215,10 @@ function permisosDeComando(json) {
 }
 
 // Resumen de acceso de un comando: permiso declarado, staff por política interna, o todos.
-function accesoDeComando(nombre, json) {
+function accesoDeComando(client, nombre, json) {
   const permisos = permisosDeComando(json);
   if (permisos?.length) return `Solo con permiso de **${permisos.map((p) => PERMISOS_ES[p] ?? p).join(', ')}**.`;
-  if (SOLO_STAFF.has(nombre)) return '**Solo staff** (el bot decide por ManageGuild o los roles de `/config`).';
+  if (!esPublico(client.commands.get(nombre))) return '**Solo staff** (el bot decide por ManageGuild o los roles de `/config`).';
   return '**Todos** los miembros.';
 }
 
@@ -253,7 +231,7 @@ function detalleDeComando(client, nombre) {
 
   const opciones = (json.options ?? []).map((o) => `\`${o.name}\`${o.required ? ' *(obligatorio)*' : ''} — ${o.description}`).join('\n');
 
-  const fields = [{ name: 'Quién puede usarlo', value: accesoDeComando(nombre, json), inline: false }];
+  const fields = [{ name: 'Quién puede usarlo', value: accesoDeComando(client, nombre, json), inline: false }];
   if (opciones) fields.push({ name: 'Opciones', value: opciones.slice(0, 1024), inline: false });
 
   return brandEmbed({
@@ -261,8 +239,16 @@ function detalleDeComando(client, nombre) {
     title: `/${nombre}`,
     description: json.description,
     fields,
-    footer: 'TriggerBOT • /help para la guía completa',
   });
-}module.exports = {
+}
+
+module.exports = {
   esSlash,
-  construirGuia, construirGuiaStaff, detalleDeComando, CATEGORIAS_PUBLICAS, CATEGORIAS_STAFF, SOLO_STAFF };
+  esPublico,
+  construirGuia,
+  construirGuiaStaff,
+  detalleDeComando,
+  CATEGORIAS_PUBLICAS,
+  CATEGORIAS_STAFF,
+  NOMBRES_PUBLICOS,
+};

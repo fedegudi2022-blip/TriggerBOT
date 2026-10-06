@@ -29,6 +29,22 @@ function clave(host, puerto) {
 // La comparación es tolerante: considera el mismo server si comparten al menos la mitad
 // de las palabras ("AutoMix" vs "MIX" o "KZ+Bhop 100aa" vs "KZ+Bhop" no generan aviso;
 // "ARGENTINA CS SOLO DUST2" configurado como "~|PUBLICO|~" sí).
+// Compara nombres sin acentos ni mayúsculas: "publico" encuentra "PÚBLICO CLÁSICO".
+function normalizar(t) {
+  return String(t ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+// Filtra la lista de servers configurados por nombre o por modo. Lo comparten el filtro
+// de /ip y el de /jugadores: mismo criterio de búsqueda y un solo lugar donde cambiarlo.
+function filtrarServidores(servers, filtro) {
+  const buscado = normalizar(filtro).trim();
+  if (!buscado) return servers;
+  return servers.filter((s) => normalizar(s.nombre).includes(buscado) || normalizar(s.modo).includes(buscado));
+}
+
 function palabrasDe(nombre) {
   return String(nombre)
     .toLowerCase()
@@ -228,4 +244,16 @@ async function actualizarPanel(guild, config) {
   await mensaje.edit({ embeds: construirPanel(guild, config, instantaneas) }).catch(() => {});
 }
 
-module.exports = { tick, cache, consultar, parsearDestino, construirPanel, tarjetaServidor, notaDifiere, nombresCompatibles, INTERVALO_MS };
+module.exports = {
+  tick,
+  cache,
+  consultar,
+  parsearDestino,
+  construirPanel,
+  tarjetaServidor,
+  notaDifiere,
+  nombresCompatibles,
+  normalizar,
+  filtrarServidores,
+  INTERVALO_MS,
+};

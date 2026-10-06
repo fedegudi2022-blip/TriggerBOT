@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, MessageFlags } = require('discord.js');
-const { construirGuia, construirGuiaStaff, detalleDeComando, SOLO_STAFF, CATEGORIAS_PUBLICAS } = require('../utils/guia');
+const { construirGuia, construirGuiaStaff, detalleDeComando, esPublico, CATEGORIAS_PUBLICAS } = require('../utils/guia');
 
 // Orden en el que la guía pública presenta sus comandos (Información primero,
 // Diversión al final). Discord deja 25 opciones de autocompletado como máximo y hay
@@ -39,7 +39,7 @@ module.exports = {
     // del resto y el que la usa sabe qué busca.
     const prioridad = (nombre) => (esStaffSub ? 0 : (DESTACADOS.get(nombre) ?? DESTACADOS.size));
     const opciones = [...interaction.client.commands.keys()]
-      .filter((nombre) => esStaffSub || !SOLO_STAFF.has(nombre))
+      .filter((nombre) => esStaffSub || esPublico(interaction.client.commands.get(nombre)))
       .filter((nombre) => nombre.includes(tipeado))
       .sort((a, b) => prioridad(a) - prioridad(b) || a.localeCompare(b))
       .slice(0, 25)
@@ -73,8 +73,8 @@ module.exports = {
     if (pedido) {
       // Un comando de staff no se detalla en la guía pública (se filtra en el autocompletado,
       // pero el texto se puede escribir a mano).
-      const esPublico = client.commands.has(pedido) && !SOLO_STAFF.has(pedido);
-      if (!esPublico) {
+      const publicoPedido = esPublico(client.commands.get(pedido));
+      if (!publicoPedido) {
         return interaction.reply({
           embeds: [errorEmbed(`No encontré un comando público llamado \`/${pedido}\`.`)],
           flags: MessageFlags.Ephemeral,

@@ -11,7 +11,14 @@ const { exigirStaff } = require('../utils/permisos');
 
 const fecha = (ts) => `<t:${Math.floor(ts / 1000)}:d>`;
 
-function vista(usuario, notas) {
+// Paginación: 50 notas de 500 caracteres son 25.000, y la descripción de un embed
+// corta a 4096. Antes se recortaba con slice(0, 4000), así que las últimas notas eran
+// invisibles sin que nadie se enterara. Ahora se pagina de a 5 y cada campo se corta
+// antes del límite de 1024 (mismo criterio que /warnings).
+const POR_PAGINA = 5;
+const MAX_CARACTERES_CAMPO = 1000;
+
+function vista(usuario, notas, paginaPedida = 1) {
   if (!notas.length) {
     return brandEmbed({
       color: COLORS.success,
@@ -20,15 +27,45 @@ function vista(usuario, notas) {
       thumbnail: usuario.displayAvatarURL?.({ size: 128 }),
     });
   }
-  const cuerpo = notas.map((n, i) => `**#${i + 1}** — ${fecha(n.timestamp)} por <@${n.moderatorId}>\n> ${n.texto}`).join('\n\n');
+
+  const entradas = notas.map((n, i) => {
+    const texto = String(n.texto ?? '');
+    return {
+      numero: i + 1,
+      linea: `**#${i + 1}** — ${fecha(n.timestamp)} por <@${n.moderatorId}>\n> ${texto.slice(0, 500)}${texto.length > 500 ? '…' : ''}`,
+    };
+  });
+
+  // El número de cada nota es su posición original: es el que pide /nota quitar.
+  const paginas = Math.max(1, Math.ceil(entradas.length / POR_PAGINA));
+  const pagina = Math.min(Math.max(Number(paginaPedida) || 1, 1), paginas);
+  const visibles = entradas.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA);
+
+  const fields = [];
+  let buffer = '';
+  for (const entrada of visibles) {
+    const candidato = buffer ? `${buffer}\n\n${entrada.linea}` : entrada.linea;
+    if (candidato.length > MAX_CARACTERES_CAMPO) {
+      fields.push({ name: fields.length === 0 ? tituloDePagina(pagina, paginas) : '\u200b', value: buffer, inline: false });
+      buffer = entrada.linea;
+    } else {
+      buffer = candidato;
+    }
+  }
+  if (buffer) fields.push({ name: fields.length === 0 ? tituloDePagina(pagina, paginas) : '\u200b', value: buffer, inline: false });
+
   return brandEmbed({
     color: COLORS.info,
     title: `Notas de ${nombreDe(usuario)} (${notas.length})`,
-    description: cuerpo.slice(0, 4000),
+    fields,
     thumbnail: usuario.displayAvatarURL?.({ size: 128 }),
-    footer: 'TriggerBOT • las notas NO cuentan como advertencias • /nota quitar para borrar',
+    footer:
+      'TriggerBOT • las notas NO cuentan como advertencias • /nota quitar para borrar' +
+      (paginas > 1 ? ` • página ${pagina}/${paginas}` : ''),
   });
 }
+
+const tituloDePagina = (pagina, paginas) => (paginas > 1 ? `Página ${pagina}/${paginas}` : 'Notas');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -46,6 +83,9 @@ module.exports = {
         .setName('ver')
         .setDescription('Muestra las notas de un usuario')
         .addUserOption((o) => o.setName('usuario').setDescription('Usuario a consultar').setRequired(true))
+        .addIntegerOption((o) =>
+          o.setName('pagina').setDescription('Página de la lista (5 notas por página)').setMinValue(1)
+        )
     )
     .addSubcommand((sc) =>
       sc
@@ -79,7 +119,8 @@ module.exports = {
     }
 
     if (sub === 'ver') {
-      return interaction.reply({ embeds: [vista(usuario, getNotas(guildId, usuario.id))], flags: MessageFlags.Ephemeral });
+      const pagina = interaction.options.getInteger('pagina') ?? 1;
+      return interaction.reply({ embeds: [vista(usuario, getNotas(guildId, usuario.id), pagina)], flags: MessageFlags.Ephemeral });
     }
 
     // quitar

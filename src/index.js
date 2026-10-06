@@ -18,6 +18,9 @@ const logVigilancia = crearLogger('vigilancia');
 const logTempbans = crearLogger('tempbans');
 const logXpVoz = crearLogger('xp-voz');
 
+// Cooldown por usuario de los comandos (política en un solo lugar: utils/cooldowns.js).
+const cooldowns = require('./utils/cooldowns');
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -246,6 +249,16 @@ client.on('interactionCreate', async (interaction) => {
 
   const command = client.commands.get(interaction.commandName);
   if (!command) return;
+
+  // Anti-abuso: un uso por usuario cada `command.cooldown` segundos (2 por defecto).
+  // Va acá y no dentro de cada comando para que la política viva en un solo lugar y
+  // ningún comando nuevo nazca sin límite; los que salen a la red declaran más.
+  const bloqueo = cooldowns.esperar(command.data.name, interaction.user.id, command.cooldown);
+  if (bloqueo) {
+    return interaction
+      .reply({ content: cooldowns.aviso(command.data.name, bloqueo.restante), flags: MessageFlags.Ephemeral })
+      .catch(() => {});
+  }
 
   try {
     await command.execute(interaction, client);

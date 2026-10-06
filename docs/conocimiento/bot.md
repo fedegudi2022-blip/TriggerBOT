@@ -58,8 +58,9 @@ cuenta: si necesitás algo fuera de esa lista, ticket de soporte.
   `/pellizco`, `/chocar`, `/guino`
 - De staff: `/warn`, `/warnings`, `/unwarn`, `/timeout`, `/mute`, `/unmute`,
   `/kick`, `/ban`, `/unban`, `/softban`, `/clear`, `/lockdown`, `/slowmode`,
-  `/config`, `/rolnivel`, `/ticket`, `/embed`, `/plantillas`, `/frases`, `/diag`,
-  `/buscar`
+  `/sanciones`, `/casos`, `/logs buscar`, `/nota`,
+  `/config`, `/bienvenida test`, `/rolnivel`, `/ticket`, `/embed`, `/plantillas`,
+  `/frases`, `/diag`, `/buscar`
 
 ## Quién puede usar los comandos de staff
 Los comandos de moderación y de configuración son para el staff: el dueño, quien
@@ -69,6 +70,16 @@ pierda el comando; si lo usa alguien que no es del staff, recibe un aviso privad
 que la acción es solo para el staff. Si querés que el resto directamente no los vea,
 eso se configura en el servidor (Server Settings → Integrations → TriggerBOT), no
 desde el bot: Discord no deja que las aplicaciones manejen esa visibilidad.
+
+## Mensaje de bienvenida
+Cuando entra alguien nuevo, el bot puede saludarlo en un canal elegido (y darle un rol
+automático). Se configura desde `/config → Bienvenida y autorol`, sin tocar código: el
+canal, el texto del mensaje y el rol. En el texto se pueden usar `{usuario}`,
+`{servidor}` y `{miembros}`, que el bot reemplaza al publicarlo.
+
+El staff puede ver cómo queda antes de que entre nadie con `/bienvenida test`: muestra
+el mensaje tal como lo reciben los nuevos y avisa si el canal configurado ya no existe,
+si al bot le falta permiso para escribir ahí o si el rol automático se borró.
 
 ## Canales de voz temporales
 En el canal de voz «Crear canal» entrás y el bot te crea tu propio canal de voz

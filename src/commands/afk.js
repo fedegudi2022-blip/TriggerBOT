@@ -107,7 +107,7 @@ module.exports = {
     const motivo = interaction.options.getString('motivo') || 'sin motivo especificado';
     setAFK(interaction.guildId, interaction.user.id, motivo);
     return interaction.reply({
-      embeds: [successEmbed(`Quedaste marcado como **AFK**: ${motivo}.\nCuando volvas a hablar, se te saca automáticamente.`, 'Modo ausente')],
+      embeds: [successEmbed(`Quedaste marcado como **AFK**: ${motivo}.\nCuando vuelvas a hablar, se te saca automáticamente.`, 'Modo ausente')],
       flags: MessageFlags.Ephemeral,
     });
   },

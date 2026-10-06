@@ -2,9 +2,13 @@
 
 ## Cómo se modera
 El staff usa comandos del bot: `/warn`, `/warnings`, `/unwarn`, `/timeout`,
-`/mute`, `/unmute`, `/kick`, `/ban`, `/unban`, `/softban`, `/clear`, `/lockdown` y
-`/slowmode`. Todos requieren permisos de moderación o un rol de staff configurado en
+`/mute`, `/unmute`, `/kick`, `/ban`, `/unban`, `/softban`, `/clear`, `/lockdown`,
+`/slowmode` y `/sanciones`. Todos requieren permisos de moderación o un rol de staff configurado en
 `/config staff` (admin, mod o helper). Un miembro común **no puede** usarlos.
+
+Cada sanción queda registrada con un **número de caso** en el canal de logs, y el staff
+puede revisar el historial con `/casos` (un caso puntual o el de una persona) o buscar
+por acción, persona o fecha con `/logs buscar`.
 
 ## Advertencias (warn)
 `/warn` con una razón deja una advertencia en el historial del usuario. **Al llegar a
@@ -18,6 +22,8 @@ historial se consulta con `/warnings` y una advertencia puntual se borra con
 - `/mute` aplica el rol **Silenciado**, que es **indefinido**: dura hasta que el
   staff lo saque con `/unmute`.
 - Que un timeout no te permita escribir es normal: es la sanción, no un error.
+- El staff consulta quién está silenciado en este momento (con rol o con timeout) con
+  `/sanciones`.
 
 ## Expulsión y baneo
 - `/kick` expulsa al usuario del servidor (puede volver por invitación).
@@ -48,4 +54,5 @@ sistema automático.
 ## "Me sancionaron y no entiendo por qué"
 Nadie te va a explicar la sanción por chat público: hay que abrir un ticket de
 soporte con el botón para abrir tickets del canal de soporte. El historial de advertencias queda
-registrado con su motivo, así que el staff puede revisarlo.
+registrado con su motivo, así que el staff puede revisarlo con `/warnings` y el detalle
+de cada sanción con `/casos`.

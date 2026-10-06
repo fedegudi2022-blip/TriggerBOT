@@ -37,6 +37,7 @@ El bot es JavaScript CommonJS sobre **Node 22** (fijado en `engines` y en `.nvmr
 | `src/utils/modlog.js`         | Registro numerado de casos de moderación                                                                  |
 | `src/utils/log.js`            | Logs generales de eventos (mensajes borrados/editados, ingresos, etc.)                                    |
 | `src/utils/replies.js`        | Embeds y formato con el estilo visual del bot                                                             |
+| `src/utils/cooldowns.js`      | Cooldown por usuario y por comando, aplicado en el handler de comandos de `index.js`                      |
 
 ## Flujo de arranque (`index.js`)
 
@@ -68,14 +69,22 @@ Ambas devuelven `null` si todo está bien o un mensaje de error listo para mostr
 
 - `modlog.logAction()` sigue publicando el embed en el canal configurado y **además** persiste el caso en `data/casos.json` (número, acción, objetivo, moderador, motivo, duración, color, timestamp). El embed se pierde con el scroll y el historial se podía auditar solo a ojo; el registro no.
 - `/casos [caso] [usuario]` (staff) muestra un caso puntual por número o el historial de una persona (`casos.obtener()` / `casos.listar()`).
+- `/logs buscar` (staff) es la otra mitad: filtra el mismo registro por **acción, usuario, moderador y antigüedad** (`/logs buscar accion:baneo desde:7d`), con el autocompletado alimentado por `casos.acciones()` y páginas de 10. Los filtros viven en `casos.listar()` (un solo lugar para el registro, no uno por comando) y la acción se busca por texto — sin mayúsculas ni tildes— para que `baneo` encuentre también `Baneo temporal (tempban)`. La antigüedad usa el mismo parser que `/tempban` (`30m`/`12h`/`7d`, 1 min a 30 días).
 
 ## Notas internas (`notas.js` + `/nota`)
 
 - `/nota agregar|ver|quitar` guarda observaciones del staff **separadas de los warns**: no cuentan para el silencio automático de 3 advertencias, así una observación ("ya se le avisó") nunca sanciona sola.
+- `ver` **pagina** (5 por página, campos de ≤1 000 caracteres, igual que `/warnings`): antes hacía `slice(0, 4000)` sobre la descripción del embed, así que con un historial largo las últimas notas eran invisibles sin que nadie se enterara. El número de cada nota sigue siendo su posición original, que es la que pide `/nota quitar`.
+
+## Bienvenida (`/bienvenida test`)
+
+- El embed de bienvenida se arma en `events/guildMemberAdd.js` (`renderWelcome()` + `embedBienvenida()`) y lo **reusa** `/bienvenida test`: probar la bienvenida muestra el mismo embed que se publica, no una copia que se desincroniza. El comando es de staff (`ManageGuild`) y efímero.
+- Reporta el estado real de la configuración, que hasta ahora solo quedaba en la consola del bot: canal configurado que ya no existe, falta de permiso de **Enviar mensajes** en ese canal y rol de autorol borrado. Con `enviar:true` publica la prueba de verdad en el canal (con una línea que aclara que es una prueba y `allowedMentions: { parse: [] }` para no pingear a nadie).
 
 ## Confirmación de acciones destructivas (`confirmaciones.js`)
 
 - `/ban`, `/softban`, `/kick`, `/mute`, `/clear` y `/lockdown bloquear` **no tocan la API al ejecutarse**: validan jerarquía/permisos y muestran un panel efímero con Confirmar/Cancelar (expira en 60 s). Recién al apretar Confirmar corre la acción. `/mute` crea el rol Silenciado dentro de `ejecutar`, así confirmar es lo único que deja un rol nuevo en el servidor.
+- `/lockdown` **devuelve el canal a como estaba**: antes de bloquear guarda en la config del server (`c.lockdowns[canalId]`) qué valor tenía `SendMessages` para @everyone (o que no existía el overwrite), y el desbloqueo lo restaura. Con `SendMessages: null` el permiso se **borraba** en vez de restaurarse: un canal de solo lectura quedaba escribible y uno que permitía escribir explícitamente quedaba como si nadie lo hubiera configurado. El estado vive en la config, así que también funciona si desbloquea otro moderador o si el bot se reinició; un bloqueo viejo sin estado guardado se quita igual y el embed lo avisa (caso `restaurado: 'desconocido'`).
 - Tras aplicarla, `/ban` y `/mute` (y `/lockdown bloquear`) ofrecen **Deshacer** (desbanear / quitar el rol Silenciado / desbloquear) con otro token de 60 s. Un kick o un borrado masivo no se pueden revertir con la API, así que solo confirman. El resultado se anuncia en el canal salvo `silencioso:true`; con `alEnviar`, `/clear` borra su confirmación pública a los 5 s para no dejar el mensaje pegado en el canal.
 - Los manejadores de los botones `conf:` y del **autocompletado** se despachan en `index.js` (`command.autocomplete()`): antes el autocompletado de motivos de `/warn`, `/plantillas`, etc. nunca respondía.
 
@@ -120,7 +129,19 @@ Ambas devuelven `null` si todo está bien o un mensaje de error listo para mostr
 - Los contextuales **no se escriben**: no van en `/help` ni en el catálogo de comandos que ve la IA. Sin el filtro aparecían como `/Ficha de niveles`, que no es algo que exista.
 - Los contextuales **no llevan descripción ni opciones** (Discord rechaza el registro si las mandás) y su nombre admite espacios y mayúsculas hasta 32 caracteres: el validador de `tests/registro.test.js` lo sabe por tipo.
 - Reusan el comando de siempre: `ctx-ficha.js` llama a `estadisticas.ejecutar(interaction, usuario)` y `ctx-warnings.js` a `warnings.ejecutar(...)`. Ninguna lógica se duplica, así no pueden mostrar cosas distintas que el slash.
+- **Qué es público lo declara la guía** (`utils/guia.js`): un comando aparece en `/help user` solo si está en una categoría pública (o declara `publico: true`); todo lo demás es de staff. La regla está invertida respecto de la lista negra de 25 nombres que había antes: olvidarse de declarar un comando nuevo lo deja **oculto**, no expuesto. Sumar un comando público es agregarlo a la categoría que le corresponde, y nada más.
+- `tests/guia.test.js` fija esa promesa: ningún comando de staff se filtra, ningún comando público desaparece, ningún comando se lista dos veces (tampoco en las notas), todo comando cuyo código llama a `exigirStaff(` queda fuera de la guía pública, y ningún campo se pasa de los límites de Discord.
 - **Batería de contrato** (`tests/comandos-contrato.test.js`): ejecuta todos los comandos contra fakes en tres escenarios (sin permiso, con permiso y sin opciones opcionales) y exige que ninguno tire, que todos contesten y que los de staff avisen en efímero. Los que necesitan infraestructura real están en una lista de excluidos con el motivo a la vista.
+
+## Cooldown de comandos (`utils/cooldowns.js`)
+
+- **Por qué existe:** no había ningún límite por usuario y varios comandos salen a la red (Reddit en `/meme`, Wikipedia y DuckDuckGo en `/buscar`, A2S por UDP en `/servidores`, `/ip` y `/jugadores`). Una ráfaga se comía la cuota de esas fuentes y castigaba a todos los demás.
+- **Dónde se aplica:** en el handler de comandos de `index.js`, antes de `execute`. La política vive en un solo lugar, así ningún comando nuevo nace sin límite. El bloqueo contesta en **efímero** y en texto plano: `Esperá N s para volver a usar /comando.`
+- **Cómo se configura:** cada comando declara `cooldown: <segundos>` en su módulo. Sin declarar nada vale **2 s**; con `cooldown: 0` el comando no tiene límite. Los que salen a la red declaran más: `/meme`, `/buscar`, `/servidores` y `/jugadores` 5 s; `/ip` y `/top` 3 s.
+- **El intento bloqueado no renueva el reloj**, a propósito: si lo hiciera, spamear el comando sería la forma de dejarlo bloqueado para siempre. La ventana corre desde el último uso *permitido*.
+- El registro es un `Map` con poda (1 000 entradas): el proceso no crece sin control.
+- Los **botones y menús no pasan por acá** (siguen en el handler de componentes), así que paginar `/top` o `/warnings` no tiene cooldown.
+- `tests/cooldowns.test.js` fija las reglas, incluido que los comandos de red declaren su valor.
 
 ## Visibilidad de los comandos en Discord (`permisos.js`)
 
@@ -245,8 +266,11 @@ Sin esto, un reinicio del host perdía hasta 5 s de XP y 3 s de subidas.
   - `moderation.test.js` — jerarquía moderador→objetivo y bot→objetivo (el caso "admin con rol bajo").
   - `proteccion.test.js` — detección de spam, ventana, exención de staff, cooldown; acciones con resultado real; raid con auto-acción selectiva.
   - `niveles.test.js` — XP, cooldown, bonus, racha, logros no repetibles, debounce (procesar mensaje **no** escribe a disco), warns.
-  - `auditoria.test.js` — registro persistente de casos, `/casos` (por número/usuario), `/nota` separada de los warns y detalle/autocompletado de `/help`.
-  - `comandos.test.js` — mensajería, plomería de acciones y el flujo de confirmación/deshacer de `/ban`, `/kick`, `/mute` y `/clear`; y los extras de staff (notas + últimos casos) en `/userinfo`.
+  - `auditoria.test.js` — registro persistente de casos, `/casos` (por número/usuario), `/nota` separada de los warns (con la paginación de `ver`), `/logs buscar` (filtros y paginado) y detalle/autocompletado de `/help`.
+  - `comandos.test.js` — mensajería, plomería de acciones y el flujo de confirmación/deshacer de `/ban`, `/kick`, `/mute` y `/clear`; el ida y vuelta de `/lockdown` (bloquear → desbloquear devuelve el permiso previo) y los extras de staff (notas + últimos casos) en `/userinfo`.
+  - `bienvenida.test.js` — el render compartido con `guildMemberAdd` y `/bienvenida test`: previsualización, avisos de configuración rota y el envío real sin mencionar a nadie.
+  - `logs.test.js` — filtros de `casos.listar()` (usuario, moderador, acción por texto, fechas) y el comando `/logs buscar` con fakes.
+  - `serverinfo.test.js` — conteo de humanos/bots cuando la descarga de miembros falla (no inventa el número) y cuando funciona.
   - `sync.test.js` — decisiones de restauración por guild (nube nueva, local nuevo, guild a guild), bug original del mtime, debounce de subida, integración con almacenes reales.
   - `web.test.js` — cuándo corresponde buscar (charla/comunidad/cultura general), detección del "no lo tengo cargado", parseo de Wikipedia y del HTML de DDG Lite (con redirección `uddg`), respaldo en inglés, investigación en rondas con la consulta simplificada, dedupe de pedidos simultáneos, cotización y clima (con ciudad y sin ella), caché, cooldown y fallos: todo con el fetch inyectado, cero red.
 

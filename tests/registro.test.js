@@ -17,7 +17,7 @@ const path = require('node:path');
 process.env.TRIGGER_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'tgb-reg-'));
 
 const { cargarComandos, fallosDeCarga } = require('../src/commandLoader');
-const { construirGuia, construirGuiaStaff, SOLO_STAFF } = require('../src/utils/guia');
+const { construirGuia, construirGuiaStaff, esPublico, esSlash } = require('../src/utils/guia');
 
 // ---------- Reglas de Discord ----------
 // Copiadas de @discordjs/builders (namePredicate) y de los límites documentados de
@@ -198,15 +198,15 @@ describe('la guía /help cubre todo lo que existe', () => {
   });
 
   test('ningún comando de staff aparece en la guía pública', () => {
-    // Los comandos de staff ya no declaran permisos nativos (la autorización la
-    // aplica exigirStaff() en cada uno). La única fuente de verdad de qué es de
-    // staff para la guía es SOLO_STAFF: si un comando nuevo se olvida de sumarse,
-    // se filtraría en la guía pública y acá se detecta.
+    // Qué es de staff ya no lo declara una lista escrita a mano: un comando es público
+    // solo si está en una categoría pública, así que un comando nuevo no puede filtrarse
+    // por olvido. Acá se revisa el resultado sobre la guía ya armada.
     const client = clientFake();
     const publica = textoDe(construirGuia(client));
-    const filtrados = revisados
-      .map((r) => r.nombre)
-      .filter((nombre) => SOLO_STAFF.has(nombre))
+    const filtrados = comandos
+      .filter(esSlash)
+      .filter((comando) => !esPublico(comando))
+      .map((comando) => comando.data.name)
       .filter((nombre) => publica.includes(`\`/${nombre}\``));
 
     assert.deepEqual(filtrados, [], `comandos de staff visibles en /help público: ${filtrados.join(', ')}`);
@@ -214,7 +214,7 @@ describe('la guía /help cubre todo lo que existe', () => {
 
   test('la guía pública muestra los comandos que sí son para todos', () => {
     const publica = textoDe(construirGuia(clientFake()));
-    for (const nombre of ['help', 'userinfo', 'top', 'logros', 'ip', 'servidores', 'redes', 'web', 'beso']) {
+    for (const nombre of ['help', 'userinfo', 'top', 'logros', 'ip', 'servidores', 'jugadores', 'redes', 'web', 'beso']) {
       assert.ok(publica.includes(`\`/${nombre}\``), `/${nombre} debería estar en la guía pública`);
     }
   });

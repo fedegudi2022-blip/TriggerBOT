@@ -64,11 +64,34 @@ function obtener(guildId, numero) {
   return (cache[guildId] ?? []).find((c) => c.numero === Number(numero)) ?? null;
 }
 
-// Lista casos del servidor, del más nuevo al más viejo. Filtra por usuario si se pide.
-function listar(guildId, { usuarioId = null, limite = null } = {}) {
+// Lista casos del servidor, del más nuevo al más viejo.
+//
+// Filtros opcionales (los usa /logs buscar): usuario sancionado, moderador que la
+// aplicó, acción (por texto, sin distinguir mayúsculas ni tildes: sirve tanto para
+// "Baneo (ban)" como para "baneo") y rango de fechas en milisegundos.
+function normalizarTexto(texto) {
+  return String(texto ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function listar(guildId, { usuarioId = null, moderadorId = null, accion = null, desde = null, hasta = null, limite = null } = {}) {
   let casos = [...(cache[guildId] ?? [])].reverse();
   if (usuarioId) casos = casos.filter((c) => c.targetId === usuarioId);
+  if (moderadorId) casos = casos.filter((c) => c.moderatorId === moderadorId);
+  if (accion) {
+    const buscado = normalizarTexto(accion);
+    casos = casos.filter((c) => normalizarTexto(c.action).includes(buscado));
+  }
+  if (desde) casos = casos.filter((c) => Number(c.timestamp) >= desde);
+  if (hasta) casos = casos.filter((c) => Number(c.timestamp) <= hasta);
   return limite ? casos.slice(0, limite) : casos;
+}
+
+// Acciones distintas registradas en el servidor (alimenta el autocompletado de /logs).
+function acciones(guildId) {
+  return [...new Set((cache[guildId] ?? []).map((c) => c.action).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
 }
 
 function leer(guildId) {
@@ -99,4 +122,4 @@ function volcar() {
 load();
 inicializarMarcas();
 
-module.exports = { registrar, obtener, listar, leer, escribir, marcasPorGuild, leerGuilds, volcar, MAX_CASOS };
+module.exports = { registrar, obtener, listar, acciones, leer, escribir, marcasPorGuild, leerGuilds, volcar, MAX_CASOS };

@@ -1,7 +1,7 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const { getGuildConfig } = require('../store');
 const { logAction } = require('../utils/modlog');
-const { errorEmbed, accionEmbed, COLORS, marcaTiempo } = require('../utils/replies');
+const { errorEmbed, accionEmbed, nombreDe, COLORS, marcaTiempo } = require('../utils/replies');
 const { motivoNoModerable, avisarPorDM } = require('../utils/moderation');
 const { quiereSilencioso, diferir, resolverMiembro, intentar } = require('../utils/acciones');
 const { exigirStaff } = require('../utils/permisos');
@@ -47,7 +47,7 @@ module.exports = {
     await diferir(interaction, silencioso);
 
     const resultado = await intentar('Discord rechazó quitar el rol de silenciado', () =>
-      member.roles.remove(muteRole, reason ? `${reason} — por ${interaction.user.tag}` : `por ${interaction.user.tag}`)
+      member.roles.remove(muteRole, reason ? `${reason} — por ${nombreDe(interaction.user)}` : `por ${nombreDe(interaction.user)}`)
     );
 
     const caso = logAction(interaction.guild, {

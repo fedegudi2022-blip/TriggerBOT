@@ -42,8 +42,11 @@ module.exports = {
     // de ingreso incluidos): cero fetch de red para la parte de miembro.
     const member = interaction.options.getMember('usuario') ?? (user.id === interaction.user.id ? interaction.member : null);
 
-    // Único fetch a la API: pide el perfil completo para banner y color de acento.
-    const completo = await interaction.client.users.fetch(user.id, { force: true }).catch(() => null);
+    // Único fetch a la API, y solo si el usuario no está en caché: el perfil completo
+    // aporta el banner y el color de acento. Con `force: true` cada /userinfo gastaba
+    // una llamada a la API aunque el usuario ya estuviera cacheado, y ese rate limit
+    // es el mismo que usa todo lo demás (sanciones, DMs, panel).
+    const completo = await interaction.client.users.fetch(user.id).catch(() => null);
 
     const creado = Math.floor(user.createdTimestamp / 1000);
     const unido = member?.joinedTimestamp ? Math.floor(member.joinedTimestamp / 1000) : null;

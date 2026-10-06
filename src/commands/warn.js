@@ -3,7 +3,7 @@ const { addWarn } = require('../warns');
 const { getGuildConfig } = require('../store');
 const { logAction } = require('../utils/modlog');
 const { logEvent } = require('../utils/log');
-const { errorEmbed, accionEmbed, marcaTiempo, textoDuracion, COLORS } = require('../utils/replies');
+const { errorEmbed, accionEmbed, marcaTiempo, textoDuracion, nombreDe, COLORS } = require('../utils/replies');
 const { ACCIONES, resolver, corresponde, duracionMs, aplicar } = require('../utils/escalada');
 const { motivoNoModerable, avisarPorDM } = require('../utils/moderation');
 const { autocompletar } = require('../utils/plantillas');
@@ -52,7 +52,7 @@ module.exports = {
     // respondía "quedó silenciado 1 hora" aunque Discord hubiera rechazado el timeout.
     const politica = resolver(getGuildConfig(interaction.guild.id));
     const escalada = corresponde(politica, total)
-      ? await aplicar(member, politica, `Acumuló ${total} advertencias — por ${interaction.user.tag}`)
+      ? await aplicar(member, politica, `Acumuló ${total} advertencias — por ${nombreDe(interaction.user)}`)
       : null;
 
     // Duración legible de la escalada: el rol Silenciado no vence solo.

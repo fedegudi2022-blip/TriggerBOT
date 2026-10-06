@@ -5,14 +5,6 @@ const { successEmbed, warnEmbed } = require('../utils/replies');
 const monitoreo = require('../utils/monitoreo');
 const { getGuildConfig } = require('../store');
 
-// Compara sin acentos ni mayúsculas: "publico" encuentra "PÚBLICO CLÁSICO".
-function normalizar(t) {
-  return String(t)
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
-}
-
 // Emoji según la ocupación del server.
 function estado(jug, max) {
   const ocup = max ? jug / max : 0;
@@ -20,6 +12,9 @@ function estado(jug, max) {
 }
 
 module.exports = {
+  // Consulta los servers por UDP (A2S) en cada uso: 3 s por usuario alcanzan para que
+  // copiar la IP sea instantáneo sin que un canal entero lo pida al mismo tiempo.
+  cooldown: 3,
   data: new SlashCommandBuilder()
     .setName('ip')
     .setDescription('IP de los servidores para conectarte (se copia con un toque)')
@@ -36,10 +31,9 @@ module.exports = {
       });
     }
 
-    const filtro = normalizar(interaction.options.getString('servidor') ?? '').trim();
-    const elegidos = filtro
-      ? servers.filter((s) => normalizar(s.nombre || '').includes(filtro) || normalizar(s.modo || '').includes(filtro))
-      : servers;
+    // El filtro por nombre o modo vive en monitoreo.js: lo comparte con /jugadores.
+    const filtro = (interaction.options.getString('servidor') ?? '').trim();
+    const elegidos = monitoreo.filtrarServidores(servers, filtro);
 
     if (!elegidos.length) {
       return interaction.reply({

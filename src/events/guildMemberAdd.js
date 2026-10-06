@@ -9,8 +9,23 @@ function renderWelcome(message, member) {
     .replaceAll('{miembros}', String(member.guild.memberCount));
 }
 
+// El embed de bienvenida tal cual lo ve el que entra. Vive acá (y no dentro del comando)
+// para que /bienvenida test muestre EXACTAMENTE el mismo mensaje que se publica: si
+// cambia el formato, cambia en los dos lados a la vez.
+function embedBienvenida(config, member) {
+  const embed = brandEmbed({
+    color: COLORS.success,
+    title: `¡${nombreDe(member.user)} se unió!`,
+    description: renderWelcome(config.welcome?.message, member),
+  });
+  embed.setThumbnail(member.user.displayAvatarURL({ size: 256 }));
+  return embed;
+}
+
 module.exports = {
   name: Events.GuildMemberAdd,
+  renderWelcome,
+  embedBienvenida,
   async execute(member) {
     const { getGuildConfig } = require('../store');
     const config = getGuildConfig(member.guild.id);
@@ -34,13 +49,7 @@ module.exports = {
     if (config.welcome?.channelId) {
       const channel = member.guild.channels.cache.get(config.welcome.channelId);
       if (channel) {
-        const embed = brandEmbed({
-          color: COLORS.success,
-          title: `¡${nombreDe(member.user)} se unió!`,
-          description: renderWelcome(config.welcome.message, member),
-        });
-        embed.setThumbnail(member.user.displayAvatarURL({ size: 256 }));
-        await channel.send({ embeds: [embed] }).catch((error) =>
+        await channel.send({ embeds: [embedBienvenida(config, member)] }).catch((error) =>
           console.error(`[TriggerBOT] No se pudo enviar el mensaje de bienvenida en ${member.guild.name}: ${error.message}`)
         );
       } else {

@@ -21,7 +21,7 @@ const path = require('node:path');
 process.env.TRIGGER_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'tgb-contrato-'));
 
 const { cargarComandos } = require('../src/commandLoader');
-const { SOLO_STAFF } = require('../src/utils/guia');
+const { esPublico, esSlash } = require('../src/utils/guia');
 const { MessageFlags } = require('discord.js');
 
 const comandos = cargarComandos();
@@ -335,8 +335,10 @@ describe('contrato de los comandos', () => {
       assert.equal(r.error, null, `/${nombre} tiró: ${r.error?.message}`);
       assert.ok(r.deferido || r.modal || r.respuestas.length > 0, `/${nombre} no contestó nada`);
 
-      // Los de staff tienen que avisar en efímero, no contestarle al canal.
-      if (SOLO_STAFF.has(nombre) && r.respuestas.length) {
+      // Los de staff tienen que avisar en efímero, no contestarle al canal. Se revisan
+      // solo los slash: en un comando de menú contextual la respuesta es efímera por
+      // regla de Discord, así que ahí no hay nada que verificar.
+      if (!esPublico(comando) && esSlash(comando) && r.respuestas.length) {
         deStaffVerificados += 1;
         assert.ok(
           r.respuestas.some(efimero),

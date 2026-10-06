@@ -110,6 +110,9 @@ async function ejecutar(interaction, paginaPedida = 1) {
 }
 
 module.exports = {
+  // El ranking se arma de la caché, pero el filtro recorre hasta 4 000 entradas:
+  // 3 s por usuario evitan que un canal entero lo pida al mismo tiempo.
+  cooldown: 3,
   data: new SlashCommandBuilder()
     .setName('top')
     .setDescription('Ranking de actividad del servidor (con podio, tu puesto y páginas)')

@@ -118,6 +118,9 @@ const filaBoton = () =>
   );
 
 module.exports = {
+  // Reddit bloquea a los hosts de nube: 5 s por usuario evitan que una ráfaga de
+  // /meme se convierta en decenas de pedidos que terminan en 403.
+  cooldown: 5,
   data: new SlashCommandBuilder()
     .setName('meme')
     .setDescription('Meme al azar de Reddit (con botón para pedir otro)'),

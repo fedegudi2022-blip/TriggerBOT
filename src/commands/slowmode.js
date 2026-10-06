@@ -1,6 +1,6 @@
 const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags } = require('discord.js');
 const { logAction } = require('../utils/modlog');
-const { errorEmbed, accionEmbed, textoDuracion, COLORS } = require('../utils/replies');
+const { errorEmbed, accionEmbed, textoDuracion, nombreDe, COLORS } = require('../utils/replies');
 const { quiereSilencioso, diferir, intentar } = require('../utils/acciones');
 const { exigirStaff } = require('../utils/permisos');
 
@@ -58,7 +58,7 @@ module.exports = {
     await diferir(interaction, silencioso);
 
     const resultado = await intentar('Discord rechazó el cambio de modo lento', () =>
-      channel.setRateLimitPerUser(segundos, reason ? `${reason} — por ${interaction.user.tag}` : `por ${interaction.user.tag}`)
+      channel.setRateLimitPerUser(segundos, reason ? `${reason} — por ${nombreDe(interaction.user)}` : `por ${nombreDe(interaction.user)}`)
     );
 
     const caso = logAction(interaction.guild, {

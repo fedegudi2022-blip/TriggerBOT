@@ -39,7 +39,7 @@ module.exports = {
     // chico o recién scaneada) y solo descarga si falta gente. Un server chico
     // responde al instante; uno grande descarga una vez y después sirve de caché.
     const falta = Number.isFinite(g.memberCount) ? g.memberCount - g.members.cache.size : 1;
-    if (falta > 0) await g.members.fetch().catch(() => {});
+    const completa = falta <= 0 ? true : await g.members.fetch().then(() => true).catch(() => false);
 
     const canales = g.channels.cache;
     const texto = canales.filter((c) => c.type === 0).size;
@@ -53,7 +53,10 @@ module.exports = {
 
     const miembros = g.members.cache;
     const bots = miembros.filter((m) => m.user.bot).size;
-    const humanos = Math.max(g.memberCount - bots, 0);
+    // Sin la lista completa no se pueden descontar los bots del total: restarlos sobre
+    // una caché parcial daría un número de humanos inflado, que es peor que no decir
+    // nada. En ese caso se informa solo lo que sí se midió.
+    const humanos = completa ? Math.max(g.memberCount - bots, 0) : null;
 
     const embed = brandEmbed({
       color: COLORS.servidor,
@@ -62,7 +65,15 @@ module.exports = {
       thumbnail: g.iconURL({ size: 256 }),
       fields: [
         { name: 'Dueño', value: `<@${g.ownerId}>`, inline: true },
-        { name: 'Miembros', value: `**${miles(g.memberCount)}**\n${miles(humanos)} humanos · ${miles(bots)} bots`, inline: true },
+        {
+          name: 'Miembros',
+          value:
+            `**${miles(g.memberCount)}**\n` +
+            (humanos === null
+              ? `${miles(bots)} bots a la vista · *no pude descargar la lista completa*`
+              : `${miles(humanos)} humanos · ${miles(bots)} bots`),
+          inline: true,
+        },
         { name: 'Creado', value: `<t:${creado}:D>\n<t:${creado}:R> · hace ${antiguedad}`, inline: true },
         {
           name: 'Canales',

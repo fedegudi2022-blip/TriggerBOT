@@ -1,11 +1,7 @@
 const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const { nombreDe, brandEmbed, errorEmbed, COLORS } = require('../utils/replies');
 
-const VOTACION_ABIERTA = new Map(); // messageId → { autorId, tema, titulo }
-
 module.exports = {
-  VOTACION_ABIERTA,
-
   data: new SlashCommandBuilder()
     .setName('encuesta')
     .setDescription('Crea una encuesta para que vote toda la comunidad')
@@ -40,7 +36,6 @@ module.exports = {
 
     await interaction.reply({ embeds: [embed] });
     const mensaje = await interaction.fetchReply();
-    VOTACION_ABIERTA.set(mensaje.id, { autorId: interaction.user.id, tema, titulo: `${tema}` });
     for (let i = 0; i < opciones.length; i++) mensaje.react(emojis[i]).catch(() => {});
   },
 };

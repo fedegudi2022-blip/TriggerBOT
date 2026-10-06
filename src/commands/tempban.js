@@ -1,6 +1,6 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const { logAction } = require('../utils/modlog');
-const { errorEmbed, accionEmbed, COLORS } = require('../utils/replies');
+const { errorEmbed, accionEmbed, nombreDe, COLORS } = require('../utils/replies');
 const { motivoNoModerable, avisarPorDM } = require('../utils/moderation');
 const { autocompletar } = require('../utils/plantillas');
 const { quiereSilencioso, resolverMiembro, intentar } = require('../utils/acciones');
@@ -72,7 +72,7 @@ module.exports = {
       silencioso,
       deshacerLabel: 'Deshacer (desbanear)',
       detalle:
-        `Vas a banear a **${user.username}** (${user}) durante **${formatearDuracion(duracionMs)}**.\n` +
+        `Vas a banear a **${nombreDe(user)}** (${user}) durante **${formatearDuracion(duracionMs)}**.\n` +
         `Se desbanea solo el ${marca(hasta)} (${marca(hasta, 'R')}).\n` +
         (deleteDays > 0 ? `Se borrarán sus mensajes de los últimos **${deleteDays}** día(s).\n` : '') +
         `**Motivo:** ${reason || '*no especificado*'}`,
@@ -80,7 +80,7 @@ module.exports = {
         const resultado = await intentar('Discord rechazó el baneo', () =>
           guild.members.ban(user.id, {
             deleteMessageSeconds: deleteDays * 86400,
-            reason: reason ? `${reason} — por ${btn.user.username}` : `por ${btn.user.username}`,
+            reason: reason ? `${reason} — por ${nombreDe(btn.user)}` : `por ${nombreDe(btn.user)}`,
           })
         );
 
@@ -128,7 +128,7 @@ module.exports = {
         };
       },
       deshacer: async (btn) => {
-        const resultado = await intentar('Discord rechazó el desbaneo', () => guild.members.unban(user.id, `Deshecho por ${btn.user.username}`));
+        const resultado = await intentar('Discord rechazó el desbaneo', () => guild.members.unban(user.id, `Deshecho por ${nombreDe(btn.user)}`));
         // Se cancela el pendiente pase lo que pase: si el desbaneo salió, ya no hay
         // nada que hacer; si falló, que no quede una entrada fantasma.
         const teniaPendiente = cancelar(guild.id, user.id);
@@ -147,7 +147,7 @@ module.exports = {
           embeds: [
             accionEmbed({
               titulo: 'Baneo temporal deshecho',
-              detalle: `**${user.username}** fue desbaneado.`,
+              detalle: `**${nombreDe(user)}** fue desbaneado.`,
               caso,
               moderador: btn.member?.displayName ?? btn.user.username,
               thumbnail: user.displayAvatarURL({ size: 128 }),

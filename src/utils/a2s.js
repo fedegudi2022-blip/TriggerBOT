@@ -230,8 +230,8 @@ async function jugadoresServer(host, puerto, opciones = {}) {
     lector.byte(); // índice
     const nombre = lector.cadena();
     const puntaje = lector.entero();
-    lector.flotante(); // duración de conexión
-    jugadores.push({ nombre, puntaje });
+    const duracion = lector.flotante(); // segundos conectado (lo muestra /jugadores)
+    jugadores.push({ nombre, puntaje, duracion });
   }
   return jugadores;
 }

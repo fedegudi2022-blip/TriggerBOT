@@ -62,6 +62,8 @@ Además de los comandos escritos, hay dos de **menú contextual** (click derecho
 
 Los comandos además se validan con un **smoke test de registro** (`tests/registro.test.js`): recorre el payload real que se le manda a Discord y comprueba nombres, descripciones y opciones. Un comando mal armado hace que Discord rechace el registro **completo**, así que un solo error de tipeo deja al bot sin ningún comando.
 
+Todos los comandos tienen un **cooldown por usuario** (2 s por defecto) para que una ráfaga no se coma la cuota de las fuentes externas. Los que salen a internet o consultan los servers por UDP declaran un valor más alto (5 s en `/meme`, `/buscar`, `/servidores` y `/jugadores`; 3 s en `/ip` y `/top`). El límite se aplica en un solo lugar y el comando bloqueado avisa en efímero cuánto falta.
+
 ## Comandos
 
 ### General
@@ -75,6 +77,7 @@ Los comandos además se validan con un **smoke test de registro** (`tests/regist
 | `/voz activar/hub/categoria/formato/contador/logs/estado` | Staff: activa los **canales de voz temporales** (ver abajo)                                                            | Staff (config)         |
 | `/servidores`                                             | Estado en vivo de los servers CS 1.6 (jugadores, mapa, IP). Staff: `publicar:true` fija un panel que se actualiza solo | Todos                  |
 | `/ip [servidor]`                                          | IP para conectarte, lista para copiar. Con filtro por nombre muestra mapa y jugadores de ahora                         | Todos                  |
+| `/jugadores [servidor]`                                   | Quién está conectado ahora en cada server CS 1.6, con puntaje y tiempo en línea                                        | Todos                  |
 | `/ticket publicar/categoria/logs/mensaje`                 | Panel de soporte con selector de tipo, canales privados por ticket, reclamar/agregar gente y transcript al cerrar       | Staff (config)         |
 | `/reportar usuario pruebas [adjunto]`                     | Abre un ticket de reporte con pruebas (cualquier miembro)                                                              | Todos                  |
 | `/diag`                                                   | Diagnóstico operativo: qué está roto y qué hacer, incluida la salida a internet del host                               | Staff                  |
@@ -98,6 +101,7 @@ Los comandos además se validan con un **smoke test de registro** (`tests/regist
 | `/unwarn usuario numero [razon]`     | Elimina una advertencia del historial                                                           | Mods     |
 | `/nota agregar/ver/quitar`               | Notas internas sobre un usuario. **No cuentan** para el silencio automático de 3 warn           | Mods     |
 | `/casos [caso] [usuario]`                | Consulta el registro de casos del mod-log: uno puntual por número o el historial de una persona | Mods     |
+| `/logs buscar [accion] [desde] [pagina]` | Filtra el registro de casos por acción, usuario, moderador y antigüedad, con páginas de 10      | Mods     |
 | `/kick usuario [razon]`                  | Expulsa a un usuario                                                                            | Mods     |
 | `/ban usuario [razon] [borrar_dias]`     | Banea y opcionalmente borra mensajes                                                            | Mods     |
 | `/unban usuario_id [razon]`              | Revoca un baneo por ID                                                                          | Mods     |
@@ -108,6 +112,7 @@ Los comandos además se validan con un **smoke test de registro** (`tests/regist
 | `/clear cantidad [usuario] [razon]`      | Borra hasta 100 mensajes recientes                                                              | Mods     |
 | `/lockdown bloquear/desbloquear [canal]` | Cierra o reabre un canal                                                                        | Mods     |
 | `/slowmode segundos [canal]`             | Modo lento de 0 s a 6 h                                                                         | Mods     |
+| `/sanciones`                             | Quién está silenciado ahora: rol Silenciado y silencios temporales activos                      | Mods     |
 
 > **Confirmación y deshacer:** `/ban`, `/softban`, `/kick`, `/mute`, `/clear` y `/lockdown bloquear` piden confirmación con botones antes de tocar Discord (nada se aplica hasta que confirmás). Después traen un botón **Deshacer** para revertir lo reversible: desbanear (`/ban`) y quitar el rol Silenciado (`/mute`). Un kick o un borrado de mensajes no se pueden deshacer con la API; ahí solo se confirma.
 
@@ -200,6 +205,8 @@ XP por escribir (15-25 por mensaje, máximo 1 por minuto para evitar farmeo) con
 ### Configuración (solo staff)
 
 `/config` abre un **panel interactivo**: un menú desplegable con las secciones (Bienvenida, Mod-log, Logs, Avisos, Staff, Rol de silenciado, Chat con IA, Niveles, Frase del día, Anti-spam y anti-raid, Tickets de soporte, Desactivar) y, dentro de cada una, selectores nativos para elegir canales y roles con un clic — sin tipear IDs ni opciones. El mensaje de bienvenida se edita en una ventana emergente y cada desactivado pide confirmación. Todo se guarda al instante y el panel es visible solo para quien lo abre.
+
+`/bienvenida test` muestra el mensaje de bienvenida **tal como lo reciben los nuevos** (el mismo embed que publica el bot) y avisa si el canal configurado ya no existe, si le falta permiso para escribir o si el rol de autorol se borró. Con `enviar:true` lo publica de verdad en el canal, aclarando que es una prueba y sin mencionar a nadie.
 
 ## Chat con IA (opcional)
 

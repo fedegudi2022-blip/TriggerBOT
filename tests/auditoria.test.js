@@ -6,7 +6,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { PermissionFlagsBits } = require('discord.js');
+const { MessageFlags, PermissionFlagsBits } = require('discord.js');
 
 process.env.TRIGGER_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'tgb-audit-'));
 
@@ -184,6 +184,48 @@ describe('/nota — notas internas separadas de los warns', () => {
 
     assert.equal(notas.getNotas(guild.id, usuario.id).length, 0);
     assert.match(texto(baja.llamadas.replies[0].embeds[0]), /Nota eliminada/);
+  });
+
+  test('ver pagina el historial en vez de recortarlo: no se pierde ninguna nota', async () => {
+    const guild = guildFake();
+    const usuario = { id: 'user-nota-larga', tag: 'user-nota-larga#0001' };
+    // 12 notas de 400 caracteres son más de 4096: con el slice(0, 4000) de antes las
+    // últimas quedaban invisibles y el staff no sabía que existían.
+    for (let i = 1; i <= 12; i++) {
+      notas.addNota(guild.id, usuario.id, { texto: `nota ${i} ${'x'.repeat(400)}`, moderatorId: 'staff-1', timestamp: Date.now() });
+    }
+
+    const pagina2 = interaccionFake(guild, { opciones: { sub: 'ver', usuario, pagina: 2 } });
+    await notaCmd.execute(pagina2.ix);
+
+    const embed = pagina2.llamadas.replies[0].embeds[0].data;
+    assert.equal(pagina2.llamadas.replies[0].flags & MessageFlags.Ephemeral, MessageFlags.Ephemeral);
+    assert.equal(embed.fields[0].name, 'Página 2/3', 'la primera tarjeta dice en qué página estás');
+    assert.ok(
+      embed.fields.slice(1).every((f) => f.name === '\u200b'),
+      'las notas se reparten en campos separados (el segundo nombre es invisible)'
+    );
+    assert.ok(
+      embed.fields.every((f) => f.value.length <= 1024),
+      'ningún campo puede pasarse del límite de Discord'
+    );
+
+    const cuerpo = texto(embed);
+    assert.match(cuerpo, /\*\*#6\*\*/);
+    assert.match(cuerpo, /\*\*#10\*\*/);
+    assert.doesNotMatch(cuerpo, /\*\*#11\*\*/, 'la página 2 no incluye la 11');
+    assert.match(embed.footer.text, /página 2\/3/);
+
+    const pagina3 = interaccionFake(guild, { opciones: { sub: 'ver', usuario, pagina: 3 } });
+    await notaCmd.execute(pagina3.ix);
+    const ultima = texto(pagina3.llamadas.replies[0].embeds[0].data);
+    assert.match(ultima, /\*\*#11\*\*/);
+    assert.match(ultima, /\*\*#12\*\*/, 'las últimas notas ahora se pueden ver');
+
+    // Un número de página absurdo cae en la última que existe, no en una vacía.
+    const lejana = interaccionFake(guild, { opciones: { sub: 'ver', usuario, pagina: 99 } });
+    await notaCmd.execute(lejana.ix);
+    assert.match(texto(lejana.llamadas.replies[0].embeds[0].data), /\*\*#12\*\*/);
   });
 });
 

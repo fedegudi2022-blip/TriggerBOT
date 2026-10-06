@@ -91,4 +91,9 @@ module.exports = {
 
     return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
   },
+
+  // El formato de cada fila lo comparten /casos y /logs: si cambia el criterio para
+  // nombrar al sancionado o para mostrar la fecha, cambia en los dos a la vez.
+  quien,
+  fecha,
 };

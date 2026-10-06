@@ -12,6 +12,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { PermissionFlagsBits } = require('discord.js');
 
 process.env.TRIGGER_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'tgb-cmd-'));
 
@@ -32,6 +33,7 @@ const channelCreate = require('../src/events/channelCreate');
 const confirmaciones = require('../src/utils/confirmaciones');
 const mute = require('../src/commands/mute');
 const userinfo = require('../src/commands/userinfo');
+const lockdown = require('../src/commands/lockdown');
 const { addNota } = require('../src/notas');
 const casosStore = require('../src/casos');
 
@@ -57,7 +59,19 @@ function canalFake(id, { fallarEnvio = false } = {}) {
       canal.borradoEnBloque.push(...lista);
       return new Map(lista.map((m) => [m.id, m]));
     },
-    permissionOverwrites: { edit: async () => {} },
+    // Overwrites: se registran las llamadas y el cache se puede sembrar desde el test
+    // (lo necesita /lockdown para saber qué había antes de bloquear).
+    overwritesEditados: [],
+    overwritesBorrados: [],
+    permissionOverwrites: {
+      cache: new Map(),
+      edit: async (rol, opciones) => {
+        canal.overwritesEditados.push({ rol, opciones });
+      },
+      delete: async (rol, motivo) => {
+        canal.overwritesBorrados.push({ rol, motivo });
+      },
+    },
     setRateLimitPerUser: async () => {},
     isTextBased: () => true,
   };
@@ -151,7 +165,7 @@ function interaccionFake(guild, { opciones = {}, moderador = null, silencioso = 
   // moderación ya no dependen de setDefaultMemberPermissions, validan internamente
   // con exigirStaff(). Los tests que necesitan un miembro raso pasan `moderador`.
   const member = moderador ?? miembroConPermisos();
-  const llamadas = { replies: [], edits: [], defers: [], seguimientos: [] };
+  const llamadas = { replies: [], edits: [], defers: [], seguimientos: [], consultasUsuarios: [] };
 
   const pedir = (nombre, requerido) => {
     const valor = opciones[nombre];
@@ -166,7 +180,17 @@ function interaccionFake(guild, { opciones = {}, moderador = null, silencioso = 
     channel: canalFake('canal-1'),
     user: { id: member.id, tag: `${member.id}#0001`, username: member.id },
     member,
-    client: { user: { id: 'bot', tag: 'bot#0001' }, users: { fetch: async () => null } },
+    client: {
+      user: { id: 'bot', tag: 'bot#0001' },
+      users: {
+        // Se registran las llamadas: /userinfo no debe forzar la descarga del perfil
+        // (cada llamada de más consume el rate limit compartido del bot).
+        fetch: async (id, parametros) => {
+          llamadas.consultasUsuarios.push({ id, opciones: parametros });
+          return null;
+        },
+      },
+    },
     deferred: false,
     replied: false,
     isButton: () => false,
@@ -864,6 +888,19 @@ describe('/userinfo', () => {
     assert.match(texto, /Baneo \(ban\)/);
   });
 
+  test('pide el perfil sin forzar la descarga (force: true gastaba una llamada por uso)', async () => {
+    const guild = guildFake();
+    const user = usuarioFake('user-cache');
+    const { interaction, llamadas } = interaccionFake(guild, { opciones: { usuario: user } });
+
+    await userinfo.execute(interaction);
+
+    assert.equal(llamadas.consultasUsuarios.length, 1);
+    assert.equal(llamadas.consultasUsuarios[0].id, user.id);
+    assert.equal(llamadas.consultasUsuarios[0].opciones?.force, undefined, 'no debe forzar la descarga del perfil');
+    assert.ok(llamadas.edits[0].embeds[0], 'la ficha se arma igual sin el perfil forzado');
+  });
+
   test('sin permisos de staff, la ficha no incluye notas ni casos', async () => {
     const guild = guildFake();
     const user = usuarioFake('user-raso');
@@ -938,6 +975,88 @@ describe('/embed', () => {
   });
 });
 
+describe('/lockdown', () => {
+  // El bug que cubren estos tests: al desbloquear se mandaba `SendMessages: null`, que
+  // BORRA el permiso en vez de devolverlo. Un canal que permitía escribir a @everyone
+  // explícitamente quedaba como si nadie lo hubiera configurado, y uno de solo lectura
+  // (negado a propósito) terminaba escribible.
+  function canalConOverwrite(guild, valor) {
+    const canal = canalFake('canal-reglas');
+    if (valor) {
+      canal.permissionOverwrites.cache.set(guild.roles.everyone.id, {
+        allow: new Set(valor === 'allow' ? [PermissionFlagsBits.SendMessages] : []),
+        deny: new Set(valor === 'deny' ? [PermissionFlagsBits.SendMessages] : []),
+      });
+    }
+    guild.channels.cache.set(canal.id, canal);
+    return canal;
+  }
+
+  test('desbloquear devuelve el permiso que había antes, no lo borra', async () => {
+    const guild = guildFake();
+    const canal = canalConOverwrite(guild, 'allow');
+
+    const bloquear = interaccionFake(guild, { opciones: { accion: 'bloquear', canal } });
+    await lockdown.execute(bloquear.interaction);
+    await apretarBoton(bloquear.interaction, bloquear.llamadas, 'si');
+
+    assert.deepEqual(canal.overwritesEditados.at(-1).opciones, { SendMessages: false });
+    assert.equal(store.leer(guild.id).lockdowns[canal.id].valor, 'allow', 'el estado previo queda guardado');
+
+    // El desbloqueo puede hacerlo otro moderador (o el mismo con el comando, sin usar
+    // Deshacer): el estado tiene que estar en la config, no en memoria.
+    const desbloquear = interaccionFake(guild, { opciones: { accion: 'desbloquear', canal } });
+    await lockdown.execute(desbloquear.interaction);
+
+    assert.deepEqual(canal.overwritesEditados.at(-1).opciones, { SendMessages: true }, 'vuelve a permitir el envío');
+    assert.equal(store.leer(guild.id).lockdowns, undefined, 'sin canales en lockdown no queda la clave colgada');
+  });
+
+  test('un canal que negaba el envío sigue negado después del desbloqueo', async () => {
+    const guild = guildFake();
+    const canal = canalConOverwrite(guild, 'deny');
+
+    const bloquear = interaccionFake(guild, { opciones: { accion: 'bloquear', canal } });
+    await lockdown.execute(bloquear.interaction);
+    await apretarBoton(bloquear.interaction, bloquear.llamadas, 'si');
+
+    const desbloquear = interaccionFake(guild, { opciones: { accion: 'desbloquear', canal } });
+    await lockdown.execute(desbloquear.interaction);
+
+    assert.deepEqual(canal.overwritesEditados.at(-1).opciones, { SendMessages: false }, 'un canal de solo lectura no se abre solo');
+    assert.equal(canal.overwritesBorrados.length, 0);
+  });
+
+  test('si el canal no tenía overwrite propio, el desbloqueo lo borra en vez de dejarlo vacío', async () => {
+    const guild = guildFake();
+    const canal = canalConOverwrite(guild, null);
+
+    const bloquear = interaccionFake(guild, { opciones: { accion: 'bloquear', canal } });
+    await lockdown.execute(bloquear.interaction);
+    await apretarBoton(bloquear.interaction, bloquear.llamadas, 'si');
+    assert.equal(store.leer(guild.id).lockdowns[canal.id].existia, false, 'se guardó que no había overwrite');
+
+    const desbloquear = interaccionFake(guild, { opciones: { accion: 'desbloquear', canal } });
+    await lockdown.execute(desbloquear.interaction);
+
+    assert.equal(canal.overwritesBorrados.length, 1, 'borra el overwrite que creó el bloqueo');
+    assert.equal(canal.overwritesEditados.length, 1, 'el desbloqueo no edita: borra');
+  });
+
+  test('un bloqueo viejo sin estado guardado se quita y lo avisa', async () => {
+    const guild = guildFake();
+    const canal = canalConOverwrite(guild, 'allow');
+    // Sin `lockdowns` en la config: un canal bloqueado antes de esta versión.
+    const { interaction, llamadas } = interaccionFake(guild, { opciones: { accion: 'desbloquear', canal } });
+    await lockdown.execute(interaction);
+
+    assert.deepEqual(canal.overwritesEditados.at(-1).opciones, { SendMessages: null });
+    const resultado = textoDe(llamadas.edits.at(-1).embeds[0]);
+    assert.match(resultado, /No tenía guardado el estado previo/);
+    assert.match(resultado, /Canal desbloqueado/);
+  });
+});
+
 describe('guía de /help', () => {
   const clientFake = () => ({
     user: { username: 'Trigger' },
@@ -946,25 +1065,29 @@ describe('guía de /help', () => {
       ['ban', { data: { name: 'ban', description: 'Banea' } }],
       ['top', { data: { name: 'top', description: 'Ranking' } }],
       ['comando-nuevo', { data: { name: 'comando-nuevo', description: 'Recién agregado' } }],
+      ['comando-publico', { publico: true, data: { name: 'comando-publico', description: 'Declarado público' } }],
     ]),
   });
 
-  test('todo comando cargado aparece en alguna guía (no se desincroniza)', () => {
+  test('todo comando cargado aparece en la guía de staff (no se desincroniza)', () => {
     const client = clientFake();
-    const publica = JSON.stringify(construirGuia(client).data);
     const staff = JSON.stringify(construirGuiaStaff(client).data);
 
     for (const nombre of client.commands.keys()) {
       assert.match(staff, new RegExp(`/${nombre}`), `falta /${nombre} en la guía de staff`);
     }
-    // Un comando nuevo sin categoría aparece igual, en «Otros».
+    // Uno sin categoría aparece igual, en «Otros».
     assert.match(staff, /Otros/);
-    assert.match(publica, /comando-nuevo/);
   });
 
-  test('la guía pública no muestra los comandos de staff', () => {
+  test('la guía pública solo muestra lo declarado público', () => {
     const publica = JSON.stringify(construirGuia(clientFake()).data);
+
     assert.ok(!/\/ban/.test(publica), 'no filtra comandos de moderación');
+    // El olvido es seguro: un comando nuevo que nadie declaró público NO se muestra.
+    assert.ok(!/comando-nuevo/.test(publica), 'un comando sin declarar se filtró a la guía pública');
+    // El que sí lo declara aparece, en «Otros» (no está en ninguna categoría).
+    assert.match(publica, /comando-publico/);
   });
 });
 

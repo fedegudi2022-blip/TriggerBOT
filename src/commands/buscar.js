@@ -35,6 +35,9 @@ function decision(consulta) {
 }
 
 module.exports = {
+  // Cada consulta golpea Wikipedia y DuckDuckGo: 5 s por usuario alcanzan para que
+  // probar a mano siga siendo cómodo sin saturar las fuentes.
+  cooldown: 5,
   data: new SlashCommandBuilder()
     .setName('buscar')
     .setDescription('Busca en internet y muestra los resultados crudos con su fuente (staff)')

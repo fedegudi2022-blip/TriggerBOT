@@ -157,7 +157,7 @@ async function ejecutarAccion(interaction, accion, miembro, motivo, duracionMin)
     let escalado = '';
     if (total >= 3 && miembro.moderatable) {
       const ok = await miembro
-        .timeout(60 * 60 * 1000, `Acumuló ${total} advertencias — por ${interaction.user.tag}`)
+        .timeout(60 * 60 * 1000, `Acumuló ${total} advertencias — por ${nombreDe(interaction.user)}`)
         .then(() => true)
         .catch(() => false);
       escalado = ok ? ' Quedó silenciado 1 hora por llegar a 3.' : ' (El timeout automático por acumulación fue rechazado por Discord.)';
@@ -176,7 +176,7 @@ async function ejecutarAccion(interaction, accion, miembro, motivo, duracionMin)
   if (accion === 'timeout') {
     const minutos = Math.min(Math.max(duracionMin || 60, 5), 28 * 24 * 60); // 5 min a 28 días
     try {
-      await miembro.timeout(minutos * 60 * 1000, `${motivo || 'Solicitud por chat con IA'} — por ${interaction.user.tag}`);
+      await miembro.timeout(minutos * 60 * 1000, `${motivo || 'Solicitud por chat con IA'} — por ${nombreDe(interaction.user)}`);
     } catch (error) {
       throw new Error(`Discord rechazó el timeout: ${error.message}`);
     }
@@ -200,7 +200,7 @@ async function ejecutarAccion(interaction, accion, miembro, motivo, duracionMin)
       throw new Error(`No pude preparar el rol Silenciado (¿tengo permiso de Gestionar roles?): ${error.message}`);
     }
     try {
-      await miembro.roles.add(rol, `${motivo || 'Solicitud por chat con IA'} — por ${interaction.user.tag}`);
+      await miembro.roles.add(rol, `${motivo || 'Solicitud por chat con IA'} — por ${nombreDe(interaction.user)}`);
     } catch (error) {
       throw new Error(`Discord rechazó asignar el rol de silenciado: ${error.message}`);
     }
@@ -217,7 +217,7 @@ async function ejecutarAccion(interaction, accion, miembro, motivo, duracionMin)
 
   if (accion === 'kick') {
     try {
-      await miembro.kick(`${motivo || 'Solicitud por chat con IA'} — por ${interaction.user.tag}`);
+      await miembro.kick(`${motivo || 'Solicitud por chat con IA'} — por ${nombreDe(interaction.user)}`);
     } catch (error) {
       throw new Error(`Discord rechazó la expulsión: ${error.message}`);
     }
@@ -234,7 +234,7 @@ async function ejecutarAccion(interaction, accion, miembro, motivo, duracionMin)
   if (accion === 'ban') {
     try {
       await guild.members.ban(miembro.id, {
-        reason: `${motivo || 'Solicitud por chat con IA'} — por ${interaction.user.tag}`,
+        reason: `${motivo || 'Solicitud por chat con IA'} — por ${nombreDe(interaction.user)}`,
       });
     } catch (error) {
       throw new Error(`Discord rechazó el baneo: ${error.message}`);
@@ -258,7 +258,7 @@ async function ejecutarAccion(interaction, accion, miembro, motivo, duracionMin)
 async function ejecutarAccionCanal(interaction, datos, canal) {
   const guild = interaction.guild;
   const motivo = datos.motivo;
-  const firma = (accion) => `${motivo || 'Orden por chat'} — ${accion} por ${interaction.user.tag} · pedido por chat con IA`;
+  const firma = (accion) => `${motivo || 'Orden por chat'} — ${accion} por ${nombreDe(interaction.user)} · pedido por chat con IA`;
   const canalTexto = `Canal ${canal} (\`#${canal.name}\`)`;
 
   if (datos.accion === 'limpiar') {

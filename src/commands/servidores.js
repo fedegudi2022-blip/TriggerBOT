@@ -8,6 +8,8 @@ const { getGuildConfig, setGuildConfig } = require('../store');
 const { autorizado } = require('../utils/permisos');
 
 module.exports = {
+  // Consulta todos los servers por UDP (A2S) en cada uso: 5 s por usuario.
+  cooldown: 5,
   data: new SlashCommandBuilder()
     .setName('servidores')
     .setDescription('Muestra el estado en vivo de los servidores CS 1.6 de la comunidad')

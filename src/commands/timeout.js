@@ -1,6 +1,6 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const { logAction } = require('../utils/modlog');
-const { errorEmbed, accionEmbed, marcaTiempo, textoDuracion, COLORS } = require('../utils/replies');
+const { errorEmbed, accionEmbed, marcaTiempo, textoDuracion, nombreDe, COLORS } = require('../utils/replies');
 const { motivoNoModerable, avisarPorDM } = require('../utils/moderation');
 const { autocompletar } = require('../utils/plantillas');
 const { quiereSilencioso, diferir, resolverMiembro, intentar } = require('../utils/acciones');
@@ -73,7 +73,7 @@ module.exports = {
     await diferir(interaction, silencioso);
 
     const resultado = await intentar(quitando ? 'Discord rechazó levantar el silencio' : 'Discord rechazó el silencio', () =>
-      member.timeout(ms, reason ? `${reason} — por ${interaction.user.tag}` : `por ${interaction.user.tag}`)
+      member.timeout(ms, reason ? `${reason} — por ${nombreDe(interaction.user)}` : `por ${nombreDe(interaction.user)}`)
     );
 
     const etiqueta = quitando ? 'Silencio levantado (timeout)' : 'Silencio (timeout)';
