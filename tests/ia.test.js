@@ -155,6 +155,31 @@ describe('perfilDe — charla vs consulta', () => {
     assert.ok(esMensajeSimple('hola'));
     assert.equal(perfilDe('hola'), 'charla');
   });
+
+  test('los pedidos de desarrollo van al perfil profundo aunque sean cortos', () => {
+    for (const m of [
+      'explicame la diferencia entre un mix y un torneo',
+      'comparame el cs 1.6 con el cs2',
+      'traducime buenos dias al ingles',
+      '¿por qué el cielo es azul?',
+      'resumime la segunda guerra mundial',
+    ]) {
+      assert.equal(perfilDe(m), 'profundo', `"${m}" pide desarrollo`);
+    }
+    assert.equal(perfilDe('¿cuántos jugadores hay en el mix?'), 'consulta', 'un dato puntual no necesita el perfil largo');
+  });
+
+  test('un saludo que dice "como" sigue siendo charla (no gasta el modelo grande)', () => {
+    for (const m of ['¿cómo estás?', 'como estas?', 'gracias crack', 'todo bien?']) {
+      assert.equal(perfilDe(m), 'charla', `"${m}" es charla`);
+    }
+  });
+
+  test('los pedidos de un dato son consulta aunque el sujeto vaya primero', () => {
+    for (const m of ['capital de australia', 'messi edad', 'nike precio', 'cuantas reglas tiene el server']) {
+      assert.equal(perfilDe(m), 'consulta', `"${m}" es un pedido de dato`);
+    }
+  });
 });
 
 describe('trocearMensaje — respuestas largas', () => {
@@ -387,13 +412,26 @@ describe('conversar — cadena de proveedores', () => {
       chat: (cuerpo, n) => (n === 1 ? { texto: 'Respuesta a medias', finish: 'length' } : { texto: 'Respuesta completa', finish: 'stop' }),
     });
 
-    const respuesta = await conversar('u-truncado', '¿me explicás el sistema de logros completo?', { usuario: 'Fede' });
+    const respuesta = await conversar('u-truncado', '¿cuántos jugadores hay ahora en el mix?', { usuario: 'Fede' });
     assert.equal(respuesta.texto, 'Respuesta completa');
 
     const [primera, segunda] = generacionesDe('groq');
     assert.ok(segunda, 'debería haber un segundo intento');
     assert.equal(primera.cuerpo.max_tokens, ia.PERFILES.consulta.maxTokens);
     assert.ok(segunda.cuerpo.max_tokens > primera.cuerpo.max_tokens, 'el reintento pide más tokens');
+  });
+
+  test('un pedido de explicación usa el perfil profundo (más margen y sin cortar la respuesta)', async () => {
+    ia._internos.cacheRespuestas.clear();
+    instalarFetch({ chat: () => ({ texto: 'Te lo explico por pasos.' }) });
+
+    const respuesta = await conversar('u-profundo', 'explicame la diferencia entre un mix y un torneo', { usuario: 'Fede' });
+    assert.equal(respuesta.texto, 'Te lo explico por pasos.');
+
+    const [generacion] = generacionesDe('groq');
+    assert.equal(generacion.cuerpo.max_tokens, ia.PERFILES.profundo.maxTokens);
+    assert.ok(ia.PERFILES.profundo.maxTokens > ia.PERFILES.consulta.maxTokens);
+    assert.ok(ia.PERFILES.profundo.maxTokens > 1000, 'una explicación no entra en el molde corto de una consulta');
   });
 
   test('si Groq falla, responde Gemini', async () => {
@@ -577,6 +615,79 @@ describe('conocimiento general y búsqueda web', () => {
     assert.equal(respuesta.texto, 'No tengo esa info.');
     assert.equal(generacionesDe('groq').length, 1, 'sin segundo intento: internet no sabe las reglas del server');
     assert.equal(ia.getStatsIA().web, webAntes);
+  });
+
+  test('el rescate también corre en preguntas del mundo sin palabra interrogativa', async () => {
+    // "capital de australia" no tiene signo ni interrogativo: antes no entraba en el plan
+    // de búsqueda y un "no lo tengo cargado" se le devolvía al usuario tal cual.
+    instalarFetch({
+      chat: (cuerpo, n) => (n === 1 ? { texto: 'No tengo esa info.' } : { texto: 'La capital de Australia es Canberra.' }),
+    });
+    conWikipedia();
+
+    const respuesta = await conversar('u-web-pedido', 'capital de australia', { usuario: 'Fede' });
+    assert.match(respuesta.texto, /Canberra/);
+    assert.equal(generacionesDe('groq').length, 2, 'hay un segundo intento con la búsqueda hecha');
+  });
+
+  test('el dato pedido "al revés" ("messi edad") recorre el mismo camino', async () => {
+    // El sujeto primero y el dato al final también es una consulta del mundo: sin esto
+    // caía en charla, se contestaba con el molde social y no había rescate posible.
+    instalarFetch({
+      chat: (cuerpo, n) => (n === 1 ? { texto: 'No tengo esa información a mano.' } : { texto: 'Lionel Messi nació en 1987.' }),
+    });
+    conWikipedia();
+
+    const respuesta = await conversar('u-web-invertido', 'messi edad', { usuario: 'Fede' });
+    assert.match(respuesta.texto, /1987/);
+    assert.equal(generacionesDe('groq').length, 2, 'busca y vuelve a preguntar');
+    assert.match(generacionesDe('groq')[1].cuerpo.messages[0].content, /RESULTADOS DE BÚSQUEDA WEB/);
+  });
+
+  test('último recurso: si el modelo no logra usar los datos, se contestan los datos con su fuente', async () => {
+    // El modelo se niega las dos veces, pero la web trajo el dato: es mejor entregarlo
+    // crudo y verificable que dejar al usuario con un "no lo tengo cargado".
+    instalarFetch({ chat: () => ({ texto: 'No tengo esa información a mano.' }) });
+    conWikipedia();
+
+    const respuesta = await conversar('u-web-crudo', 'quien es lionel messi', { usuario: 'Fede' });
+    assert.match(respuesta.texto, /^Busqué esto/);
+    assert.match(respuesta.texto, /Lionel Messi/);
+    assert.match(respuesta.texto, /es\.wikipedia\.org/, 'el dato va con su fuente');
+  });
+
+  test('una pregunta ambigua del mundo no arrastra las reglas del servidor al prompt', async () => {
+    // "canal" también vive en preguntas del mundo: una coincidencia floja de la base (el
+    // título "Uso de los canales") no puede llevar la pregunta al camino del servidor.
+    instalarFetch({ chat: () => ({ texto: 'El canal más grande de YouTube es…' }) });
+
+    await conversar('u-ambiguo', 'cual es el canal mas grande de youtube', { usuario: 'Fede' });
+    const [generacion] = generacionesDe('groq');
+
+    assert.match(generacion.cuerpo.messages[0].content, /la pregunta NO es de la comunidad/);
+    assert.doesNotMatch(generacion.cuerpo.messages[0].content, /^### /m, 'ni una sección del server en el prompt');
+  });
+
+  test('un cálculo exacto se responde sin gastar ninguna llamada de IA', async () => {
+    instalarFetch({ chat: () => ({ texto: 'no debería usarse' }) });
+
+    const respuesta = await conversar('u-calc', 'cuánto es 18% de 3800', { usuario: 'Fede' });
+
+    assert.equal(respuesta.texto, '**18% de 3.800 = 684**');
+    assert.equal(generacionesDe('groq').length, 0);
+    assert.equal(generacionesDe('gemini').length, 0);
+  });
+
+  test('el cálculo también funciona con el presupuesto del día agotado', async () => {
+    instalarFetch({ chat: () => ({ texto: 'no debería usarse' }) });
+    const guild = 'g-calc-sin-cupo';
+    for (let i = 0; i < presupuesto.limiteDiario() + 1; i += 1) presupuesto.consumir(guild);
+    assert.equal(presupuesto.hayCupo(guild), false, 'sin cupo: el bot no llama a la IA');
+
+    const respuesta = await conversar('u-calc-cupo', 'cuánto es 12 * 12', { usuario: 'Fede', guild: { id: guild } });
+
+    assert.equal(respuesta.texto, '**12 × 12 = 144**');
+    assert.equal(generacionesDe('groq').length, 0);
   });
 });
 

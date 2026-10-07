@@ -33,11 +33,29 @@
 const { DUENO_MENCION, WEB, REDES } = require('../comunidad');
 const { construirContextoVivo } = require('./contexto');
 const { buscar: buscarConocimiento, formatear: formatearConocimiento, normalizar: normalizarTexto } = require('./conocimiento');
-const { buscar, formatear, formatearFuentes, decidirBusqueda, clasificarConsulta, pareceSinInfo } = require('./web');
+const {
+  buscar,
+  formatear,
+  formatearFuentes,
+  decidirBusqueda,
+  clasificarConsulta,
+  pareceSinInfo,
+  respuestaDeDatos,
+  esPedidoDeDato,
+  esPerfilConsulta,
+} = require('./web');
+const calculos = require('./calculos');
 const presupuesto = require('./presupuesto');
 
 const TIMEOUT_MS = 10_000;
 const TOKENS_MAX = 1200; // techo de reintento cuando la respuesta sale cortada
+const TOKENS_MAX_PROFUNDO = 2_000; // mismo techo para las respuestas que piden desarrollo
+
+// Margen del reintento por truncado: una respuesta "profunda" (explicaciones, código)
+// necesita más lugar que una consulta puntual para no quedar cortada al medio.
+function tokensDeReintento(perfil) {
+  return perfil === 'profundo' ? TOKENS_MAX_PROFUNDO : TOKENS_MAX;
+}
 
 // ---------- Salud de proveedores y modelos ----------
 //
@@ -608,6 +626,14 @@ const PERFILES = {
     maxTokens: 700,
     estilo: 'completa y ordenada: respondé lo que preguntan y nada más (usá bullets solo si ordenan la respuesta)',
   },
+  // Preguntas que piden desarrollar algo (explicaciones, comparaciones, código): el
+  // techo de tokens de "consulta" cortaba la respuesta a la mitad y el reintento por
+  // truncado llegaba tarde. Acá el modelo tiene lugar para terminar la idea.
+  profundo: {
+    temperature: 0.35,
+    maxTokens: 1400,
+    estilo: 'desarrollada: explicá con tus palabras, por pasos si ayuda, y cerrá con una síntesis corta (sin relleno)',
+  },
 };
 
 // ¿Es una pregunta real o charla social? Define temperatura, largo y si usa el
@@ -615,11 +641,28 @@ const PERFILES = {
 // Se agregan los datos que solo se consiguen en vivo (cotización, clima): "clima en
 // Rosario" sin signos de pregunta igual es una consulta y tiene que ir a buscar.
 const RE_CONSULTA =
-  /[¿?]|\b(que|qué|cómo|como|cuándo|cuando|dónde|donde|quién|quien|cuál|cual|cuántos|cuantos|por qué|porque|para qué|cuanto)\b|\b(d[oó]lar(es)?|euros?|clima|pron[oó]stico|temperatura|llueve|llover|lluvia|cotizaci[oó]n)\b|\/(help|status|ban|kick|warn|warnings|timeout|mute|unmute|clear|lockdown|slowmode|config|rolnivel|voz|ticket|ip|servidores|top|logros|estadisticas|redes|web|afk|encuesta|userinfo|serverinfo|avatar|ping|unban|softban|unwarn|plantillas|frases|embed|dado|moneda|meme|8ball)\b|\b(mute(a|á|ame|alo|ar)?|silencias?|bane(a|á|alo|ame|ar)?|expuls(a|á|alo|ar)|kickea|advertir|advierte|warn|timeout|timea|unmutea)\b/i;
+  /[¿?]|\b(que|qué|cómo|como|cuándo|cuando|dónde|donde|quién|quien|cuál|cual|cu[aá]nt[ao]s?|por qué|para qué)\b|\b(d[oó]lar(es)?|euros?|clima|pron[oó]stico|temperatura|llueve|llover|lluvia|cotizaci[oó]n)\b|\/(help|status|ban|kick|warn|warnings|timeout|mute|unmute|clear|lockdown|slowmode|config|rolnivel|voz|ticket|ip|servidores|top|logros|estadisticas|redes|web|afk|encuesta|userinfo|serverinfo|avatar|ping|unban|softban|unwarn|plantillas|frases|embed|dado|moneda|meme|8ball)\b|\b(mute(a|á|ame|alo|ar)?|silencias?|bane(a|á|alo|ame|ar)?|expuls(a|á|alo|ar)|kickea|advertir|advierte|warn|timeout|timea|unmutea)\b/i;
+
+// Señales de una pregunta que pide desarrollo (no un dato suelto): explicaciones,
+// comparaciones, código, traducciones, razonamientos. Se resuelven con el perfil
+// `profundo` (más margen de tokens y sin apurar al modelo).
+const RE_PROFUNDO =
+  /\b(explic\w*|desarroll\w*|detall\w*|analiz\w*|compar\w*|resum[ií]\w*|paso a paso|tutorial|gu[ií]a|ensayo|argumenta\w*|demostr\w*|c[oó]digo|programa|script|funci[oó]n|algoritmo|teorema|ecuaci[oó]n|traduc\w*|traduce|traducime|mejor(es)? .* (forma|manera|opci[oó]n)|cu[aá]l es la diferencia|diferencias? entre|por qu[eé])(?![\p{L}\p{N}])|```/iu;
 
 function perfilDe(mensaje) {
   const texto = String(mensaje || '').trim();
-  if (texto.length > 90 || RE_CONSULTA.test(texto)) return 'consulta';
+  // Un saludo, un agradecimiento o un "todo bien?" es charla y nada más. Va primero
+  // porque el repertorio social incluye "cómo estás": esa "como" matcheaba la señal de
+  // consulta y mandaba el saludo al modelo grande (más lento y más caro) sin motivo.
+  if (esMensajeSimple(texto)) return 'charla';
+  // "explicame X", "comparame A y B" o "cómo hago Z" son pedidos aunque no lleven
+  // signo de pregunta ni palabra interrogativa: van directo al perfil que los puede
+  // desarrollar, sin pasar por el molde corto de la charla.
+  if (RE_PROFUNDO.test(texto) || texto.length > 220) return 'profundo';
+  // Los pedidos de un dato concreto ("capital de Australia", "edad de Messi", "messi
+  // edad") también son consultas aunque no tengan signo ni interrogativo: si cayeran en
+  // 'charla', el mensaje se respondería con el molde social y sin red de búsqueda.
+  if (texto.length > 90 || RE_CONSULTA.test(texto) || esPedidoDeDato(texto)) return 'consulta';
   return 'charla';
 }
 
@@ -750,12 +793,16 @@ async function generarConGemini(modelo, contenidos, sistema, cfg, maxTokens, { p
 
 async function llamarGemini(contenidos, sistema, { perfil = 'charla' } = {}) {
   const cfg = PERFILES[perfil] ?? PERFILES.charla;
+  // El campo `thinkingConfig` con presupuesto 0 desactiva el razonamiento previo: es lo
+  // que hace rápidas a las respuestas comunes, pero le quita al modelo justo la parte
+  // útil en una pregunta difícil. En perfil `profundo` no se manda y decide el modelo.
+  const pensar = perfil !== 'profundo';
 
   if (process.env.GEMINI_MODEL) {
     // El usuario fijó el modelo: sin lista de alternos.
-    const r = await generarConGemini(process.env.GEMINI_MODEL, contenidos, sistema, cfg, cfg.maxTokens);
+    const r = await generarConGemini(process.env.GEMINI_MODEL, contenidos, sistema, cfg, cfg.maxTokens, { pensar });
     if (!r.truncado) return r.texto;
-    return (await generarConGemini(process.env.GEMINI_MODEL, contenidos, sistema, cfg, TOKENS_MAX)).texto;
+    return (await generarConGemini(process.env.GEMINI_MODEL, contenidos, sistema, cfg, tokensDeReintento(perfil), { pensar })).texto;
   }
 
   // Solo modelos usables: los caídos se saltan sin gastar un viaje de red.
@@ -767,11 +814,11 @@ async function llamarGemini(contenidos, sistema, { perfil = 'charla' } = {}) {
   let ultimoError;
   for (let i = 0; i < candidatos.length; i++) {
     try {
-      const r = await generarConGemini(candidatos[i], contenidos, sistema, cfg, cfg.maxTokens);
+      const r = await generarConGemini(candidatos[i], contenidos, sistema, cfg, cfg.maxTokens, { pensar });
       // Respuesta cortada por límite de tokens: un reintento con más margen antes
       // de devolver algo incompleto al usuario.
-      if (r.truncado && cfg.maxTokens < TOKENS_MAX) {
-        return (await generarConGemini(candidatos[i], contenidos, sistema, cfg, TOKENS_MAX)).texto;
+      if (r.truncado && cfg.maxTokens < tokensDeReintento(perfil)) {
+        return (await generarConGemini(candidatos[i], contenidos, sistema, cfg, tokensDeReintento(perfil), { pensar })).texto;
       }
       return r.texto;
     } catch (error) {
@@ -847,8 +894,8 @@ async function llamarProveedor(id, mensajeUsuario, previos, sistema, { rapido = 
     try {
       const r = await generarConProveedor(id, candidatos[i], mensajes, cfg, cfg.maxTokens);
       // Respuesta cortada por límite de tokens: reintento con más margen.
-      if (r.truncado && cfg.maxTokens < TOKENS_MAX) {
-        return (await generarConProveedor(id, candidatos[i], mensajes, cfg, TOKENS_MAX)).texto;
+      if (r.truncado && cfg.maxTokens < tokensDeReintento(perfil)) {
+        return (await generarConProveedor(id, candidatos[i], mensajes, cfg, tokensDeReintento(perfil))).texto;
       }
       return r.texto;
     } catch (error) {
@@ -997,7 +1044,12 @@ const PATRON_SIMPLE =
 
 function esMensajeSimple(texto) {
   const limpio = String(texto || '').trim();
-  return limpio.length <= 40 && PATRON_SIMPLE.test(limpio);
+  if (limpio.length > 40) return false;
+  // Se compara también sin tildes y sin los signos de apertura: "¿cómo estás?" es el
+  // mismo saludo que "como estas", y sin esto la palabra "como" lo mandaba al modelo
+  // grande (más lento y más caro) por parecer una pregunta.
+  const plano = normalizarTexto(limpio).replace(/^[¿¡]+/, '');
+  return PATRON_SIMPLE.test(limpio) || PATRON_SIMPLE.test(plano);
 }
 
 // ---------- Entrada principal: Gemini → Groq → respaldo local ----------
@@ -1023,8 +1075,9 @@ function contextoVivoDe(contexto, perfil) {
       guild: contexto.guild,
       member: contexto.miembro,
       canal: contexto.canal,
-      // El catálogo con descripciones solo cuando alguien pregunta de verdad.
-      detallado: perfil === 'consulta',
+      // El catálogo con descripciones solo cuando alguien pregunta de verdad (una
+      // consulta o un pedido de desarrollo como "explicame X").
+      detallado: esPerfilConsulta(perfil),
     });
   } catch (error) {
     console.warn(`[TriggerBOT] IA: no pude armar el contexto en vivo: ${error.message}`);
@@ -1040,24 +1093,28 @@ const NOTA_GENERAL =
   'conocimiento y, si están, con los RESULTADOS DE BÚSQUEDA WEB. No hables de reglas del ' +
   'server ni derives a un ticket)';
 
-// La base de la comunidad entra al prompt solo cuando la pregunta la puede necesitar:
-//   • 'comunidad': siempre que haya coincidencias (es la única fuente de verdad de las
-//     reglas, las sanciones y los comandos).
-//   • 'general': solo si el buscador encontró una sección con coincidencia en su TÍTULO,
-//     señal de que el tema está de verdad cargado. Sin eso, era ruido de BM25: una
-//     pregunta de cultura general no tiene por qué arrastrar las reglas del server.
-//   • 'charla': no se inyecta nada (un saludo no necesita la base).
-function conocimientoDe(mensaje, { modo = 'comunidad' } = {}) {
+// La base de la comunidad entra al prompt solo cuando la pregunta es de la comunidad (es
+// la única fuente de verdad de las reglas, las sanciones y los comandos).
+//
+// En 'general' NO se inyecta nunca: el modo es general justamente porque la pregunta no es
+// de acá o nombra una entidad del mundo ("el canal más grande de YouTube"). Meterle
+// secciones del server —aunque el título coincida en una palabra— solo confunde al modelo
+// y lo empuja a responder con el servidor de fondo. En 'charla' tampoco (un saludo no
+// necesita la base).
+// Fragmentos de la base del server que le pegan a la pregunta. Se buscan UNA vez por
+// mensaje: los usa la clasificación (para saber si el tema está cargado) y el prompt.
+function fragmentosDe(mensaje) {
   try {
-    if (modo === 'charla') return '';
-    const fragmentos = buscarConocimiento(mensaje);
-    if (!fragmentos.length) return '';
-    if (modo === 'general' && !fragmentos.some((f) => f.enTitulo)) return '';
-    return formatearConocimiento(fragmentos);
+    return buscarConocimiento(mensaje) ?? [];
   } catch (error) {
     console.warn(`[TriggerBOT] IA: no pude buscar en la base de conocimiento: ${error.message}`);
-    return '';
+    return [];
   }
+}
+
+function conocimientoDe(fragmentos, { modo = 'comunidad' } = {}) {
+  if (modo !== 'comunidad' || !fragmentos?.length) return '';
+  return formatearConocimiento(fragmentos);
 }
 
 // ---------- Carrera con respaldo (hedged request) ----------
@@ -1187,13 +1244,32 @@ async function investigarEnWeb(mensaje, usuarioId, { forzar = false } = {}) {
 async function conversar(userId, mensaje, contexto = {}) {
   const guildId = contexto.guild?.id ?? null;
   const previos = historial(userId); // memoria compartida: la charla sigue aunque cambie el motor
+
+  // Cálculo exacto (cuentas, porcentajes, unidades, fechas): lo resuelve utils/calculos.js
+  // al instante, sin IA. Va primero por dos motivos: no se equivoca nunca y sigue
+  // funcionando con todos los proveedores caídos o el presupuesto del día agotado.
+  const calculo = calculos.resolver(mensaje);
+  if (calculo) {
+    statsIA.local += 1;
+    guardarTurno(userId, 'user', mensaje);
+    guardarTurno(userId, 'model', calculo.texto);
+    return { tipo: 'chat', texto: calculo.texto };
+  }
+
   const perfil = perfilDe(mensaje);
   const simple = esMensajeSimple(mensaje); // mensaje social → modelo rápido
   const rapido = simple && perfil === 'charla';
   // ¿Es una pregunta de la comunidad o del mundo? Define qué datos viajan en el prompt:
   // la base del server solo va en las de la comunidad (y en las dudosas), y la búsqueda
   // web solo en las que no son de la comunidad.
-  const modo = clasificarConsulta(mensaje, { perfil });
+  //
+  // La base participa de la clasificación: una pregunta con palabras ambiguas ("canal",
+  // "roles", "niveles") es de la comunidad cuando el tema está cargado, y del mundo
+  // cuando no. Antes decidía una lista de palabras y cualquier coincidencia suelta
+  // mandaba la pregunta al camino estricto, donde el bot contesta que no tiene el dato.
+  const fragmentos = fragmentosDe(mensaje);
+  const hayConocimiento = fragmentos.some((f) => f.enTitulo);
+  const modo = clasificarConsulta(mensaje, { perfil, hayConocimiento });
 
   // Pregunta general repetida: se contesta de la caché, sin gastar cuota ni latencia.
   const claveCache = modo === 'general' ? claveDeCache(guildId, userId, mensaje) : null;
@@ -1218,7 +1294,7 @@ async function conversar(userId, mensaje, contexto = {}) {
     ...contexto,
     perfil,
     vivo: contextoVivoDe(contexto, perfil),
-    conocimiento: conocimientoDe(mensaje, { modo }),
+    conocimiento: conocimientoDe(fragmentos, { modo }),
     conocimientoVacio: modo === 'general' ? NOTA_GENERAL : '',
   };
 
@@ -1226,7 +1302,7 @@ async function conversar(userId, mensaje, contexto = {}) {
   // cambian (precios, resultados, noticias), se busca ANTES de responder. Si no, la
   // búsqueda queda de reserva para el rescate de abajo: así una pregunta que la IA ya
   // sabe no cuesta ninguna búsqueda.
-  const plan = decidirBusqueda(mensaje, { perfil });
+  const plan = decidirBusqueda(mensaje, { perfil, modo });
   const primeraBusqueda = plan.forzar ? await investigarEnWeb(mensaje, userId, { forzar: true }) : { texto: '', resultados: [] };
   if (primeraBusqueda.texto) statsIA.web += 1;
   const buscada = plan.forzar;
@@ -1239,11 +1315,17 @@ async function conversar(userId, mensaje, contexto = {}) {
     guildId,
   });
 
-  // Rescate: la IA contestó que no tiene la información. Para una pregunta de cultura
-  // general eso ya no es una respuesta aceptable (es el caso "¿cuántos años tiene
-  // Messi?" que terminaba en "eso no lo tengo cargado"): se busca en la web y se le
-  // pide que conteste de nuevo, esta vez con los datos a la vista. Una sola vez.
-  if (texto && !buscada && plan.buscar && pareceSinInfo(texto)) {
+  // Rescate: la IA contestó que no tiene la información. Para una pregunta del mundo eso
+  // ya no es una respuesta aceptable (es el caso "¿cuántos años tiene Messi?" que
+  // terminaba en "eso no lo tengo cargado"): se busca en la web y se le pide que conteste
+  // de nuevo, con los datos a la vista. Una sola vez.
+  //
+  // La condición cubre también las preguntas clasificadas como del mundo aunque el plan no
+  // tuviera la búsqueda de reserva (texto sin palabra interrogativa: "messi edad",
+  // "capital de australia"): antes esas se quedaban sin red de contención. Los datos de la
+  // comunidad siguen sin buscarse afuera (ahí internet no sabe nada).
+  const puedeRescatar = !buscada && (plan.buscar || modo === 'general');
+  if (texto && puedeRescatar && pareceSinInfo(texto)) {
     const segundaBusqueda = await investigarEnWeb(mensaje, userId, { forzar: true });
     if (segundaBusqueda.texto) {
       statsIA.web += 1;
@@ -1253,8 +1335,14 @@ async function conversar(userId, mensaje, contexto = {}) {
         rapido: false,
         guildId,
       });
-      if (segunda) {
+      if (segunda && !pareceSinInfo(segunda)) {
         texto = segunda;
+        resultados = segundaBusqueda.resultados;
+      } else if (segundaBusqueda.resultados.length) {
+        // El modelo no logró usar los resultados (o volvió a decir que no sabe): se
+        // contestan los datos crudos con su fuente. Un dato verificable siempre es mejor
+        // que dejarlo con un "no lo tengo cargado".
+        texto = respuestaDeDatos(segundaBusqueda.resultados);
         resultados = segundaBusqueda.resultados;
       }
     }

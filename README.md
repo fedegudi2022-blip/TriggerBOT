@@ -34,6 +34,9 @@ src/
     ├── tickets.js      # Sistema de tickets con transcript
     ├── modlog.js       # Registro de acciones de moderación (mod-log)
     ├── log.js          # Registro de eventos generales (logs)
+    ├── estadisticasServer.js # Canales de estadísticas (/stats): nombres con los números en vivo
+    ├── censo.js        # Foto de miembros (humanos, bots) + conteo de «en línea» con presencias
+    ├── intents.js      # Intents del gateway (incluye el interruptor PRESENCE_INTENT)
     └── replies.js      # Embeds con el estilo visual unificado del bot
 tests/                  # Tests con el runner nativo de Node (npm test)
 docs/ARQUITECTURA.md    # Documentación técnica de cada sistema
@@ -75,10 +78,11 @@ Todos los comandos tienen un **cooldown por usuario** (2 s por defecto) para que
 | `/redes`                                                  | Redes oficiales de la comunidad (WhatsApp, Steam, Instagram) con botones de link directo                               | Todos                  |
 | `/web`                                                    | Link del sitio oficial [triggerarena.pro](https://triggerarena.pro/) con botón directo                                 | Todos                  |
 | `/voz activar/hub/categoria/formato/contador/logs/estado` | Staff: activa los **canales de voz temporales** (ver abajo)                                                            | Staff (config)         |
+| `/stats activar/metricas/refrescar/estado/desactivar`     | Staff: canales de voz de solo lectura con los números del server en el nombre (miembros, en línea, roles…)             | Staff (config)         |
 | `/servidores`                                             | Estado en vivo de los servers CS 1.6 (jugadores, mapa, IP). Staff: `publicar:true` fija un panel que se actualiza solo | Todos                  |
 | `/ip [servidor]`                                          | IP para conectarte, lista para copiar. Con filtro por nombre muestra mapa y jugadores de ahora                         | Todos                  |
 | `/jugadores [servidor]`                                   | Quién está conectado ahora en cada server CS 1.6, con puntaje y tiempo en línea                                        | Todos                  |
-| `/ticket publicar/categoria/logs/mensaje`                 | Panel de soporte con selector de tipo, canales privados por ticket, reclamar/agregar gente y transcript al cerrar       | Staff (config)         |
+| `/ticket publicar/categoria/logs/mensaje`                 | Panel de soporte con selector de tipo, canales privados por ticket, reclamar/agregar gente y transcript al cerrar      | Staff (config)         |
 | `/reportar usuario pruebas [adjunto]`                     | Abre un ticket de reporte con pruebas (cualquier miembro)                                                              | Todos                  |
 | `/diag`                                                   | Diagnóstico operativo: qué está roto y qué hacer, incluida la salida a internet del host                               | Staff                  |
 | `/buscar consulta`                                        | Búsqueda web a mano: resultados crudos con su fuente, y cómo clasificaría el bot esa pregunta                          | Staff                  |
@@ -98,7 +102,7 @@ Todos los comandos tienen un **cooldown por usuario** (2 s por defecto) para que
 | ---------------------------------------- | ----------------------------------------------------------------------------------------------- | -------- |
 | `/warn usuario [razon]`                  | Advierte a un usuario. **Al 3er warn: timeout de 1 h automático**                               | Mods     |
 | `/warnings usuario`                      | Historial de advertencias, paginado con botones (aguanta historiales largos)                    | Mods     |
-| `/unwarn usuario numero [razon]`     | Elimina una advertencia del historial                                                           | Mods     |
+| `/unwarn usuario numero [razon]`         | Elimina una advertencia del historial                                                           | Mods     |
 | `/nota agregar/ver/quitar`               | Notas internas sobre un usuario. **No cuentan** para el silencio automático de 3 warn           | Mods     |
 | `/casos [caso] [usuario]`                | Consulta el registro de casos del mod-log: uno puntual por número o el historial de una persona | Mods     |
 | `/logs buscar [accion] [desde] [pagina]` | Filtra el registro de casos por acción, usuario, moderador y antigüedad, con páginas de 10      | Mods     |
@@ -161,6 +165,23 @@ Se activa con **`/voz activar`**: el bot crea un canal de voz **«➕ Crear cana
 
 🔢 **Contador en el nombre:** cada canal muestra cuántos hay adentro —«· 3», o «· 3/5» con límite— y se actualiza solo al entrar o salir gente (se apaga con `/voz contador`). Discord limita los renombres a **2 por canal cada 10 minutos**: el bot junta los cambios y aplica el valor más nuevo apenas se libera el cupo, así que el número puede demorarse un poco en actualizarse.
 
+### Canales de estadísticas del servidor
+
+Se activan con **`/stats activar`**: el bot crea una categoría (**📊 Estadísticas**) y canales de voz **de solo lectura** —nadie puede entrar a hablar— cuyo **nombre lleva el número**, que es el único lugar donde Discord deja poner un contador en vivo:
+
+> 👥 **Miembros: 87.614** · 🟢 **En línea: 21.945** · 🎭 **Roles: 40**
+
+- **Métricas disponibles** (`/stats metricas lista`): `miembros`, `humanos` (sin contar bots), `enLinea` (conectados ahora), `roles`, `canales` y `boosts`. Por defecto van `miembros`, `enLinea` y `roles`; cambiar la lista crea y borra los canales que hagan falta en una sola pasada.
+- **Refresco automático cada 10 minutos**, que es el ritmo que permite Discord: solo deja **2 renombres por canal cada 10 minutos**. Si un número cambia justo después de otro, el cambio queda agendado y se aplica (con el valor más nuevo) apenas se libera el cupo — spamear el comando no acelera nada.
+- **Sin datos no se inventa un número**: un canal que no se pudo medir muestra `—` y `/stats estado` explica por qué.
+- **`/stats estado`** (efímero) muestra los canales con su valor actual, el estado del Presence Intent, la edad del último censo de miembros, la última pasada y el diagnóstico (canal borrado a mano, renombres rechazados por permisos).
+- **`/stats refrescar`** fuerza una pasada e informa qué se renombró de verdad, qué quedó en espera de cupo y qué rechazó Discord.
+- **`/stats desactivar [borrar]`** apaga el sistema; los canales se borran por defecto, o se conservan congelados con `borrar:false`.
+
+> 🔑 **En línea** necesita el **Presence Intent** (privilegiado): habilitarlo en el [portal de Discord](https://discord.com/developers/applications) → tu app → **Bot → Privileged Gateway Intents → Presence Intent**. Si el bot lo pide sin tenerlo habilitado, Discord cierra la conexión (`Used disallowed intents`) y el bot no arranca; para salir de ese estado sin tocar el portal, poné `PRESENCE_INTENT=false` en las variables del hosting (el bot arranca igual, con `humanos`, `roles` y los demás funcionando y el canal de «en línea» mostrando `—`).
+>
+> El conteo de **humanos vs bots** y de **en línea** sale de un **censo** (`utils/censo.js`): una foto completa de la lista de miembros al arrancar y cada 6 h, y a partir de ahí los eventos de presencia mantienen el número al día. Es lo que hace viable contarlos en un servidor de decenas de miles de miembros: descargar la lista entera en cada refresco no lo sería.
+
 ### Servidores CS 1.6 (monitoreo y panel en vivo)
 
 Se configura desde `/config → Servidores CS 1.6`: cargás cada server con nombre e `IP:puerto` (por ejemplo `cs.nostalgia.ar:27015`). Con eso:
@@ -173,12 +194,12 @@ El monitoreo hace 2 intentos con timeout de 2,5 s antes de dar un server por ca�
 
 ### Niveles y logros
 
-| Comando                          | Qué hace                                                                                       |
-| -------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `/estadisticas [usuario]`        | Perfil completo: rango, nivel, XP con barra, bonus activos, racha, puesto y próximos logros   |
+| Comando                          | Qué hace                                                                                    |
+| -------------------------------- | ------------------------------------------------------------------------------------------- |
+| `/estadisticas [usuario]`        | Perfil completo: rango, nivel, XP con barra, bonus activos, racha, puesto y próximos logros |
 | `/logros [usuario]`              | Progreso logro por logro, del más cercano al más lejano, con cuánto falta para cada uno     |
-| `/rolnivel definir/quitar/lista` | Staff: roles que se otorgan automáticamente al alcanzar un nivel                               |
-| `/top [pagina]`                  | Ranking con podio, tu puesto y botones Anterior/Siguiente                                      |
+| `/rolnivel definir/quitar/lista` | Staff: roles que se otorgan automáticamente al alcanzar un nivel                            |
+| `/top [pagina]`                  | Ranking con podio, tu puesto y botones Anterior/Siguiente                                   |
 
 XP por escribir (15-25 por mensaje, máximo 1 por minuto para evitar farmeo) con **bonus acumulables**: +1% por día de racha (tope +35%), **x2 los fines de semana** y +10% de madrugada (00-06 h Argentina). **16 logros desbloqueables con recompensa de XP** (se pagan solos al cumplirlos), rangos por nivel (Novato → Activo → Experto → Veterano → Leyenda) y **roles por nivel**: el staff define con `/rolnivel` qué rol se otorga automáticamente al alcanzar cada nivel. También hay **XP por voz**: 8 XP por minuto completo en un canal de voz, hasta 200 por día, y solo si estás acompañado y sin mutearte (no cuentan el canal AFK ni los canales que el staff marque como excluidos). El staff configura el canal de anuncios en el panel `/config → Niveles y XP`.
 
@@ -224,9 +245,11 @@ Si la pregunta es **de la comunidad** y no está en esos datos, el bot **lo dice
 - **Fuentes:** resumen de **Wikipedia en español** (y en inglés si en español no hay nada), **DuckDuckGo Instant Answer** y, como extra, el HTML público de DuckDuckGo Lite (DDG suele bloquear clientes automatizados, así que aporta cuando quiere y si viene vacío no pasa nada).
 - **Datos vivos que ningún modelo tiene al día:** cotización del **dólar y el euro** (API pública de Bluelytics) y **clima** de una ciudad (Open-Meteo, con geocodificación). Se consultan solos cuando la pregunta es de ese tema, siempre antes de responder, y en el clima hace falta que la ciudad esté clara: si no, no se responde nada en vez de dar el clima de otra ciudad.
 - **Investiga en rondas:** si la primera ronda no trae nada, reintenta con la Wikipedia en inglés y, si tampoco, con la **consulta reducida a sus palabras con contenido** ("¿cuántos años tiene Messi?" → `anos messi`). Cada ronda solo cuesta cuando la anterior vino vacía, y dos pedidos simultáneos de la misma consulta salen a internet una sola vez.
-- **La base de la comunidad no viaja en preguntas generales:** el bot clasifica la consulta (comunidad / general / charla) y, si es de cultura general, **no le inyecta al prompt las secciones de `docs/conocimiento`** — solo las usa si la coincidencia tocó el _título_ de una sección (señal de que el tema está cargado de verdad). Así una pregunta por la edad de Messi no arrastra las reglas del server.
-- **Cuándo busca:** nunca en charla social; nunca para datos de la comunidad (ahí manda la base del server); sí para preguntas de cultura general, y **antes de responder** si el usuario lo pide ("buscame…") o si el dato cambia con el tiempo (precios, resultados, noticias, clima).
-- **Rescate:** si la IA contesta que no tiene la información en una pregunta de cultura general, el bot busca en la web y **le hace contestar de nuevo** con los resultados a la vista. Es exactamente el caso "@Trigger messi cuántos años tiene" que antes terminaba en "eso no lo tengo cargado".
+- **Comunidad o mundo lo decide la pregunta, no una lista fija:** las palabras que existen en los dos lados ("canal", "rol", "nivel", "jugador") ya no mandan solas. Manda el ancla del server ("reglas", "ticket", "CS 1.6"…), el contexto ("este server", "nuestro discord") y las **entidades del mundo** (YouTube, Google, Twitch…): “¿cuál es el canal más grande de YouTube?” es una pregunta del mundo aunque “canal” también exista acá. Una coincidencia floja de la base (una sola palabra ambigua en el título de una sección) **no** alcanza para arrastrar las reglas del server al prompt.
+- **La base de la comunidad no viaja en preguntas generales:** en consultas de comunidad se inyectan las secciones más parecidas de `docs/conocimiento`; en las de cultura general, **ninguna**. Así una pregunta por la edad de Messi no arrastra las reglas del server.
+- **Cuándo busca:** nunca en charla social; nunca para datos de la comunidad (ahí manda la base del server); sí para preguntas de cultura general, y **antes de responder** si el usuario lo pide ("buscame…") o si el dato cambia con el tiempo (precios, resultados, noticias, clima). Cuenta como pedido de dato tanto "edad de Messi" como la forma invertida "messi edad" (el sujeto primero y el dato al final): sin eso, ese mensaje corto caía en el molde de la charla social y no buscaba nada.
+- **Rescate:** si la IA contesta que no tiene la información en una pregunta de cultura general, el bot busca en la web y **le hace contestar de nuevo** con los resultados a la vista. También corre en pedidos sin signo de pregunta ("capital de australia", "messi edad") y, si el modelo se niega las dos veces, entrega el dato crudo con su fuente. Es exactamente el caso "@Trigger messi cuántos años tiene" que antes terminaba en "eso no lo tengo cargado".
+- **Cuentas, unidades y fechas exactas:** las resuelve `utils/calculos.js` **sin llamar a la IA** (`18% de 3800`, `12 * (3 + 4)`, `120 km a millas`, `30 °C a °F`, `¿cuántos días faltan para el 25 de mayo?`): respuesta al instante, sin margen de error y aunque la cuota del día esté agotada.
 - **Sin claves de IA** (o con todos los proveedores caídos) las preguntas generales igual se responden: se devuelve el dato de la búsqueda citando la fuente.
 - **Cita las fuentes:** cuando la respuesta sale de una búsqueda, el mensaje cierra con `🔎 Fuentes:` y los links (hasta 3, sin repetir). Si el modelo ya nombró el link, no se duplica.
 - **Caché de respuestas:** las preguntas de cultura general repetidas se contestan de una caché por usuario (10 minutos) sin gastar cuota; las de la comunidad **nunca** se cachean, porque dependen de datos vivos (tu nivel, los jugadores, la config del server).
@@ -259,7 +282,7 @@ Cada proveedor entra solo si tiene clave: sin `CEREBRAS_API_KEY`, por ejemplo, e
 - **Memoria de fallos:** un modelo retirado o sin permiso se descarta por horas y una clave inválida aparta al proveedor según el error (1 h si la clave no sirve, 1 min si se agotó la cuota). Sin esto, un modelo muerto costaba un viaje de red fallido en **cada** mensaje.
 - **Prueba de modelos al arrancar:** el bot prueba el modelo elegido con una petición mínima antes de que llegue el primer mensaje, así el usuario nunca paga el descubrimiento de un modelo caído.
 - **Enrutado por complejidad:** los mensajes sociales cortos ("hola", "todo bien?", "gracias", "jaja") van al modelo chico `openai/gpt-oss-20b` (~2x más rápido que el grande) y el `120b` queda para preguntas que sí requieren pensar.
-- **Dos perfiles:** _charla_ (temperatura 0,75, respuestas de 1-3 frases) y _consulta_ (temperatura 0,3, respuestas completas). Es lo que hace que no invente cuando le preguntan algo concreto.
+- **Tres perfiles:** _charla_ (temperatura 0,75, respuestas de 1-3 frases), _consulta_ (temperatura 0,3, respuestas completas) y _profundo_ (temperatura 0,35, hasta 1.400 tokens y sin apurar al modelo) para lo que pide desarrollo: explicaciones, comparaciones, traducciones, resúmenes o código. Es lo que hace que no invente cuando le preguntan algo concreto y que no se corte a mitad de camino cuando le piden explicar.
 - **Respuestas largas:** si el modelo se queda sin tokens, reintenta con más margen; al publicar, el texto se parte en varios mensajes sin cortar palabras al medio.
 - **Precalentamiento:** el bot consulta la lista de modelos al arrancar, no en el primer mensaje: la primera respuesta tras un reinicio no se come la demora del listado. Si el listado falla, no lo reintenta en cada mensaje (antes costaba hasta 5 s por respuesta).
 - Los modelos con **thinking** (razonamiento previo) están excluidos: solo chat directo.

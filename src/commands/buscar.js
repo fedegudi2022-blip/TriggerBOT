@@ -8,6 +8,7 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const { brandEmbed, warnEmbed, COLORS } = require('../utils/replies');
 const web = require('../utils/web');
+const conocimiento = require('../utils/conocimiento');
 const { perfilDe } = require('../utils/ia');
 const { exigirStaff } = require('../utils/permisos');
 
@@ -21,10 +22,14 @@ function recortar(texto, limite) {
 }
 
 // Cómo leería el bot esta consulta: es la parte que hace auditable el sistema.
+// Replica la decisión real de la charla (utils/ia.js), incluida la base del server: una
+// pregunta con palabras ambiguas es de la comunidad solo si el buscador la reconoce.
 function decision(consulta) {
   const perfil = perfilDe(consulta);
-  const modo = web.clasificarConsulta(consulta, { perfil });
-  const plan = web.decidirBusqueda(consulta, { perfil });
+  const fragmentos = conocimiento.buscar(consulta);
+  const hayConocimiento = fragmentos.some((f) => f.enTitulo);
+  const modo = web.clasificarConsulta(consulta, { perfil, hayConocimiento });
+  const plan = web.decidirBusqueda(consulta, { perfil, modo });
   const nombre = { comunidad: 'de la comunidad', general: 'de cultura general', charla: 'charla' }[modo];
   const cuando = !plan.buscar
     ? 'no buscaría (la base del server manda)'

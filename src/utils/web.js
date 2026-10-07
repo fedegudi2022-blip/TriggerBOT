@@ -97,14 +97,59 @@ function registrarUso(usuarioId) {
 }
 
 // ---------- Intención: ¿esta charla necesita internet? ----------
-// Palabras que atan la pregunta a la comunidad: ahí la verdad es docs/conocimiento
-// (y el prompt del bot), no lo que diga internet.
-const RE_COMUNIDAD =
-  /\b(trigger|arena|comunidad|server|servidor(es)?|reglas?|normas?|sancion(es|ar|ado|a)?|warn(s|ing|ings)?|advertencia(s)?|ban(eo|ear|eado|ean|eo)?|bane(ar|o|a|ado|an)?|kick(eo|ear|eado)?|mute(ar|o|ado|a|an)?|silencio|silenciar|timeout|flood(eo)?|spam|ticket(s)?|canal(es)?|rol(es)?|staff|mods?|moderador(es)?|helper(s)?|admin(s)?|niveles?|xp|logro(s)?|racha|rango(s)?|ranking|ip(s)?|mapa|jugador(es)?|counter|cs\s?1\.6|mix|kz|torneo(s)?|clan(es)?|voz|afk|encuesta|meme(s)?|comandos?|discord|whatsapp|instagram|steam|help)\b|\/help/;
+// Palabras que atan la pregunta a ESTA comunidad: ahí la verdad es docs/conocimiento (y
+// el prompt del bot), no lo que diga internet.
+//
+// Están separadas en dos listas a propósito: la primera versión tenía una sola y
+// cualquier palabra suelta alcanzaba para tratar la pregunta como "de la comunidad".
+// Así, "¿cuál es el canal más grande de YouTube?", "¿qué roles hay en un equipo de
+// fútbol?" o "¿cuántos jugadores tiene un equipo de básquet?" caían en el camino
+// estricto (solo el bloque del servidor) y terminaban en "eso no lo tengo cargado".
+
+// ANCLA: no se explica sin el servidor (reglas, sanciones, comandos, CS 1.6).
+// Las conjugaciones van con `\w*` ("me banearon", "lo silenciaron", "me advirtieron"):
+// si solo se aceptara el infinitivo, la pregunta más común de todas —la queja— quedaba
+// clasificada como del mundo. Los tallos se eligieron para no arrastrar palabras
+// parecidas del mundo real ("banco", "banda", "administrar" no entran).
+const RE_ANCLA =
+  /\b(trigger|arena|comunidad|regla\w*|norma\w*|sancion\w*|warn\w*|advert\w*|advirt\w*|ban|bane\w*|desbane\w*|kick\w*|mute\w*|silencio|silenci\w*|timeout|flood\w*|spam\w*|ticket\w*|staff|mods?|moderador\w*|helper\w*|admins?|xp|logros?|racha|ranking|rango\w*|counter|cs\s?1\.6|mix|kz|torneo\w*|clan\w*|afk|encuesta)\b|\/[a-z]{2,}/;
+
+// AMBIGUA: la misma palabra vive en preguntas del mundo (el canal de YouTube, los roles
+// de un equipo, el mapa de un país, la voz de un cantante, el meme de moda). Sola no
+// alcanza: decide la base de conocimiento del servidor o el contexto explícito.
+const RE_AMBIGUA =
+  /\b(server(es)?|servidor(es)?|canal(es)?|rol(es)?|niveles?|ip(s)?|mapa(s)?|jugador(es)?|voz|voces|meme(s)?|comandos?|discord|whatsapp|instagram|steam|help|bot)\b/;
+
+// Señales de que se habla de ESTE servidor (y no del mundo).
+const RE_CONTEXTO_SERVER =
+  /\b(este|esta|estos|estas|ac[aá]|nuestro|nuestra|del (server|servidor|discord|bot|grupo)|en (el|este) (server|servidor|discord)|de la comunidad|trigger|arena)\b/;
+
+// Nombres propios del mundo (plataformas y gigantes de internet): si la pregunta los
+// menciona sin hablar de este servidor, es una pregunta de afuera aunque las demás
+// palabras ("canal", "cuenta") también existan acá. Sin esto, "cuál es el canal más
+// grande de YouTube" traía las reglas de canales del server al prompt.
+const RE_ENTIDAD_MUNDO = /\b(youtube|google|wikipedia|twitch|tiktok|facebook|netflix|spotify|twitter|github)\b/;
+
+// Pedidos de un dato concreto sin signos de pregunta ("capital de australia", "edad de
+// messi", "precio del dolar"): son consultas reales aunque no empiecen con un signo.
+const RE_PEDIDO_DATO =
+  /\b(capital de|edad de|altura de|precio de|precio del|cu[aá]nto sale|cu[aá]nto cuesta|cu[aá]ntos habitantes|qui[eé]n fue|qui[eé]n es|qui[eé]n gan[oó]|cu[aá]ndo (se estrena|sale|juega)|d[oó]nde queda|d[oó]nde est[aá]|significado de|definici[oó]n de|traduci\w*|traduce|traducime|explic[aá]\w*|resum[ií]\w*|calcul[aá]\w*|resolv[eé]\w*)\b/;
+
+// El mismo pedido "al revés": el dato queda al final y el sujeto adelante ("messi
+// edad", "nike precio", "aurora traducción"). Son dos o tres palabras sin signo ni
+// interrogativo, así que sin esto caían en la charla social y se contestaban con el
+// molde corto de saludo, sin la base del server ni la red de búsqueda.
+const RE_DATO_AL_FINAL =
+  /(?:^|\s)(edad|altura|peso|precio|capital|poblaci[oó]n|significado|traducci[oó]n|fundaci[oó]n|biograf[ií]a|autor|director|estad[ií]sticas?)\.?$/;
+
+// ¿El usuario está pidiendo un dato concreto? Las dos formas juntas.
+function esPedidoDeDato(texto) {
+  const t = String(texto || '');
+  return RE_PEDIDO_DATO.test(t) || RE_DATO_AL_FINAL.test(t);
+}
 
 // Señales de pregunta. Se aplica sobre el texto normalizado (sin tildes).
-const RE_PREGUNTA =
-  /[?¿]|\b(quien|quienes|que|cual|cuales|como|cuando|donde|cuanto|cuanta|cuantos|cuantas|por que|para que|a que|de que)\b/;
+const RE_PREGUNTA = /[?¿]|\b(quien|quienes|que|cual|cuales|como|cuando|donde|cuanto|cuanta|cuantos|cuantas|por que|para que|a que|de que)\b/;
 
 // Pedido explícito de buscar afuera.
 const RE_PEDIDO_BUSQUEDA =
@@ -130,25 +175,54 @@ function esConsultaDeDolar(t) {
 // general: va a internet) o 'charla' (charla social). Ante la duda gana 'comunidad':
 // es preferible inyectar la base de más que responder una regla del server con lo que
 // la IA "cree saber".
-function clasificarConsulta(texto, { perfil = 'charla' } = {}) {
+// Un perfil 'profundo' (explicaciones, comparaciones, traducciones, código) es una
+// consulta de verdad: se clasifica y se busca igual que una 'consulta'. Sin esto, todo
+// pedido de desarrollo caía en 'charla' y se quedaba sin base ni red de búsqueda.
+function esPerfilConsulta(perfil) {
+  return perfil === 'consulta' || perfil === 'profundo';
+}
+
+function clasificarConsulta(texto, { perfil = 'charla', hayConocimiento = null } = {}) {
   const t = normalizar(String(texto || '')).trim();
-  if (!t || perfil !== 'consulta') return 'charla';
-  if (RE_COMUNIDAD.test(t)) return 'comunidad';
+  if (!t || !esPerfilConsulta(perfil)) return 'charla';
+  if (RE_ANCLA.test(t)) return 'comunidad';
+  // Una entidad del mundo (YouTube, Google…) sin mención de este servidor: la pregunta es
+  // de afuera aunque la base tenga una coincidencia floja en el título de una sección.
+  if (RE_ENTIDAD_MUNDO.test(t) && !RE_CONTEXTO_SERVER.test(t)) return 'general';
+  // El buscador de la base del server reconoció el tema (coincidencia en el título de una
+  // sección): es de la comunidad aunque la pregunta no use ninguna palabra ancla.
+  if (hayConocimiento === true) return 'comunidad';
   if (esConsultaDeDolar(t) || RE_CLIMA.test(t)) return 'general';
-  if (RE_PEDIDO_BUSQUEDA.test(t) || RE_PREGUNTA.test(t)) return 'general';
+  // Solo palabras ambiguas: decide el resto de la frase. "¿cuál es el canal más grande de
+  // YouTube?" es una pregunta del mundo; "¿cuál es el canal de anuncios del server?" no.
+  if (RE_AMBIGUA.test(t)) {
+    if (RE_CONTEXTO_SERVER.test(t)) return 'comunidad';
+    return RE_PREGUNTA.test(t) || esPedidoDeDato(t) || RE_PEDIDO_BUSQUEDA.test(t) ? 'general' : 'comunidad';
+  }
+  if (RE_PEDIDO_BUSQUEDA.test(t) || RE_PREGUNTA.test(t) || esPedidoDeDato(t)) return 'general';
+  // Sin ancla, sin palabras ambiguas y sin tema cargado: no hay nada del servidor que
+  // decir. Si la pregunta es de verdad, se responde de conocimiento general.
+  if (hayConocimiento === false) return 'general';
   return 'comunidad';
 }
 
 // ¿Hace falta buscar? `forzar` = buscar antes de responder (pedido explícito, dato
 // perecedero o fuente especializada); `buscar` = dejar la búsqueda de reserva por si la
 // IA contesta que no sabe.
-function decidirBusqueda(texto, { perfil = 'charla' } = {}) {
+function decidirBusqueda(texto, { perfil = 'charla', modo = null } = {}) {
   const t = normalizar(String(texto || '')).trim();
-  if (!t || perfil !== 'consulta') return { buscar: false, forzar: false };
+  if (!t || !esPerfilConsulta(perfil)) return { buscar: false, forzar: false };
   // Cotización y clima solo se consiguen en vivo: van antes de responder siempre.
   if (esConsultaDeDolar(t) || RE_CLIMA.test(t)) return { buscar: true, forzar: true };
-  if (RE_COMUNIDAD.test(t)) return { buscar: false, forzar: false };
+  // Un ancla de la comunidad no se busca afuera: la verdad es la base del servidor.
+  if (RE_ANCLA.test(t)) return { buscar: false, forzar: false };
   if (RE_PEDIDO_BUSQUEDA.test(t)) return { buscar: true, forzar: true };
+  // El clasificador ya decidió que es una pregunta del mundo (no del servidor): la
+  // búsqueda queda de reserva, sin costo, por si la IA no sabe. Antes hacía falta una
+  // palabra interrogativa para llegar acá, así que "capital de australia" o "messi edad"
+  // se quedaban sin red de contención.
+  if (modo === 'general') return { buscar: true, forzar: RE_DATO_FRESCO.test(t) };
+  if (esPedidoDeDato(t)) return { buscar: true, forzar: RE_DATO_FRESCO.test(t) };
   if (!RE_PREGUNTA.test(t)) return { buscar: false, forzar: false };
   return { buscar: true, forzar: RE_DATO_FRESCO.test(t) };
 }
@@ -159,12 +233,18 @@ function decidirBusqueda(texto, { perfil = 'charla' } = {}) {
 const RE_SIN_INFO = [
   /no lo tengo cargado/,
   /no (tengo|cuento con|dispongo de|manejo|encuentro) (esa|esta|la) (info|informacion|data|dato)/,
+  /no (tengo|cuento con|dispongo de|manejo|encuentro|conozco) (esa|esta|la)? ?(info|informacion|data|dato|respuesta)/,
   /no (tengo|cuento con|dispongo de|manejo) informacion/,
-  /no puedo (responder|contestar|confirmar|verificar) (eso|esa|esta|esto)/,
-  /no se (eso|esa|la respuesta|de eso|cual es)/,
+  /no puedo (responder|contestar|confirmar|verificar|saber) (eso|esa|esta|esto)( ahora)?/,
+  /no (se|sabria) (eso|esa|la respuesta|de eso|cual es|decirte)/,
   /no estoy seguro de (eso|esa|la respuesta)/,
-  /no me (consta|figura)/,
+  /no me (consta|figura|consta el dato)/,
   /en mi base de datos no/,
+  /no (encontre|pude encontrar|hay) (informacion|datos|resultados) (sobre|de|para)/,
+  /no tengo (esa|esta|la) (info|informacion|data) a mano/,
+  /no dispongo de esa informacion/,
+  /fuera de mi (alcance|conocimiento)/,
+  /(mi|la) informacion (no )?(esta|llega) (actualizada|al dia)/,
   /lo siento,? no (tengo|puedo|se|cuento)/,
 ];
 
@@ -196,7 +276,9 @@ async function pedirTexto(url) {
 // Primeras `n` frases: la intro de Wikipedia puede ser larguísima y al prompt le
 // alcanza con el dato principal.
 function primerasFrases(texto, n = 4) {
-  const limpio = String(texto || '').replace(/\s+/g, ' ').trim();
+  const limpio = String(texto || '')
+    .replace(/\s+/g, ' ')
+    .trim();
   const partes = limpio.match(/[^.!?]+[.!?]+/g);
   if (!partes || partes.length <= n) return limpio;
   return partes.slice(0, n).join(' ').trim();
@@ -221,9 +303,7 @@ async function buscarWikipedia(consulta, idioma = 'es') {
 }
 
 async function buscarInstantAnswer(consulta) {
-  const url =
-    `https://api.duckduckgo.com/?q=${encodeURIComponent(consulta)}` +
-    '&format=json&no_html=1&skip_disambig=1&no_redirect=1';
+  const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(consulta)}` + '&format=json&no_html=1&skip_disambig=1&no_redirect=1';
   const d = await pedirJson(url);
   if (!d) return [];
 
@@ -280,11 +360,7 @@ async function buscarDuckLite(consulta) {
   // El HTML de Lite es una tabla: cada resultado es un <a class="result-link"> y su
   // resumen viene en un <td class="result-snippet">. Los atributos pueden ir en
   // cualquier orden, así que se buscan con lookaheads.
-  const enlaces = [
-    ...String(html).matchAll(
-      /<a\b(?=[^>]*class=['"]result-link['"])(?=[^>]*href="([^"]+)")[^>]*>([\s\S]*?)<\/a>/g
-    ),
-  ];
+  const enlaces = [...String(html).matchAll(/<a\b(?=[^>]*class=['"]result-link['"])(?=[^>]*href="([^"]+)")[^>]*>([\s\S]*?)<\/a>/g)];
   const resumenes = [...String(html).matchAll(/class=['"]result-snippet['"][^>]*>([\s\S]*?)<\/td>/g)];
 
   const resultados = [];
@@ -311,9 +387,7 @@ async function buscarDolar() {
   if (!filas.length) return [];
 
   const texto = filas
-    .map(([nombre, v]) =>
-      `${nombre}: compra $${Math.round(v.value_buy ?? v.value_avg)} / venta $${Math.round(v.value_sell ?? v.value_avg)}`
-    )
+    .map(([nombre, v]) => `${nombre}: compra $${Math.round(v.value_buy ?? v.value_avg)} / venta $${Math.round(v.value_sell ?? v.value_avg)}`)
     .join(' | ');
   const cuando = d?.last_update ? new Date(d.last_update).toLocaleString('es-AR') : '';
 
@@ -350,9 +424,7 @@ async function buscarClima(consulta) {
   const ciudad = ciudadDe(consulta);
   if (!ciudad) return [];
 
-  const geo = await pedirJson(
-    `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(ciudad)}&count=1&language=es&format=json`
-  );
+  const geo = await pedirJson(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(ciudad)}&count=1&language=es&format=json`);
   const lugar = geo?.results?.[0];
   if (!lugar) return [];
 
@@ -380,12 +452,8 @@ async function buscarClima(consulta) {
     );
   if (!completo) return [];
 
-  const dia = (i) =>
-    `${hoy.temperature_2m_max?.[i]}°C / ${hoy.temperature_2m_min?.[i]}°C` +
-    ` (lluvia ${hoy.precipitation_probability_max?.[i]}%)`;
-  const texto =
-    `Ahora: ${ahora.temperature_2m}°C (sensación ${ahora.apparent_temperature}°C). ` +
-    `Hoy: ${dia(0)}. Mañana: ${dia(1)}.`;
+  const dia = (i) => `${hoy.temperature_2m_max?.[i]}°C / ${hoy.temperature_2m_min?.[i]}°C` + ` (lluvia ${hoy.precipitation_probability_max?.[i]}%)`;
+  const texto = `Ahora: ${ahora.temperature_2m}°C (sensación ${ahora.apparent_temperature}°C). ` + `Hoy: ${dia(0)}. Mañana: ${dia(1)}.`;
   const ubicacion = [lugar.name, lugar.admin1, lugar.country].filter(Boolean).join(', ');
 
   return [{ fuente: 'Open-Meteo', titulo: `Clima en ${ubicacion}`, texto, url: 'https://open-meteo.com/' }];
@@ -421,7 +489,9 @@ function simplificar(consulta) {
 }
 
 function recortar(texto) {
-  const limpio = String(texto || '').replace(/\s+/g, ' ').trim();
+  const limpio = String(texto || '')
+    .replace(/\s+/g, ' ')
+    .trim();
   return limpio.length > MAX_TEXTO_RESULTADO ? `${limpio.slice(0, MAX_TEXTO_RESULTADO).trimEnd()}…` : limpio;
 }
 
@@ -431,7 +501,9 @@ function depurar(resultados) {
   const salida = [];
   for (const r of resultados) {
     if (!r?.texto) continue;
-    const clave = String(r.url || r.titulo || r.texto).toLowerCase().slice(0, 90);
+    const clave = String(r.url || r.titulo || r.texto)
+      .toLowerCase()
+      .slice(0, 90);
     if (vistos.has(clave)) continue;
     vistos.add(clave);
     salida.push({ ...r, texto: recortar(r.texto) });
@@ -467,11 +539,7 @@ async function consultarFuentes(consulta) {
   // respuesta por culpa del armado de la pregunta.
   const simple = simplificar(consulta);
   if (simple && simple !== normalizar(consulta).trim()) {
-    return intentar([
-      () => buscarWikipedia(simple),
-      () => buscarWikipedia(simple, 'en'),
-      () => buscarInstantAnswer(simple),
-    ]);
+    return intentar([() => buscarWikipedia(simple), () => buscarWikipedia(simple, 'en'), () => buscarInstantAnswer(simple)]);
   }
   return [];
 }
@@ -492,7 +560,9 @@ async function intentar(tareas) {
 // respeta el cooldown por usuario y el tope por minuto, y nunca tarda más que
 // TIMEOUT_TOTAL_MS.
 async function buscar(consulta, { usuarioId = null, forzar = false } = {}) {
-  const clave = normalizar(String(consulta || '')).replace(/\s+/g, ' ').trim();
+  const clave = normalizar(String(consulta || ''))
+    .replace(/\s+/g, ' ')
+    .trim();
   if (clave.length < 4) return [];
 
   const guardado = cache.get(clave);
@@ -507,10 +577,7 @@ async function buscar(consulta, { usuarioId = null, forzar = false } = {}) {
 
   registrarUso(usuarioId);
   const promesa = (async () => {
-    const resultados = await Promise.race([
-      consultarFuentes(consulta).catch(() => []),
-      dormir(TIMEOUT_TOTAL_MS).then(() => []),
-    ]);
+    const resultados = await Promise.race([consultarFuentes(consulta).catch(() => []), dormir(TIMEOUT_TOTAL_MS).then(() => [])]);
     cache.set(clave, {
       resultados,
       cuando: Date.now(),
@@ -534,8 +601,7 @@ function formatear(resultados) {
   const lineas = [];
   let total = 0;
   for (const r of resultados) {
-    const linea =
-      `- [${r.fuente}]${r.titulo ? ` ${r.titulo}:` : ''} ${r.texto}` + (r.url ? ` (${r.url})` : '');
+    const linea = `- [${r.fuente}]${r.titulo ? ` ${r.titulo}:` : ''} ${r.texto}` + (r.url ? ` (${r.url})` : '');
     if (total + linea.length > MAX_BLOQUE) break;
     lineas.push(linea);
     total += linea.length;
@@ -602,15 +668,21 @@ function estadoVerificacion() {
   return ultimaVerificacion;
 }
 
-// Respuesta armada sin IA (no hay claves o cayeron los proveedores): devuelve el
-// primer resultado citando la fuente, o '' si la búsqueda no trajo nada.
-async function respuestaSinIA(consulta, { usuarioId = null, forzar = false } = {}) {
-  const resultados = await buscar(consulta, { usuarioId, forzar });
-  const primero = resultados.find((r) => r.texto);
+// Respuesta armada con datos crudos y su fuente (sin redacción de IA): el primer
+// resultado con texto. Se exporta porque utils/ia.js la usa como último recurso cuando el
+// modelo no logró usar los resultados que ya tiene — nunca es peor que un "no sé".
+function respuestaDeDatos(resultados) {
+  const primero = (resultados ?? []).find((r) => r?.texto);
   if (!primero) return '';
   const encabezado = primero.titulo ? `**${primero.titulo}**\n` : '';
   const fuente = primero.url ? ` — [${primero.fuente}](${primero.url})` : ` — ${primero.fuente}`;
   return `Busqué esto${fuente}:\n${encabezado}${primero.texto}`;
+}
+
+// Respuesta armada sin IA (no hay claves o cayeron los proveedores): busca y contesta
+// con el primer resultado citando la fuente, o '' si la búsqueda no trajo nada.
+async function respuestaSinIA(consulta, { usuarioId = null, forzar = false } = {}) {
+  return respuestaDeDatos(await buscar(consulta, { usuarioId, forzar }));
 }
 
 // Vacía cache y contadores (tests).
@@ -629,6 +701,7 @@ module.exports = {
   verificar,
   estadoVerificacion,
   respuestaSinIA,
+  respuestaDeDatos,
   decidirBusqueda,
   clasificarConsulta,
   pareceSinInfo,
@@ -637,12 +710,16 @@ module.exports = {
   buscarWikipedia,
   buscarDolar,
   buscarClima,
+  esPedidoDeDato,
+  esPerfilConsulta,
   consultarFuentes,
   buscarInstantAnswer,
   buscarDuckLite,
   usarFetch,
   reiniciar,
-  RE_COMUNIDAD,
+  RE_ANCLA,
+  RE_AMBIGUA,
+  RE_PEDIDO_DATO,
   TIMEOUT_TOTAL_MS,
   MAX_BLOQUE,
   // Para /diagnóstico y tests.

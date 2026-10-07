@@ -24,7 +24,8 @@ const PAGINA_WIKI = {
       1: {
         index: 1,
         title: 'Lionel Messi',
-        extract: 'Lionel Andrés Messi Cuccittini (Rosario, 24 de junio de 1987) es un futbolista argentino. Juega como delantero y es capitán de la selección.',
+        extract:
+          'Lionel Andrés Messi Cuccittini (Rosario, 24 de junio de 1987) es un futbolista argentino. Juega como delantero y es capitán de la selección.',
         fullurl: 'https://es.wikipedia.org/wiki/Lionel_Messi',
       },
     },
@@ -303,7 +304,18 @@ describe('buscar — fuentes reales y costos', () => {
   });
 
   test('si en español no hay nada, prueba la Wikipedia en inglés', async () => {
-    const EN = { query: { pages: { 1: { index: 1, title: 'Ada Lovelace', extract: 'Augusta Ada King (10 December 1815 – 27 November 1852) was an English mathematician.', fullurl: 'https://en.wikipedia.org/wiki/Ada_Lovelace' } } } };
+    const EN = {
+      query: {
+        pages: {
+          1: {
+            index: 1,
+            title: 'Ada Lovelace',
+            extract: 'Augusta Ada King (10 December 1815 – 27 November 1852) was an English mathematician.',
+            fullurl: 'https://en.wikipedia.org/wiki/Ada_Lovelace',
+          },
+        },
+      },
+    };
     const { impl } = fetchFalso({ wikiEn: EN });
     web.usarFetch(impl);
 
@@ -367,7 +379,10 @@ describe('buscar — fuentes reales y costos', () => {
       pedidas.some((u) => consultaWiki(u) === 'cuantos anos tiene messi?'),
       'primero prueba la pregunta tal como la escribió el usuario'
     );
-    assert.ok(pedidas.some((u) => u.includes('en.wikipedia.org')), 'después la Wikipedia en inglés');
+    assert.ok(
+      pedidas.some((u) => u.includes('en.wikipedia.org')),
+      'después la Wikipedia en inglés'
+    );
     assert.ok(
       pedidas.some((u) => consultaWiki(u) === 'anos messi'),
       'y al final la consulta reducida a sus palabras con contenido'
@@ -429,5 +444,88 @@ describe('buscar — fuentes reales y costos', () => {
     });
     assert.deepEqual(await web.buscar(''), []);
     assert.deepEqual(await web.buscar('ab'), []);
+  });
+});
+
+// ---------- Palabras ambiguas: ¿es de la comunidad o del mundo? ----------
+// La primera versión tenía UNA lista de palabras y cualquier coincidencia suelta mandaba
+// la pregunta al camino estricto del servidor. Así, preguntas del mundo que usan las
+// mismas palabras (canal de YouTube, roles de un equipo, mapa de un país) terminaban en
+// "eso no lo tengo cargado" sin haber intentado nada.
+describe('clasificación con palabras ambiguas', () => {
+  test('sin tema cargado en la base, la palabra ambigua no vuelve la pregunta de la comunidad', () => {
+    for (const m of [
+      'cual es el canal mas grande de youtube',
+      'que roles hay en un equipo de futbol',
+      'cual es el mapa mas grande de un videojuego',
+      'cuantos jugadores tiene un equipo de basquet',
+    ]) {
+      assert.equal(web.clasificarConsulta(m, { perfil: 'consulta', hayConocimiento: false }), 'general', m);
+    }
+  });
+
+  test('si el tema está cargado en la base del server, sigue siendo de la comunidad', () => {
+    assert.equal(web.clasificarConsulta('como funciona el sistema de niveles', { perfil: 'consulta', hayConocimiento: true }), 'comunidad');
+    assert.equal(web.clasificarConsulta('se puede pedir un canal de voz propio', { perfil: 'consulta', hayConocimiento: true }), 'comunidad');
+  });
+
+  test('hablar de ESTE servidor alcanza aunque no haya nada cargado', () => {
+    for (const m of ['cual es el canal de anuncios de este server', 'cuantos roles tiene nuestro discord', 'cuantas ip tiene el servidor de aca']) {
+      assert.equal(web.clasificarConsulta(m, { perfil: 'consulta', hayConocimiento: false }), 'comunidad', m);
+    }
+  });
+
+  test('las anclas (reglas, sanciones, CS 1.6) siguen mandando sobre todo lo demás', () => {
+    for (const m of ['cuantas advertencias me quedan', 'que pasa si me banearon sin motivo', 'que ip tiene el cs 1.6', 'como pido un ticket']) {
+      assert.equal(web.clasificarConsulta(m, { perfil: 'consulta', hayConocimiento: false }), 'comunidad', m);
+    }
+  });
+});
+
+describe('decidirBusqueda — preguntas del mundo sin palabra interrogativa', () => {
+  test('con la clasificación del mundo la búsqueda queda de reserva', () => {
+    assert.deepEqual(web.decidirBusqueda('capital de australia', { perfil: 'consulta', modo: 'general' }), { buscar: true, forzar: false });
+    assert.deepEqual(web.decidirBusqueda('messi edad', { perfil: 'consulta', modo: 'general' }), { buscar: true, forzar: false });
+  });
+
+  test('un dato perecedero sigue buscándose ANTES de responder', () => {
+    assert.deepEqual(web.decidirBusqueda('precio del dolar blue', { perfil: 'consulta', modo: 'general' }), { buscar: true, forzar: true });
+    assert.deepEqual(web.decidirBusqueda('quien gano el partido de ayer', { perfil: 'consulta', modo: 'general' }), { buscar: true, forzar: true });
+  });
+
+  test('los pedidos de dato sin signo de pregunta también habilitan la búsqueda', () => {
+    for (const m of ['traducime buenos dias al ingles', 'capital de australia', 'quien fue san martin']) {
+      assert.equal(web.decidirBusqueda(m, { perfil: 'consulta' }).buscar, true, m);
+    }
+  });
+
+  test('el dato pedido "al revés" (sujeto primero) también es un pedido de dato', () => {
+    for (const m of ['messi edad', 'nike precio', 'aurora traduccion', 'messi biografia']) {
+      assert.equal(web.esPedidoDeDato(m), true, m);
+    }
+    // Charla normal: no cualquier mensaje corto es un pedido de dato.
+    for (const m of ['me gusta el pan', 'jajaja', 'hola', 'que lindo dia']) {
+      assert.equal(web.esPedidoDeDato(m), false, m);
+    }
+  });
+});
+
+describe('pareceSinInfo — las negativas menos obvias', () => {
+  test('detecta las otras formas de decir "no sé"', () => {
+    for (const t of [
+      'No encontré información sobre eso.',
+      'No dispongo de esa información.',
+      'Eso está fuera de mi alcance.',
+      'No tengo esa información a mano.',
+      'No puedo confirmar eso ahora.',
+      'No me consta el dato.',
+    ]) {
+      assert.equal(web.pareceSinInfo(t), true, t);
+    }
+  });
+
+  test('una respuesta con datos no se confunde con una negativa', () => {
+    assert.equal(web.pareceSinInfo('San Martín cruzó los Andes en 1817 con unos 4.000 hombres.'), false);
+    assert.equal(web.pareceSinInfo('Son 231 días: el 25 de mayo de 2027.'), false);
   });
 });
