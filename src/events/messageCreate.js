@@ -2,6 +2,8 @@ const { Events } = require('discord.js');
 const { responderCharla, respuestaInstantanea, normalizar } = require('../utils/charla');
 const { conversar, trocearMensaje, perfilDe } = require('../utils/ia');
 const { decidirBusqueda, respuestaSinIA } = require('../utils/web');
+const rendimiento = require('../utils/rendimiento');
+const presupuesto = require('../utils/presupuesto');
 const { pedirConfirmacion } = require('../utils/accionesIA');
 const { DUENO_ID } = require('../comunidad');
 const { getAFK, quitarAFK } = require('../commands/afk');
@@ -64,6 +66,26 @@ function estaEnCooldown(userId) {
 // El anuncio de niveles (textoProgreso / anunciarProgreso) vive en utils/anunciosNivel.js
 // porque también lo usa la XP por voz.
 
+// Turno que se resuelve SIN IA (presupuesto agotado, sin claves o proveedores caídos).
+// `conversar()` devuelve null en esos casos y la respuesta sale del repertorio local o,
+// para una pregunta de cultura general, de una búsqueda web directa. Se mide acá y no en
+// el motor porque el tiempo real de ese turno incluye esos intentos; si solo se midiera
+// `conversar()`, una respuesta con búsqueda web parecería instantánea.
+function medirSinIA(message, texto, desdeMs, { web = 'no' } = {}) {
+  try {
+    rendimiento.registrar({
+      perfil: perfilDe(texto),
+      camino: 'local',
+      web,
+      sinIA: presupuesto.hayCupo(message.guild?.id) ? 'proveedores' : 'presupuesto',
+      ms: Date.now() - desdeMs,
+      pregunta: texto,
+    });
+  } catch {
+    /* la métrica nunca puede romper la respuesta */
+  }
+}
+
 // Responde cuando alguien menciona al bot: siempre contesta con un mensaje.
 async function manejarMencion(message) {
   const client = message.client;
@@ -96,6 +118,9 @@ async function manejarMencion(message) {
 
   // Indicador de "escribiendo" mientras la IA piensa.
   await message.channel.sendTyping().catch(() => {});
+
+  // Desde acá se mide el turno completo cuando la respuesta no sale de la IA.
+  const t0 = Date.now();
 
   // Chat con IA si está configurada; si falla o no hay clave, respaldo local.
   try {
@@ -132,16 +157,22 @@ async function manejarMencion(message) {
   try {
     if (decidirBusqueda(texto, { perfil: perfilDe(texto) }).buscar) {
       const directa = await respuestaSinIA(texto, { usuarioId: message.author.id });
-      if (directa) return message.reply({ content: directa }).catch(() => {});
+      if (directa) {
+        medirSinIA(message, texto, t0, { web: 'directa' });
+        return message.reply({ content: directa }).catch(() => {});
+      }
     }
   } catch (error) {
     console.warn(`[TriggerBOT] búsqueda web sin IA falló: ${error.message}`);
   }
 
+  medirSinIA(message, texto, t0);
   await message.reply({ content: responderCharla(texto) }).catch(() => {});
 }
 
 module.exports = {
+  // Se exporta para los tests: es la única parte del evento que no depende de Discord.
+  medirSinIA,
   name: Events.MessageCreate,
   async execute(message) {
     if (!message.guild || message.author?.bot) return;

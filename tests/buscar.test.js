@@ -11,9 +11,14 @@ const os = require('node:os');
 const path = require('node:path');
 
 process.env.TRIGGER_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'tgb-buscar-'));
+// La búsqueda semántica arranca apagada (sus tests están en conocimiento.test.js); el
+// caso que la enciende lo hace con un proveedor falso, sin red.
+process.env.KB_SEMANTICO = 'off';
 
 const comando = require('../src/commands/buscar');
 const web = require('../src/utils/web');
+const conocimiento = require('../src/utils/conocimiento');
+const embeddings = require('../src/utils/embeddings');
 
 const WIKI = {
   query: {
@@ -100,6 +105,48 @@ describe('/buscar — búsqueda cruda para el staff', () => {
     assert.match(embed.title, /Sin resultados/);
     assert.match(embed.description, /No trajo \*\*nada\*\*/);
     assert.match(embed.description, /menos palabras/);
+  });
+
+  test('muestra qué sacó la base y con qué señal (auditoría de la semántica)', async () => {
+    const contador = { llamadas: 0 };
+    process.env.KB_SEMANTICO = 'on';
+    process.env.GEMINI_API_KEY = 'clave-de-prueba';
+    embeddings.reiniciar();
+    fs.rmSync(embeddings.ARCHIVO, { force: true });
+    // Todos los textos al mismo vector: cualquier sección es "parecida", así que la
+    // señal que se ve en el embed es la del significado.
+    embeddings.usarFetch(async (url, opciones = {}) => {
+      const peticion = JSON.parse(opciones.body);
+      contador.llamadas += 1;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ embeddings: peticion.requests.map(() => ({ values: [1, 0, 0, 0] })) }),
+        text: async () => '',
+      };
+    });
+
+    try {
+      const consulta = 'messi zzzq';
+      assert.deepEqual(conocimiento.buscar(consulta), [], 'sin coincidencia de palabras');
+
+      const interaccion = interaccionFake(consulta);
+      await comando.execute(interaccion);
+      const payload = interaccion.enviados.at(-1);
+      const texto = textoDe(payload);
+
+      assert.ok(contador.llamadas > 0, 'la base pidió sus vectores');
+      assert.match(texto, /fragmento\(s\) de la base/);
+      assert.match(texto, /semántico/, 'dice que la señal fue el significado, no las palabras');
+      assert.match(texto, /tema cargado/);
+      assert.match(texto, /umbrales: /, 'muestra los umbrales para poder calibrarlos');
+      assert.match(texto, /Wikipedia/, 'y los resultados de la web siguen ahí');
+    } finally {
+      process.env.KB_SEMANTICO = 'off';
+      delete process.env.GEMINI_API_KEY;
+      embeddings.reiniciar();
+      conocimiento.recargar();
+    }
   });
 
   test('es un comando de staff y la consulta es obligatoria', () => {

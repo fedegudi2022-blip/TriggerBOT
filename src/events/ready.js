@@ -17,6 +17,9 @@ module.exports = {
           config: require('../store'),
           warns: require('../warns'),
           notas: require('../notas'),
+          // Temas que la IA no supo contestar (data/faltantes.json): se respaldan para
+          // que la lista de trabajo del staff sobreviva reinicios y deploys.
+          faltantes: require('../utils/faltantes'),
           casos: require('../casos'),
           niveles: require('../niveles'),
           afk: require('../commands/afk'),

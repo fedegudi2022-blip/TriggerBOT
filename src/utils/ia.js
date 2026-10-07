@@ -32,7 +32,11 @@
 
 const { DUENO_MENCION, WEB, REDES } = require('../comunidad');
 const { construirContextoVivo } = require('./contexto');
-const { buscar: buscarConocimiento, formatear: formatearConocimiento, normalizar: normalizarTexto } = require('./conocimiento');
+const {
+  buscarHibrido: buscarConocimiento,
+  formatear: formatearConocimiento,
+  normalizar: normalizarTexto,
+} = require('./conocimiento');
 const {
   buscar,
   formatear,
@@ -46,6 +50,8 @@ const {
 } = require('./web');
 const calculos = require('./calculos');
 const presupuesto = require('./presupuesto');
+const faltantes = require('./faltantes');
+const rendimiento = require('./rendimiento');
 
 const TIMEOUT_MS = 10_000;
 const TOKENS_MAX = 1200; // techo de reintento cuando la respuesta sale cortada
@@ -582,8 +588,10 @@ const GROUNDING =
   'logros, rangos, comandos, servidores CS 1.6, IPs, tickets, canales, roles, staff, links, ' +
   'torneos): usá ÚNICAMENTE el bloque INFORMACIÓN DEL SERVIDOR de más abajo. ' +
   'NUNCA inventes ni completes reglas, sanciones, comandos, horarios ni datos del server. ' +
-  '2) Si te preguntan algo de la comunidad que no está en ese bloque, decilo con naturalidad ' +
-  '(por ejemplo: "eso no lo tengo cargado") y ofrecé /help o un ticket de soporte. ' +
+  '2) Si te preguntan algo de la comunidad que no está en ese bloque, NO dejes la pregunta sin ' +
+  'responder: contestá con lo que el bloque SÍ dice de ese tema y, solo si el dato exacto falta, ' +
+  'aclaralo en una frase corta ("ese detalle no lo tengo cargado"), ofrecé /help o un ticket y ' +
+  'seguí aportando lo que sepas. Una negativa seca nunca es una respuesta. ' +
   '3) CONOCIMIENTO GENERAL (deportes, famosos, historia, ciencia, tecnología, música, ' +
   'geografía, efemérides, definiciones, cálculo, etc.): respondé con tu propio conocimiento. ' +
   'Ese tema NO está en el bloque del servidor y no necesitás inventar nada del server para ' +
@@ -597,7 +605,10 @@ const GROUNDING =
   'tal cual, sin estimar ni redondear. ' +
   '7) Si te piden un comando, sacalo del catálogo real y aclará cuando sea (solo staff). ' +
   '8) Para datos DE LA COMUNIDAD, mejor una respuesta corta y verdadera que una larga y dudosa; ' +
-  'ante la duda, deriva al staff.';
+  'ante la duda, derivá al staff. ' +
+  '9) NUNCA termines en una negativa ni en "no puedo ayudarte con eso": si no tenés el dato ' +
+  'exacto, dá el más cercano que sepas (aclarando que es aproximado), explicá cómo conseguirlo ' +
+  'o pedí el dato que falta — pero siempre aportá algo concreto y verificable.';
 
 const DETECTOR_ACCIONES =
   'ACCIONES DE MODERACIÓN: si quien escribe ES DEL STAFF (el contexto lo dice con claridad: ' +
@@ -725,8 +736,9 @@ function sistemaCompleto(contexto = {}) {
   sistema +=
     contexto.conocimiento?.trim() ||
     contexto.conocimientoVacio?.trim() ||
-    '(no encontré nada cargado sobre este tema: si es un dato de la comunidad, no lo inventes, decilo y derivá al staff; ' +
-      'si es una pregunta de cultura general, respondé con tu conocimiento)';
+    '(no encontré nada cargado sobre este tema: si es un dato de la comunidad, no lo inventes —pero no ' +
+      'dejes la pregunta sin responder: aportá lo que sí está en la información del servidor—; si es una ' +
+      'pregunta de cultura general, respondé con tu conocimiento, sin negarte)';
 
   const web = contexto.web?.trim();
   if (web) {
@@ -740,6 +752,17 @@ function sistemaCompleto(contexto = {}) {
     }
   } else if (contexto.webBuscada) {
     sistema += '\n\n--- RESULTADOS DE BÚSQUEDA WEB ---\n(la búsqueda no devolvió nada útil para esta pregunta)';
+  }
+
+  // Tercera vuelta: la IA se negó y no hay resultados de búsqueda que ofrecerle. Antes esta
+  // rama no existía, así que la negativa se enviaba tal cual y el usuario se quedaba sin
+  // respuesta aunque el modelo tuviera algo útil para decir.
+  if (contexto.sinDatos) {
+    sistema +=
+      '\n\nTu respuesta anterior fue una negativa y esta pregunta no tiene resultados de búsqueda web. ' +
+      'Está prohibido volver a negarte: respondé ahora con tu propio conocimiento (aunque sea parcial o ' +
+      'aproximado, aclarando el grado de certeza), con lo que sí figure en la información del servidor ' +
+      'o explicando cómo se consigue el dato. No menciones que no lo tenías.';
   }
 
   return `${sistema}\n\n${DETECTOR_ACCIONES}`;
@@ -1103,9 +1126,14 @@ const NOTA_GENERAL =
 // necesita la base).
 // Fragmentos de la base del server que le pegan a la pregunta. Se buscan UNA vez por
 // mensaje: los usa la clasificación (para saber si el tema está cargado) y el prompt.
-function fragmentosDe(mensaje) {
+//
+// La búsqueda es híbrida (utils/conocimiento.js): BM25 siempre y, cuando las palabras no
+// alcanzan, también por significado con embeddings. Es async por el vector de la
+// pregunta, pero el camino común (la base reconoció el tema por el título) responde sin
+// ninguna llamada. Sin clave de Gemini se comporta igual que la búsqueda por palabras.
+async function fragmentosDe(mensaje) {
   try {
-    return buscarConocimiento(mensaje) ?? [];
+    return (await buscarConocimiento(mensaje)) ?? [];
   } catch (error) {
     console.warn(`[TriggerBOT] IA: no pude buscar en la base de conocimiento: ${error.message}`);
     return [];
@@ -1242,8 +1270,10 @@ async function investigarEnWeb(mensaje, usuarioId, { forzar = false } = {}) {
 }
 
 async function conversar(userId, mensaje, contexto = {}) {
+  const t0 = Date.now(); // latencia real del turno: la mide utils/rendimiento.js
   const guildId = contexto.guild?.id ?? null;
   const previos = historial(userId); // memoria compartida: la charla sigue aunque cambie el motor
+  const perfil = perfilDe(mensaje);
 
   // Cálculo exacto (cuentas, porcentajes, unidades, fechas): lo resuelve utils/calculos.js
   // al instante, sin IA. Va primero por dos motivos: no se equivoca nunca y sigue
@@ -1253,10 +1283,10 @@ async function conversar(userId, mensaje, contexto = {}) {
     statsIA.local += 1;
     guardarTurno(userId, 'user', mensaje);
     guardarTurno(userId, 'model', calculo.texto);
+    rendimiento.registrar({ perfil, camino: 'calculo', ms: Date.now() - t0, pregunta: mensaje });
     return { tipo: 'chat', texto: calculo.texto };
   }
 
-  const perfil = perfilDe(mensaje);
   const simple = esMensajeSimple(mensaje); // mensaje social → modelo rápido
   const rapido = simple && perfil === 'charla';
   // ¿Es una pregunta de la comunidad o del mundo? Define qué datos viajan en el prompt:
@@ -1267,7 +1297,7 @@ async function conversar(userId, mensaje, contexto = {}) {
   // "roles", "niveles") es de la comunidad cuando el tema está cargado, y del mundo
   // cuando no. Antes decidía una lista de palabras y cualquier coincidencia suelta
   // mandaba la pregunta al camino estricto, donde el bot contesta que no tiene el dato.
-  const fragmentos = fragmentosDe(mensaje);
+  const fragmentos = await fragmentosDe(mensaje);
   const hayConocimiento = fragmentos.some((f) => f.enTitulo);
   const modo = clasificarConsulta(mensaje, { perfil, hayConocimiento });
 
@@ -1279,6 +1309,7 @@ async function conversar(userId, mensaje, contexto = {}) {
       statsIA.cache += 1;
       guardarTurno(userId, 'user', mensaje);
       guardarTurno(userId, 'model', guardada);
+      rendimiento.registrar({ perfil, modo, camino: 'cache', ms: Date.now() - t0, pregunta: mensaje });
       return { tipo: 'chat', texto: guardada };
     }
   }
@@ -1299,56 +1330,85 @@ async function conversar(userId, mensaje, contexto = {}) {
   };
 
   // Plan de búsqueda (utils/web.js). Si el usuario la pide o el dato es de los que
-  // cambian (precios, resultados, noticias), se busca ANTES de responder. Si no, la
-  // búsqueda queda de reserva para el rescate de abajo: así una pregunta que la IA ya
-  // sabe no cuesta ninguna búsqueda.
-  const plan = decidirBusqueda(mensaje, { perfil, modo });
-  const primeraBusqueda = plan.forzar ? await investigarEnWeb(mensaje, userId, { forzar: true }) : { texto: '', resultados: [] };
-  if (primeraBusqueda.texto) statsIA.web += 1;
-  const buscada = plan.forzar;
-  let resultados = primeraBusqueda.resultados;
+  // cambian (precios, resultados, noticias), se busca ANTES de responder: ahí los
+  // resultados son la fuente de la respuesta. En cualquier otro caso la búsqueda arranca
+  // YA, en paralelo con la generación: si la IA sabía la respuesta, los resultados se
+  // descartan sin haber pagado latencia. Antes la reserva se disparaba recién DESPUÉS de
+  // la negativa, así que el usuario leía "no lo tengo cargado" antes de que el bot
+  // intentara averiguarlo.
+  const plan = decidirBusqueda(mensaje, { perfil, modo, hayConocimiento });
+  const enCurso = plan.buscar ? investigarEnWeb(mensaje, userId, { forzar: plan.forzar }) : null;
+  let web = '';
+  let resultados = [];
+  if (plan.forzar && enCurso) {
+    const primeraBusqueda = await enCurso;
+    web = primeraBusqueda.texto;
+    resultados = primeraBusqueda.resultados;
+    if (web) statsIA.web += 1;
+  }
+
+  // Cómo se buscó en este turno (es una de las causas de la demora que muestra
+  // /latencias): 'forzada' = se esperó la búsqueda ANTES de responder; 'paralela' = los
+  // resultados se usaron tras una negativa; 'no' = no se buscó o no hizo falta.
+  const caminoWeb = () => (plan.forzar ? 'forzada' : resultados.length ? 'paralela' : 'no');
 
   let texto = await generarRespuesta(mensaje, previos, {
-    sistema: sistemaCompleto({ ...base, web: primeraBusqueda.texto, webBuscada: buscada }),
+    sistema: sistemaCompleto({ ...base, web, webBuscada: plan.forzar }),
     perfil,
     rapido,
     guildId,
   });
+  // Cuántas veces se llamó DE VERDAD al modelo (2+ = hubo rescate con web): la demora de
+  // un rescate no es culpa del proveedor, y sin este dato parecía que sí.
+  let generaciones = texto ? 1 : 0;
 
-  // Rescate: la IA contestó que no tiene la información. Para una pregunta del mundo eso
-  // ya no es una respuesta aceptable (es el caso "¿cuántos años tiene Messi?" que
-  // terminaba en "eso no lo tengo cargado"): se busca en la web y se le pide que conteste
-  // de nuevo, con los datos a la vista. Una sola vez.
-  //
-  // La condición cubre también las preguntas clasificadas como del mundo aunque el plan no
-  // tuviera la búsqueda de reserva (texto sin palabra interrogativa: "messi edad",
-  // "capital de australia"): antes esas se quedaban sin red de contención. Los datos de la
-  // comunidad siguen sin buscarse afuera (ahí internet no sabe nada).
-  const puedeRescatar = !buscada && (plan.buscar || modo === 'general');
-  if (texto && puedeRescatar && pareceSinInfo(texto)) {
-    const segundaBusqueda = await investigarEnWeb(mensaje, userId, { forzar: true });
-    if (segundaBusqueda.texto) {
+  // Red de datos reales: la IA contestó que no sabe y la pregunta es de las que se pueden
+  // averiguar. Cubre los tres casos que antes quedaban sin salida:
+  //   1. los resultados ya están (búsqueda en paralelo) → se reescribe la respuesta con
+  //      ellos;
+  //   2. el dato era perecedero y la búsqueda se hizo ANTES de responder: si aun así se
+  //      negó, se usan esos mismos resultados en vez de tirarlos (el bot tenía los datos
+  //      en la mano y le devolvía la negativa al usuario);
+  //   3. la búsqueda no trajo nada y la pregunta es del mundo → se le pide una respuesta
+  //      con lo que sepa, sin negarse.
+  // Los datos de la comunidad (reglas, sanciones, IPs del protocolo interno) no se
+  // averiguan afuera: si la búsqueda no estaba armada, se mantiene la respuesta honesta
+  // de la base.
+  if (texto && (plan.buscar || modo === 'general') && pareceSinInfo(texto)) {
+    if (!resultados.length && enCurso) resultados = (await enCurso).resultados;
+    if (!resultados.length && modo === 'general') {
+      resultados = (await investigarEnWeb(mensaje, userId, { forzar: true })).resultados;
+    }
+
+    const datos = formatear(resultados);
+    if (datos) {
       statsIA.web += 1;
       const segunda = await generarRespuesta(mensaje, previos, {
-        sistema: sistemaCompleto({ ...base, perfil: 'consulta', web: segundaBusqueda.texto, insistir: true }),
+        sistema: sistemaCompleto({ ...base, perfil: 'consulta', web: datos, insistir: true }),
         perfil: 'consulta',
         rapido: false,
         guildId,
       });
-      if (segunda && !pareceSinInfo(segunda)) {
-        texto = segunda;
-        resultados = segundaBusqueda.resultados;
-      } else if (segundaBusqueda.resultados.length) {
-        // El modelo no logró usar los resultados (o volvió a decir que no sabe): se
-        // contestan los datos crudos con su fuente. Un dato verificable siempre es mejor
-        // que dejarlo con un "no lo tengo cargado".
-        texto = respuestaDeDatos(segundaBusqueda.resultados);
-        resultados = segundaBusqueda.resultados;
-      }
+      if (segunda) generaciones += 1;
+      // El modelo no logró usar los datos (o volvió a negarse): se contestan los datos
+      // crudos con su fuente. Un dato verificable siempre es mejor que la negativa.
+      texto = segunda && !pareceSinInfo(segunda) ? segunda : respuestaDeDatos(resultados) || texto;
+    } else if (modo === 'general') {
+      const tercera = await generarRespuesta(mensaje, previos, {
+        sistema: sistemaCompleto({ ...base, perfil: 'consulta', insistir: true, sinDatos: true }),
+        perfil: 'consulta',
+        rapido: false,
+        guildId,
+      });
+      if (tercera) generaciones += 1;
+      if (tercera && !pareceSinInfo(tercera)) texto = tercera;
     }
   }
 
   if (!texto) {
+    // La búsqueda en paralelo sigue en curso: se espera para no dejar trabajo a medias (el
+    // resultado queda cacheado y el próximo que pregunte lo mismo no vuelve a salir).
+    if (enCurso) await enCurso.catch(() => {});
     statsIA.local += 1;
     return null;
   }
@@ -1367,6 +1427,7 @@ async function conversar(userId, mensaje, contexto = {}) {
       if (accion && (esCanal || objetivo)) {
         guardarTurno(userId, 'user', mensaje);
         guardarTurno(userId, 'model', esCanal ? `[Solicitud de ${accion} en este canal]` : `[Solicitud de ${accion} para ${objetivo}]`);
+        rendimiento.registrar({ perfil, modo, camino: 'ia', ms: Date.now() - t0, generaciones, web: caminoWeb(), pregunta: mensaje });
         return {
           tipo: 'accion',
           accion,
@@ -1389,6 +1450,24 @@ async function conversar(userId, mensaje, contexto = {}) {
   // citan las fuentes al final (salvo que el modelo ya las haya nombrado).
   const salida = conFuentes(texto, resultados);
   if (claveCache) guardarEnCache(claveCache, salida);
+
+  rendimiento.registrar({
+    perfil,
+    modo,
+    camino: 'ia',
+    ms: Date.now() - t0,
+    generaciones,
+    web: caminoWeb(),
+    pregunta: mensaje,
+  });
+
+  // La respuesta final quedó en negativa: es un tema que la base (o la web) no cubrió.
+  // Queda registrado para el staff en /faltantes, con el modo y el perfil para saber
+  // dónde buscar. Es un extra: nunca puede romper una respuesta que ya está lista.
+  if (pareceSinInfo(salida)) {
+    faltantes.registrar(guildId, { pregunta: mensaje, usuario: contexto.usuario, canal: contexto.canal, modo, perfil });
+  }
+
   return { tipo: 'chat', texto: salida };
 }
 

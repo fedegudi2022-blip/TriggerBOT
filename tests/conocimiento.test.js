@@ -8,7 +8,15 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
+// El buscador semántico cachea sus vectores en el directorio de datos: en los tests va a
+// un temporal para no tocar el data/embeddings.json del proyecto. Y la semántica arranca
+// apagada: el bloque que la prueba la prende con un proveedor falso (cero red).
+process.env.TRIGGER_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'tgb-kb-data-'));
+process.env.KB_SEMANTICO = 'off';
+delete process.env.GEMINI_API_KEY;
+
 const conocimiento = require('../src/utils/conocimiento');
+const embeddings = require('../src/utils/embeddings');
 
 const DIRECTORIO = fs.mkdtempSync(path.join(os.tmpdir(), 'tgb-kb-'));
 
@@ -43,7 +51,10 @@ escribir(
 escribir('_borrador.md', '## No debe indexarse\nTexto oculto secreto.\n');
 escribir('README.md', '## Instrucciones de carga\nEsto no es conocimiento.\n');
 
-after(() => fs.rmSync(DIRECTORIO, { recursive: true, force: true }));
+after(() => {
+  fs.rmSync(DIRECTORIO, { recursive: true, force: true });
+  fs.rmSync(process.env.TRIGGER_DATA_DIR, { recursive: true, force: true });
+});
 
 const opciones = { directorio: DIRECTORIO };
 
@@ -221,5 +232,146 @@ describe('conocimiento — contenido real distribuido', () => {
     const [tema] = conocimiento.buscar('se puede usar el micro?', real);
     assert.match(tema.titulo, /no están contemplados/i);
     assert.match(tema.texto, /staff/i);
+  });
+});
+
+// La búsqueda híbrida (palabras + significado) con un proveedor de embeddings falso:
+// acá se prueba la MECÁNICA del ranking (candidatos, señales, umbrales y caída a BM25),
+// que es lo que tiene que estar bien para que la semántica real solo mejore las respuestas.
+// Va al final del archivo a propósito: el último caso deja al proveedor castigado.
+describe('conocimiento — búsqueda semántica (híbrida)', () => {
+  const HIBRIDO = fs.mkdtempSync(path.join(os.tmpdir(), 'tgb-kb-sem-'));
+  const escribirHibrido = (nombre, contenido) => fs.writeFileSync(path.join(HIBRIDO, nombre), contenido, 'utf8');
+
+  escribirHibrido(
+    'moderacion.md',
+    [
+      '# Moderación',
+      '',
+      '## Rol Silenciado',
+      'El rol Silenciado no deja escribir en el servidor.',
+      '',
+      '## Cómo llegan los mensajes',
+      'Los mensajes privados llegan igual con el rol puesto.',
+      '',
+      '## Mix',
+      'Partidas armadas los viernes.',
+      '',
+    ].join('\n')
+  );
+
+  // Prende la semántica con un proveedor falso. `vectorDe(texto, tipo)` decide el vector
+  // (tipo = 'consulta' | 'documento', como en la API real); `contador` cuenta peticiones.
+  function activarSemantica(vectorDe, contador = null) {
+    process.env.KB_SEMANTICO = 'on';
+    process.env.GEMINI_API_KEY = 'clave-de-prueba';
+    embeddings.reiniciar();
+    fs.rmSync(embeddings.ARCHIVO, { force: true }); // caché de disco limpia por test
+    embeddings.usarFetch(async (url, opciones = {}) => {
+      const peticion = JSON.parse(opciones.body);
+      if (contador) contador.llamadas += 1;
+      const tipo = peticion.requests[0]?.taskType === 'RETRIEVAL_QUERY' ? 'consulta' : 'documento';
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ embeddings: peticion.requests.map((r) => ({ values: vectorDe(r.content.parts[0].text, tipo) })) }),
+        text: async () => '',
+      };
+    });
+  }
+
+  after(() => {
+    fs.rmSync(HIBRIDO, { recursive: true, force: true });
+    delete process.env.GEMINI_API_KEY;
+    process.env.KB_SEMANTICO = 'off';
+    embeddings.reiniciar();
+  });
+
+  test('con KB_SEMANTICO=off devuelve exactamente lo mismo que la búsqueda por palabras', async () => {
+    process.env.KB_SEMANTICO = 'off';
+    for (const consulta of ['como hago para entrar a un servidor', 'cuanto cuesta la pizza de muzzarella']) {
+      assert.deepEqual(await conocimiento.buscarHibrido(consulta, opciones), conocimiento.buscar(consulta, opciones), consulta);
+    }
+  });
+
+  test('los umbrales se leen del entorno y un valor inválido se ignora', () => {
+    process.env.KB_SEMANTICO_UMBRAL = '0.6';
+    process.env.KB_SEMANTICO_TITULO = '0.9';
+    assert.deepEqual(conocimiento.umbrales(), { aceptar: 0.6, titulo: 0.9 });
+
+    process.env.KB_SEMANTICO_UMBRAL = 'mucho';
+    process.env.KB_SEMANTICO_TITULO = '1.4'; // fuera de rango
+    assert.deepEqual(conocimiento.umbrales(), { aceptar: conocimiento.UMBRAL_SEMANTICO_POR_DEFECTO, titulo: conocimiento.UMBRAL_TITULO_POR_DEFECTO });
+
+    delete process.env.KB_SEMANTICO_UMBRAL;
+    delete process.env.KB_SEMANTICO_TITULO;
+  });
+
+  test('encuentra por significado una sección que las palabras no encuentran', async () => {
+    // La pregunta no comparte ni una palabra con la base: solo el significado del eje 0.
+    activarSemantica((texto) => {
+      if (/hostig|silenc/i.test(texto)) return [1, 0, 0, 0];
+      if (/mensaje|privado/i.test(texto)) return [0, 1, 0, 0];
+      return [0, 0, 1, 0];
+    });
+
+    const consulta = 'me hostigan zzzq';
+    assert.deepEqual(conocimiento.buscar(consulta, { directorio: HIBRIDO }), [], 'sin coincidencia por palabras (es el caso que la semántica existe para resolver)');
+
+    const fragmentos = await conocimiento.buscarHibrido(consulta, { directorio: HIBRIDO, forzar: true });
+
+    assert.equal(fragmentos.length, 1, 'solo la sección de ese significado');
+    assert.equal(fragmentos[0].titulo, 'Rol Silenciado');
+    assert.equal(fragmentos[0].origen, 'semantico');
+    assert.equal(fragmentos[0].similitud, 1);
+    assert.equal(fragmentos[0].enTitulo, true, 'una similitud alta cuenta como tema cargado');
+  });
+
+  test('una sección que las palabras ya reconocieron en el título no gasta ninguna llamada', async () => {
+    const contador = { llamadas: 0 };
+    activarSemantica(() => [1, 0, 0, 0], contador);
+
+    // Primer llamado: calcula los vectores de la base (aunque no los necesite el ranking).
+    await conocimiento.buscarHibrido('hola', { directorio: DIRECTORIO, forzar: true });
+    assert.ok(contador.llamadas > 0, 'la base se vectoriza de entrada');
+
+    contador.llamadas = 0;
+    const fragmentos = await conocimiento.buscarHibrido('me pueden banear para siempre?', opciones);
+    assert.equal(contador.llamadas, 0, 'el camino rápido no paga red');
+    assert.equal(fragmentos[0].titulo, 'Silencio y baneo');
+    assert.equal(fragmentos[0].origen, 'bm25');
+  });
+
+  test('un acierto parcial queda afuera por el umbral (y con el umbral bajo entra)', async () => {
+    // Todos los vectores de la base iguales y la consulta a 45°: cos 0,707.
+    activarSemantica((texto, tipo) => (tipo === 'consulta' ? [1, 0, 0, 0] : [1, 1, 0, 0]));
+
+    const alto = await conocimiento.buscarHibrido('privados', { directorio: HIBRIDO, forzar: true });
+    assert.ok(alto.length, 'la coincidencia por palabras responde igual');
+    assert.equal(alto[0].origen, 'bm25', '0,707 no llega al umbral de aceptación');
+    assert.equal(alto[0].enTitulo, false);
+
+    process.env.KB_SEMANTICO_UMBRAL = '0.5';
+    const bajo = await conocimiento.buscarHibrido('privados', { directorio: HIBRIDO });
+    assert.equal(bajo[0].origen, 'bm25+semantico', 'el umbral configurable decide');
+    assert.equal(bajo[0].enTitulo, false, 'pero no alcanza para contar como tema cargado');
+    delete process.env.KB_SEMANTICO_UMBRAL;
+  });
+
+  test('si el proveedor falla, la búsqueda sigue por palabras y el estado lo reporta', async () => {
+    process.env.KB_SEMANTICO = 'on';
+    process.env.GEMINI_API_KEY = 'clave-de-prueba';
+    embeddings.reiniciar();
+    fs.rmSync(embeddings.ARCHIVO, { force: true });
+    embeddings.usarFetch(async () => ({ ok: false, status: 429, json: async () => ({}), text: async () => '' }));
+
+    const fragmentos = await conocimiento.buscarHibrido('privados', { directorio: HIBRIDO, forzar: true });
+    assert.ok(fragmentos.length, 'BM25 responde igual (nunca se queda sin búsqueda)');
+    assert.equal(fragmentos[0].origen, 'bm25');
+
+    const estado = conocimiento.estadisticas(HIBRIDO).semantico;
+    assert.equal(estado.estado, 'no-disponible');
+    assert.match(estado.motivo, /en pausa/);
+    assert.equal(conocimiento.estadisticas(HIBRIDO).secciones, 3, 'el índice sigue entero');
   });
 });

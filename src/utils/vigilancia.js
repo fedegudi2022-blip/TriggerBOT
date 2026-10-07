@@ -115,6 +115,23 @@ function revisarConocimiento(directorio) {
         ),
       ];
     }
+
+    // La búsqueda semántica caída no rompe nada (BM25 sigue respondiendo), pero conviene
+    // saberlo: la base está buscando solo por palabras, que es justo lo que las preguntas
+    // formuladas distinto no encuentran. Es un aviso, no un error: el bot sigue andando.
+    // "sin clave" y "KB_SEMANTICO=off" son configuraciones válidas y no generan ruido.
+    const sem = stats.semantico;
+    if (sem.estado === 'fallo' || (sem.estado === 'no-disponible' && /^en pausa/.test(sem.motivo ?? ''))) {
+      return [
+        problema(
+          'conocimiento-semantico',
+          'aviso',
+          'La búsqueda semántica de la base está caída',
+          `La base contesta solo por palabras: ${sem.motivo ?? 'el proveedor de embeddings falló'}.`,
+          'Revisá la clave de Gemini en https://aistudio.google.com/apikey (se usa solo para los embeddings). Mientras tanto el buscador por palabras sigue funcionando.'
+        ),
+      ];
+    }
   } catch (error) {
     return [
       problema(

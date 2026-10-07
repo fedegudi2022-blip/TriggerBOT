@@ -6,10 +6,17 @@
 // responde solo con lo escrito por el staff, y cuando no encuentra nada lo dice y
 // deriva al staff (ver utils/ia.js).
 //
-// Cómo busca: índice invertido por secciones (cada "## Título" es una sección) con
-// puntaje BM25 — el algoritmo clásico de búsqueda, sin dependencias. Los términos se
-// normalizan (sin tildes, sin mayúsculas) y se reducen a una raíz liviana para que
-// "banear", "baneo" y "baneado" se encuentren entre sí.
+// Cómo busca: dos señales sobre el mismo índice de secciones (cada "## Título" es una
+// sección).
+//   1. **BM25** por palabras —el algoritmo clásico, sin dependencias—: los términos se
+//      normalizan (sin tildes, sin mayúsculas) y se reducen a una raíz liviana para que
+//      "banear", "baneo" y "baneado" se encuentren entre sí.
+//   2. **Búsqueda semántica** (utils/embeddings.js, opcional): vectores de la pregunta y
+//      de las secciones comparados por significado, para los casos en que las palabras
+//      no alcanzan ("cómo hago para que no me lleguen mensajes" → "Rol Silenciado").
+//      Corre en `buscarHibrido()`: si BM25 ya reconoció el tema por una palabra del
+//      título no se paga nada; si no, se combinan las dos señales. Sin clave de Gemini
+//      (o con KB_SEMANTICO=off) todo sigue exactamente como antes.
 //
 // Recarga: los archivos se releen solos como máximo una vez por minuto (TTL), así el
 // staff puede editar el .md y probar sin reiniciar el bot.
@@ -18,6 +25,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const embeddings = require('./embeddings');
 
 const DIR_POR_DEFECTO = path.join(__dirname, '..', '..', 'docs', 'conocimiento');
 const RECARGA_MS = 60 * 1000;
@@ -26,6 +34,35 @@ const MINIMO_POR_DEFECTO = 1.2; // se pondera por 0.25 como piso del corte (ver 
 const MAX_TROZO = 1200; // caracteres por sección dentro del prompt
 const K1 = 1.5; // saturación de la frecuencia de término (BM25)
 const B = 0.75; // normalización por largo del documento (BM25)
+
+// ---------- Búsqueda semántica: parámetros ----------
+// Cuántas secciones puede aportar cada señal al ranking híbrido (el resultado final son
+// `limite`, 3 por defecto): más candidatos = mejor reordenamiento sin costo extra.
+const CANDIDATOS_BM25 = 12;
+const CANDIDATOS_SEMANTICOS = 12;
+// Similitud mínima para aceptar una sección que BM25 no encontró. Sin clave de Gemini no
+// se usa: estos números se pueden afinar con KB_SEMANTICO_UMBRAL y KB_SEMANTICO_TITULO
+// mirando la decisión real que muestra `/buscar` (staff).
+const UMBRAL_SEMANTICO_POR_DEFECTO = 0.72;
+// Umbral más alto para la señal "el tema está cargado" (la que decide si la base de la
+// comunidad viaja al prompt cuando la pregunta parece de cultura general): un falso
+// positivo ahí arrastraría reglas del server a una pregunta del mundo.
+const UMBRAL_TITULO_POR_DEFECTO = 0.8;
+// Si el cálculo de vectores falla, no se reintenta en cada pregunta: cada reintento
+// costaba un viaje de red fallido.
+const REINTENTO_SEMANTICO_MS = 5 * 60 * 1000;
+
+function umbralDeEnv(nombre, porDefecto) {
+  const valor = Number(process.env[nombre]);
+  return Number.isFinite(valor) && valor > 0 && valor <= 1 ? valor : porDefecto;
+}
+
+function umbrales() {
+  return {
+    aceptar: umbralDeEnv('KB_SEMANTICO_UMBRAL', UMBRAL_SEMANTICO_POR_DEFECTO),
+    titulo: umbralDeEnv('KB_SEMANTICO_TITULO', UMBRAL_TITULO_POR_DEFECTO),
+  };
+}
 
 // Palabras vacías: no aportan a la búsqueda y ensucian el puntaje.
 const STOPWORDS = new Set([
@@ -205,6 +242,7 @@ function puntuar(consulta, indice) {
   return indice.secciones
     .map((s, i) => ({
       ...s,
+      pos: i, // posición en el índice: la necesita el ranking híbrido (buscarHibrido)
       puntaje: puntajes[i],
       coincidencias: coincidencias[i],
       // ¿La coincidencia tocó alguna palabra CON CONTENIDO del título de la sección? Es
@@ -220,7 +258,8 @@ function puntuar(consulta, indice) {
 }
 
 // ---------- Cache con TTL (recarga sola, sin reiniciar) ----------
-const cache = new Map(); // directorio → { indice, archivos, cargado }
+const cache = new Map(); // directorio → { indice, cargado }
+let anuncioSemantico = null; // evita repetir el log en cada recarga del índice
 
 function obtenerIndice(directorio, forzar = false) {
   const guardado = cache.get(directorio);
@@ -232,35 +271,192 @@ function obtenerIndice(directorio, forzar = false) {
   if (secciones.length && !guardado) {
     console.log(`[TriggerBOT] IA: base de conocimiento con ${secciones.length} secciones (${directorio})`);
   }
+  // Los vectores se calculan en segundo plano: la primera pregunta que necesite la
+  // semántica ya los encuentra listos. Sin clave de Gemini (o con KB_SEMANTICO=off) no
+  // hace nada y la búsqueda sigue con BM25, exactamente como antes.
+  asegurarVectores(indice).catch(() => {});
   return indice;
 }
 
 // ---------- API ----------
-// Devuelve las mejores secciones para la consulta (array vacío = no hay nada cargado
-// sobre el tema). `directorio` y `forzar` existen para los tests.
+// Arma el fragmento que se devuelve (y que después entra al prompt). `origen` y
+// `similitud` dejan auditables las dos señales: /buscar los muestra al staff.
+function fragmentoDe(s, extra = {}) {
+  return {
+    archivo: s.archivo,
+    titulo: s.titulo,
+    texto: s.texto.length > MAX_TROZO ? `${s.texto.slice(0, MAX_TROZO).trimEnd()}…` : s.texto,
+    puntaje: Number(Number(s.puntaje || 0).toFixed(2)),
+    coincidencias: s.coincidencias ?? [],
+    enTitulo: extra.enTitulo ?? Boolean(s.enTitulo),
+    origen: extra.origen ?? 'bm25',
+    similitud: extra.similitud ?? null,
+  };
+}
+
+// Corte del ranking de BM25: relativo al mejor puntaje (más un piso chico), porque el
+// puntaje depende del tamaño de la base (con pocos archivos los IDF son chicos y un
+// umbral fijo descartaría todo).
+function corteDe(puntuados, minimo) {
+  return Math.max(minimo * 0.25, (puntuados[0]?.puntaje ?? 0) * 0.45);
+}
+
+function armar(puntuados, { limite, minimo }) {
+  if (!puntuados.length) return [];
+  const corte = corteDe(puntuados, minimo);
+  return puntuados
+    .filter((s) => s.puntaje >= corte)
+    .slice(0, limite)
+    .map((s) => fragmentoDe(s));
+}
+
+// Búsqueda clásica (BM25), síncrona: es el camino rápido de buscarHibrido y la que usan
+// los tests. Array vacío = no hay nada cargado sobre el tema. `directorio` y `forzar`
+// existen para los tests.
 function buscar(consulta, { limite = LIMITE_POR_DEFECTO, minimo = MINIMO_POR_DEFECTO, directorio = DIR_POR_DEFECTO, forzar = false } = {}) {
+  const indice = obtenerIndice(directorio, forzar);
+  if (!indice.secciones.length) return [];
+  return armar(puntuar(consulta, indice), { limite, minimo });
+}
+
+// Prepara (o reutiliza de la caché en disco) los vectores de las secciones. Idempotente:
+// la llama la recarga del índice en segundo plano y buscarHibrido como red de seguridad.
+// Devuelve true cuando los vectores quedaron listos.
+//
+// Si el cálculo ya está en curso, se ESPERA ese mismo trabajo en vez de devolver false:
+// el que dispara la recarga lo hace de fondo (fire-and-forget) justo cuando llega una
+// pregunta, y antes esa primera pregunta caía a la búsqueda por palabras sin necesidad.
+async function asegurarVectores(indice) {
+  if (indice.vectores) return true;
+  if (!embeddings.disponible()) return false;
+  if (indice.semanticoEnCurso) return indice.semanticoEnCurso;
+  if (indice.semanticoFallidoEn && Date.now() - indice.semanticoFallidoEn < REINTENTO_SEMANTICO_MS) return false;
+
+  indice.semanticoEnCurso = (async () => {
+    try {
+      const textos = indice.secciones.map((s) => `${s.titulo}\n${s.texto}`);
+      const vectores = await embeddings.vectorizar(textos, { tipo: 'documento' });
+      if (vectores && vectores.length === textos.length && vectores.every((v) => Array.isArray(v))) {
+        indice.vectores = vectores;
+        delete indice.semanticoFallidoEn;
+        // Un solo aviso por cantidad de secciones: el índice se reconstruye cada minuto
+        // (TTL) y los vectores salen de la caché, así que no hay que repetirlo.
+        const firma = `${indice.secciones.length}:${vectores.length}`;
+        if (anuncioSemantico !== firma) {
+          anuncioSemantico = firma;
+          console.log(`[TriggerBOT] IA: búsqueda semántica lista (${vectores.length} secciones · ${embeddings.estado().modelo})`);
+        }
+      } else {
+        indice.semanticoFallidoEn = Date.now();
+      }
+    } catch (error) {
+      // Nunca puede romper una búsqueda: si la semántica falla, queda BM25.
+      indice.semanticoFallidoEn = Date.now();
+      console.warn(`[TriggerBOT] IA: la búsqueda semántica falló (${error.message}); sigo con BM25.`);
+    } finally {
+      indice.semanticoEnCurso = null;
+    }
+    return Boolean(indice.vectores);
+  })();
+
+  return indice.semanticoEnCurso;
+}
+
+// Búsqueda híbrida (la que usa la charla): BM25 siempre, semántica cuando aporta. Es
+// async porque el vector de la pregunta es una llamada de red — pero el camino común
+// (BM25 con coincidencia en el título) no paga nada.
+async function buscarHibrido(consulta, opciones = {}) {
+  const { limite = LIMITE_POR_DEFECTO, minimo = MINIMO_POR_DEFECTO, directorio = DIR_POR_DEFECTO, forzar = false } = opciones;
   const indice = obtenerIndice(directorio, forzar);
   if (!indice.secciones.length) return [];
 
   const puntuados = puntuar(consulta, indice);
-  if (!puntuados.length) return [];
+  const clasicos = armar(puntuados, { limite, minimo });
+  // La base reconoció el tema con una palabra CON CONTENIDO del título: es la señal
+  // fuerte y no hay nada que la semántica pueda mejorar. No se gasta una sola llamada.
+  if (clasicos.length && clasicos[0].enTitulo) return clasicos;
 
-  // Umbral relativo al mejor puntaje (más un piso chico): así no se cuelan secciones
-  // apenas relacionadas cuando hay una respuesta clarísima. No se usa un mínimo
-  // absoluto grande porque el puntaje de BM25 depende del tamaño de la base (con
-  // pocos archivos los IDF son chicos y un umbral fijo descartaría todo).
-  const corte = Math.max(minimo * 0.25, puntuados[0].puntaje * 0.45);
-  return puntuados
-    .filter((s) => s.puntaje >= corte)
-    .slice(0, limite)
-    .map((s) => ({
-      archivo: s.archivo,
-      titulo: s.titulo,
-      texto: s.texto.length > MAX_TROZO ? `${s.texto.slice(0, MAX_TROZO).trimEnd()}…` : s.texto,
-      puntaje: Number(s.puntaje.toFixed(2)),
-      coincidencias: s.coincidencias,
-      enTitulo: s.enTitulo,
-    }));
+  const listo = await asegurarVectores(indice);
+  if (!listo) return clasicos;
+
+  const [vectorConsulta] = (await embeddings.vectorizar([consulta], { tipo: 'consulta' })) || [];
+  if (!vectorConsulta) return clasicos;
+
+  const { aceptar, titulo } = umbrales();
+  const cosenos = indice.secciones.map((_, i) => embeddings.similitud(vectorConsulta, indice.vectores[i]));
+
+  // Candidatos: los que BM25 encontró (los mejores) más los más parecidos por coseno.
+  const candidatos = new Map(); // pos → { s, bm25, cos }
+  const corte = puntuados.length ? corteDe(puntuados, minimo) : Infinity;
+  for (const s of puntuados.slice(0, CANDIDATOS_BM25)) {
+    if (s.puntaje < corte) continue;
+    candidatos.set(s.pos, { s, bm25: s.puntaje, cos: cosenos[s.pos] ?? 0 });
+  }
+  cosenos
+    .map((cos, pos) => ({ pos, cos }))
+    .sort((a, b) => b.cos - a.cos)
+    .slice(0, CANDIDATOS_SEMANTICOS)
+    .forEach(({ pos, cos }) => {
+      if (cos < aceptar || candidatos.has(pos)) return;
+      candidatos.set(pos, { s: { ...indice.secciones[pos], puntaje: 0, coincidencias: [], enTitulo: false }, bm25: 0, cos });
+    });
+  if (!candidatos.size) return clasicos;
+
+  // Cada señal se normaliza a [0,1] dentro del conjunto (comparar puntajes BM25 crudos
+  // contra cosenos no tiene sentido: son escalas distintas) y se combinan. El significado
+  // pesa un poco más: es la señal nueva, la que existe para los casos que las palabras no
+  // alcanzan. Sin ninguna coincidencia de palabras, decide el coseno solo.
+  const valoresBm25 = [...candidatos.values()].map((c) => c.bm25);
+  const valoresCoseno = [...candidatos.values()].map((c) => c.cos);
+  const normalizar = (valor, valores) => {
+    const min = Math.min(...valores);
+    const max = Math.max(...valores);
+    if (max === min) return max > 0 ? 1 : 0;
+    return (valor - min) / (max - min);
+  };
+  const hayBm25 = valoresBm25.some((v) => v > 0);
+
+  const ordenados = [...candidatos.values()]
+    .map((c) => ({
+      ...c,
+      hibrido: hayBm25
+        ? 0.4 * normalizar(c.bm25, valoresBm25) + 0.6 * normalizar(c.cos, valoresCoseno)
+        : normalizar(c.cos, valoresCoseno),
+    }))
+    .sort((a, b) => b.hibrido - a.hibrido);
+
+  const elegidos = ordenados.filter((c) => c.bm25 > 0 || c.cos >= aceptar).slice(0, limite);
+  if (!elegidos.length) return clasicos;
+
+  return elegidos.map((c) =>
+    fragmentoDe(c.s, {
+      origen: c.bm25 > 0 && c.cos >= aceptar ? 'bm25+semantico' : c.bm25 > 0 ? 'bm25' : 'semantico',
+      similitud: Number(c.cos.toFixed(3)),
+      // Un coseno muy alto también cuenta como "el tema está cargado" (lo usa utils/ia.js
+      // para decidir si inyecta la base de la comunidad): el umbral es más alto que el de
+      // aceptación para no arrastrar preguntas del mundo a las reglas del server.
+      enTitulo: Boolean(c.s.enTitulo) || c.cos >= titulo,
+    })
+  );
+}
+
+// Estado de la parte semántica (sin llamadas a la red): lo usan /diag, la vigilancia y
+// /buscar para saber si la base está buscando solo por palabras.
+function estadoSemantico(indice) {
+  const proveedor = embeddings.estado();
+  let estado = 'pendiente';
+  if (!proveedor.habilitada) estado = 'deshabilitada';
+  else if (!proveedor.disponible) estado = 'no-disponible';
+  else if (indice?.vectores) estado = 'listo';
+  else if (indice?.semanticoEnCurso) estado = 'calculando';
+  else if (indice?.semanticoFallidoEn) estado = 'fallo';
+  return {
+    estado,
+    modelo: proveedor.modelo,
+    vectores: indice?.vectores?.length ?? 0,
+    secciones: indice?.secciones?.length ?? 0,
+    motivo: proveedor.motivo,
+  };
 }
 
 // Formatea los fragmentos para meterlos en el prompt de la IA.
@@ -291,15 +487,21 @@ function estadisticas(directorio = DIR_POR_DEFECTO) {
     archivos: [...new Set(secciones.map((s) => s.archivo))].sort(),
     secciones: secciones.length,
     cargado: guardado?.cargado ?? null,
+    // Estado de la búsqueda semántica (no llama a la red): /diag y la vigilancia lo usan
+    // para saber si la base está buscando solo por palabras.
+    semantico: estadoSemantico(indice),
   };
 }
 
 module.exports = {
   buscar,
+  buscarHibrido,
   contextoPara,
   formatear,
   recargar,
   estadisticas,
+  estadoSemantico,
+  umbrales,
   tokenizar,
   normalizar,
   PALABRAS_BLANDAS,
@@ -308,4 +510,8 @@ module.exports = {
   MINIMO_POR_DEFECTO,
   LIMITE_POR_DEFECTO,
   MAX_TROZO,
+  CANDIDATOS_BM25,
+  CANDIDATOS_SEMANTICOS,
+  UMBRAL_SEMANTICO_POR_DEFECTO,
+  UMBRAL_TITULO_POR_DEFECTO,
 };

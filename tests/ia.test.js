@@ -12,12 +12,18 @@ const path = require('node:path');
 process.env.TRIGGER_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'tgb-ia-'));
 process.env.GROQ_API_KEY = 'clave-de-prueba';
 process.env.GEMINI_API_KEY = 'clave-de-prueba';
+// La búsqueda semántica de la base se apaga acá: sus tests viven en conocimiento.test.js
+// y embeddings.test.js. Sin esto, con la clave de prueba puesta, cada charla intentaría
+// vectorizar contra la red real.
+process.env.KB_SEMANTICO = 'off';
 
 const ia = require('../src/utils/ia');
 const contexto = require('../src/utils/contexto');
 const conocimiento = require('../src/utils/conocimiento');
 const busqueda = require('../src/utils/web');
 const presupuesto = require('../src/utils/presupuesto');
+const faltantes = require('../src/utils/faltantes');
+const rendimiento = require('../src/utils/rendimiento');
 const niveles = require('../src/niveles');
 const store = require('../src/store');
 const monitoreo = require('../src/utils/monitoreo');
@@ -478,6 +484,46 @@ describe('base de conocimiento integrada en el prompt', () => {
     assert.match(sistema, /sin autorización previa del staff/i);
   });
 
+  test('la búsqueda semántica mete la base al prompt aunque las palabras no coincidan', async () => {
+    const embeddings = require('../src/utils/embeddings');
+    const contador = { llamadas: 0 };
+    const consulta = 'zzzq qqqw?';
+
+    // La pregunta no comparte ninguna palabra con la base: es exactamente el caso que la
+    // búsqueda por significado existe para resolver.
+    assert.deepEqual(conocimiento.buscar(consulta), [], 'sin coincidencia de palabras');
+    assert.equal(perfilDe(consulta), 'consulta', 'una pregunta de verdad, no un saludo');
+
+    process.env.KB_SEMANTICO = 'on';
+    embeddings.reiniciar();
+    fs.rmSync(embeddings.ARCHIVO, { force: true });
+    embeddings.usarFetch(async (url, opciones = {}) => {
+      const peticion = JSON.parse(opciones.body);
+      contador.llamadas += 1;
+      // Todos los textos al mismo vector: toda sección es "parecida", así que la base
+      // tiene que entrar al prompt por significado y no por palabras.
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ embeddings: peticion.requests.map(() => ({ values: [1, 0, 0, 0] })) }),
+        text: async () => '',
+      };
+    });
+
+    try {
+      instalarFetch({ chat: () => ({ texto: 'Hablalo con el staff.' }) });
+      await conversar('u-semantica', consulta, { usuario: 'Fede' });
+
+      const sistema = generacionesDe('groq')[0].cuerpo.messages[0].content;
+      assert.ok(contador.llamadas > 0, 'se pidieron los vectores (la semántica corre de verdad)');
+      assert.match(sistema, /^### /m, 'la base del server viaja al prompt por significado');
+      assert.doesNotMatch(sistema, /la base del servidor no aplica/i, 'la pregunta quedó del lado de la comunidad');
+    } finally {
+      process.env.KB_SEMANTICO = 'off';
+      embeddings.reiniciar();
+    }
+  });
+
   test('sin coincidencias el prompt lo dice (el bot no debe inventar)', () => {
     const sistema = sistemaCompleto({
       perfil: 'consulta',
@@ -654,6 +700,61 @@ describe('conocimiento general y búsqueda web', () => {
     assert.match(respuesta.texto, /^Busqué esto/);
     assert.match(respuesta.texto, /Lionel Messi/);
     assert.match(respuesta.texto, /es\.wikipedia\.org/, 'el dato va con su fuente');
+  });
+
+  test('la búsqueda arranca en paralelo y se descarta si la IA ya sabía la respuesta', async () => {
+    // La reserva se pide JUNTO con la generación, pero no se espera: una respuesta segura
+    // no paga latencia ni mete la web en el prompt.
+    instalarFetch({ chat: () => ({ texto: 'Lionel Messi es un futbolista argentino.' }) });
+    conWikipedia();
+    const webAntes = ia.getStatsIA().web;
+
+    const respuesta = await conversar('u-web-paralelo', 'quien es lionel messi', { usuario: 'Fede' });
+
+    assert.equal(respuesta.texto, 'Lionel Messi es un futbolista argentino.');
+    assert.equal(generacionesDe('groq').length, 1, 'sin segunda pasada: la primera alcanzó');
+    assert.doesNotMatch(generacionesDe('groq')[0].cuerpo.messages[0].content, /--- RESULTADOS DE BÚSQUEDA WEB/);
+    assert.equal(ia.getStatsIA().web, webAntes, 'una búsqueda que no terminó en la respuesta no se cuenta');
+  });
+
+  test('si el dato perecedero se buscó ANTES y la IA se negó igual, se usan esos resultados', async () => {
+    // El caso que se perdía: la búsqueda forzada ya trajo los datos, la IA contestó
+    // "no lo tengo cargado" y el bot le devolvía la negativa con los resultados en la mano.
+    instalarFetch({
+      chat: (cuerpo, n) => (n === 1 ? { texto: 'No tengo esa información.' } : { texto: 'Messi nació el 24 de junio de 1987.' }),
+    });
+    conWikipedia();
+
+    const respuesta = await conversar('u-web-forzada-negativa', 'que edad tiene lionel messi hoy', { usuario: 'Fede' });
+
+    assert.match(respuesta.texto, /24 de junio de 1987/);
+    assert.doesNotMatch(respuesta.texto, /no tengo esa informaci[oó]n/i);
+    assert.equal(generacionesDe('groq').length, 2, 'se reescribe la respuesta con los datos ya buscados');
+    assert.match(generacionesDe('groq')[1].cuerpo.messages[0].content, /RESULTADOS DE BÚSQUEDA WEB/);
+  });
+
+  test('sin resultados de búsqueda se le pide una respuesta sin negarse', async () => {
+    // Sin red (el beforeEach deja el fetch sin salida): la única salida es que el modelo
+    // conteste con lo que sabe. Antes la negativa se enviaba tal cual.
+    instalarFetch({
+      chat: (cuerpo, n) => (n === 1 ? { texto: 'No tengo esa información.' } : { texto: 'Nació en Rosario, en el año 1987.' }),
+    });
+
+    const respuesta = await conversar('u-sin-datos', 'quien es lionel messi', { usuario: 'Fede' });
+
+    assert.equal(respuesta.texto, 'Nació en Rosario, en el año 1987.');
+    const generaciones = generacionesDe('groq');
+    assert.equal(generaciones.length, 2);
+    assert.match(generaciones[1].cuerpo.messages[0].content, /Está prohibido volver a negarte/);
+  });
+
+  test('si el modelo se niega las dos veces y no hay datos, la negativa se mantiene (sin bucle)', async () => {
+    instalarFetch({ chat: () => ({ texto: 'No tengo esa información.' }) });
+
+    const respuesta = await conversar('u-sin-datos-necio', 'quien es lionel messi', { usuario: 'Fede' });
+
+    assert.equal(respuesta.texto, 'No tengo esa información.');
+    assert.equal(generacionesDe('groq').length, 2, 'una sola vuelta extra, nunca más');
   });
 
   test('una pregunta ambigua del mundo no arrastra las reglas del servidor al prompt', async () => {
@@ -1126,5 +1227,107 @@ describe('proveedores alternativos (Cerebras, OpenRouter, Mistral)', () => {
     } finally {
       restaurar();
     }
+  });
+});
+
+// ---------- Lo que el bot no supo y cuánto tardó ----------
+// Los dos sistemas que hacen visible el trabajo del motor y no solo el de los proveedores:
+// utils/faltantes.js (qué preguntaron y no está, para cargar la base) y
+// utils/rendimiento.js (por qué tarda cada tipo de respuesta, para /latencias).
+describe('registro de negativas y latencia por perfil', () => {
+  const GUILD = 'g-calidad-ia';
+
+  // Wikipedia responde; el resto de las fuentes queda caído (es lo normal: alcanza con
+  // que una traiga el dato). El caso de Messi es el del rescate con web de la vida real.
+  const WIKI = {
+    query: {
+      pages: {
+        1: {
+          index: 1,
+          title: 'Lionel Messi',
+          extract: 'Lionel Andrés Messi Cuccittini (Rosario, 24 de junio de 1987) es un futbolista argentino.',
+          fullurl: 'https://es.wikipedia.org/wiki/Lionel_Messi',
+        },
+      },
+    },
+  };
+
+  function conWikipedia() {
+    busqueda.reiniciar();
+    busqueda.usarFetch(async (url) =>
+      String(url).includes('wikipedia.org') ? { ok: true, status: 200, json: async () => WIKI, text: async () => '' } : SIN_RED()
+    );
+  }
+
+  beforeEach(() => {
+    // Los tests anteriores dejan proveedores en pausa (la cadena alternativa se prueba con
+    // Groq y Gemini apartados): sin esto acá no quedaría ninguna IA que responda.
+    ia._internos.proveedoresPausados.clear();
+    ia._internos.modelosCaidos.clear();
+    presupuesto.reiniciar(GUILD);
+    faltantes.limpiar(GUILD);
+  });
+
+  test('una negativa final queda registrada para el staff (con modo, autor y canal)', async () => {
+    instalarFetch({ chat: () => ({ texto: 'No tengo esa información.' }) });
+
+    await conversar('u-negativa', 'que reglas tiene el server', { usuario: 'Fede', canal: 'general', guild: guildFake(GUILD) });
+
+    const temas = faltantes.listar(GUILD);
+    assert.equal(temas.length, 1, 'la pregunta que quedó sin respuesta tiene que estar anotada');
+    assert.match(temas[0].pregunta, /reglas tiene el server/);
+    assert.equal(temas[0].modo, 'comunidad');
+    assert.equal(temas[0].canal, 'general');
+    assert.deepEqual(temas[0].autores, ['Fede']);
+  });
+
+  test('una respuesta que se resolvió con datos no ensucia la lista', async () => {
+    instalarFetch({
+      chat: (cuerpo, n) => (n === 1 ? { texto: 'No tengo esa información.' } : { texto: 'Nació el 24 de junio de 1987.' }),
+    });
+    conWikipedia();
+    faltantes.limpiar(GUILD);
+
+    const respuesta = await conversar('u-negativa-resuelta', 'quien es lionel messi', { usuario: 'Fede', guild: guildFake(GUILD) });
+
+    assert.match(respuesta.texto, /24 de junio de 1987/);
+    assert.equal(faltantes.total(GUILD), 0, 'se respondió: no hay nada para cargar en la base');
+  });
+
+  test('la latencia queda medida con el perfil y el camino que la resolvió', async () => {
+    instalarFetch({ chat: () => ({ texto: 'Respuesta normal.' }) });
+    rendimiento.reiniciar();
+
+    await conversar('u-medido-1', 'que reglas tiene el server', { usuario: 'Fede', guild: guildFake(GUILD) });
+    await conversar('u-medido-2', 'cuánto es 18% de 3800', { usuario: 'Fede', guild: guildFake(GUILD) });
+
+    const r = rendimiento.resumen();
+    assert.equal(r.total, 2, 'los dos turnos dejan muestra');
+    const consulta = r.perfiles.find((p) => p.perfil === 'consulta');
+    assert.equal(consulta.n, 2);
+    assert.equal(consulta.caminos.ia, 1);
+    assert.equal(consulta.caminos.calculo, 1);
+    assert.ok(Number.isFinite(consulta.p50) && consulta.p50 >= 0);
+    assert.ok(
+      r.causas.some((c) => c.id === 'instantaneas'),
+      'el cálculo exacto figura entre las respuestas instantáneas'
+    );
+  });
+
+  test('el rescate con web deja su causa: dos generaciones y la búsqueda usada', async () => {
+    instalarFetch({
+      chat: (cuerpo, n) => (n === 1 ? { texto: 'No tengo esa información.' } : { texto: 'Nació el 24 de junio de 1987.' }),
+    });
+    conWikipedia();
+    rendimiento.reiniciar();
+
+    await conversar('u-medido-rescate', 'quien es lionel messi', { usuario: 'Fede', guild: guildFake(GUILD) });
+
+    const r = rendimiento.resumen();
+    const rescate = r.causas.find((c) => c.id === 'rescate');
+    assert.ok(rescate, 'la demora del rescate tiene que estar explicada');
+    assert.equal(rescate.n, 1);
+    assert.equal(r.lentas[0].generaciones, 2);
+    assert.match(rendimiento.causaDe(r.lentas[0]), /rescate con web/);
   });
 });

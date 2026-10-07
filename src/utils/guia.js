@@ -86,6 +86,11 @@ const CATEGORIAS_STAFF = [
     nota: 'Los dos salen a internet a propósito: el diagnóstico prueba la salida del host.',
   },
   {
+    nombre: 'Calidad de la IA',
+    comandos: ['faltantes', 'latencias'],
+    nota: 'Qué preguntas quedaron sin respuesta (para cargar en la base) y cuánto tardan las respuestas, por perfil y por causa.',
+  },
+  {
     nombre: 'Mensajes internos',
     comandos: ['embed', 'plantillas'],
   },

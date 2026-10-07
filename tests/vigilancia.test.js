@@ -11,6 +11,10 @@ const os = require('node:os');
 const path = require('node:path');
 
 process.env.TRIGGER_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'tgb-vig-'));
+// La búsqueda semántica se apaga por defecto: sin esto, un test que configure una clave
+// de Gemini dispararía vectores reales contra la red. El test que la prueba la prende con
+// un proveedor falso.
+process.env.KB_SEMANTICO = 'off';
 
 const vigilancia = require('../src/utils/vigilancia');
 const store = require('../src/store');
@@ -135,6 +139,36 @@ describe('chequeos de la vigilancia', () => {
     assert.equal(problemas[0].nivel, 'error');
     // Y con la base real que se distribuye no hay nada que avisar.
     assert.deepEqual(vigilancia.revisarConocimiento(), []);
+  });
+
+  test('la búsqueda semántica caída se avisa, sin tratarla como un error', async () => {
+    const embeddings = require('../src/utils/embeddings');
+    const conocimiento = require('../src/utils/conocimiento');
+    process.env.KB_SEMANTICO = 'on';
+    process.env.GEMINI_API_KEY = 'clave-de-prueba';
+    embeddings.reiniciar();
+    fs.rmSync(embeddings.ARCHIVO, { force: true });
+    embeddings.usarFetch(async () => ({ ok: false, status: 429, json: async () => ({}), text: async () => '' }));
+
+    try {
+      // El índice se rearma y, de fondo, el proveedor de embeddings contesta 429.
+      conocimiento.recargar();
+      vigilancia.revisarConocimiento();
+      await new Promise((resolve) => setImmediate(resolve));
+
+      const problemas = vigilancia.revisarConocimiento();
+      const semantico = problemas.find((p) => p.id === 'conocimiento-semantico');
+      assert.ok(semantico, 'debería avisar que la base está buscando solo por palabras');
+      assert.equal(semantico.nivel, 'aviso', 'no es un error: BM25 sigue respondiendo');
+      assert.match(semantico.detalle, /en pausa|cuota agotada/);
+      assert.match(semantico.accion, /aistudio/);
+      assert.ok(conocimiento.estadisticas().secciones > 0, 'el índice sigue entero');
+    } finally {
+      process.env.KB_SEMANTICO = 'off';
+      delete process.env.GEMINI_API_KEY;
+      embeddings.reiniciar();
+      conocimiento.recargar();
+    }
   });
 
   test('un archivo que no se pudo cargar se reporta con el motivo', () => {
@@ -480,6 +514,8 @@ describe('/diag', () => {
     assert.match(nombres, /voz/i);
     assert.match(nombres, /Escrituras y proceso/);
     assert.match(nombres, /Búsqueda web/);
+    assert.match(nombres, /Base de conocimiento/);
+    assert.match(valores, /Búsqueda semántica: sin usar/, 'dice si la semántica está aportando');
     assert.match(valores, /Presupuesto de hoy: \*\*\d+\/\d+\*\*/, 'el campo de IA muestra el presupuesto del día');
   });
 

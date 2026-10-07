@@ -62,6 +62,33 @@ async function resumenSistemas(client, guild) {
     /* sin módulo de búsqueda */
   }
 
+  // ---------- Base de conocimiento ----------
+  // Cuánto sabe el bot de la comunidad y si la búsqueda semántica está aportando. Un
+  // "sin usar" acá NO es un problema: el buscador por palabras sigue andando (por eso no
+  // sale también como problema en la lista de arriba, salvo que haya fallado).
+  try {
+    const conocimiento = require('../utils/conocimiento');
+    const stats = conocimiento.estadisticas();
+    const sem = stats.semantico;
+    const umbrales = conocimiento.umbrales();
+    const etiquetas = {
+      listo: `✅ activa (\`${sem.modelo}\`) · umbrales ${umbrales.aceptar} / ${umbrales.titulo}`,
+      calculando: '⏳ calculando los vectores (en segundo plano)',
+      pendiente: 'se calculan solos en el próximo minuto',
+      deshabilitada: 'sin usar: `KB_SEMANTICO=off`',
+      'no-disponible': `sin usar: ${sem.motivo}`,
+      fallo: `⚠️ falló: la base busca solo por palabras (${sem.motivo || 'error del proveedor'})`,
+    };
+    const vectores = sem.vectores ? ` · **${sem.vectores}** vector(es) en caché` : '';
+    campos.push({
+      name: 'Base de conocimiento',
+      value: `${stats.secciones} sección(es) en ${stats.archivos.length} archivo(s) · se recarga sola cada minuto\nBúsqueda semántica: ${etiquetas[sem.estado] ?? sem.estado}${vectores}`,
+      inline: false,
+    });
+  } catch (error) {
+    campos.push({ name: 'Base de conocimiento', value: `No se pudo consultar: ${error.message}`, inline: false });
+  }
+
   // ---------- Base de datos ----------
   try {
     const db = require('../db/mariadb');

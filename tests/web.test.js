@@ -482,6 +482,47 @@ describe('clasificación con palabras ambiguas', () => {
   });
 });
 
+// ---------- La entidad del mundo gana sobre las anclas de la comunidad ----------
+// Las palabras de la comunidad también viven en el mundo (los logros de un juego, el
+// torneo de fútbol, el canal de YouTube). Cuando la pregunta nombra una entidad de afuera
+// sin hablar de este servidor, es una pregunta del mundo aunque la base tenga una sección
+// con esa palabra: contestarla con las reglas del server (o negarse) era el problema.
+describe('entidades del mundo que usan palabras del servidor', () => {
+  test('el ancla no se lleva la pregunta si nombra una entidad de afuera', () => {
+    for (const m of ['cuantos logros tiene elden ring', 'que es la nintendo switch', 'como se juega al valorant']) {
+      assert.equal(web.clasificarConsulta(m, { perfil: 'consulta', hayConocimiento: true }), 'general', m);
+    }
+  });
+
+  test('pero sigue siendo de la comunidad si habla de este servidor', () => {
+    for (const m of ['cuantos logros hay en el server', 'que ip tiene el cs 1.6', 'cuantas advertencias me quedan']) {
+      assert.equal(web.clasificarConsulta(m, { perfil: 'consulta', hayConocimiento: false }), 'comunidad', m);
+    }
+  });
+
+  test('esas preguntas del mundo quedan con la búsqueda armada', () => {
+    assert.deepEqual(web.decidirBusqueda('cuantos logros tiene elden ring', { perfil: 'consulta', modo: 'general' }), {
+      buscar: true,
+      forzar: false,
+    });
+    assert.equal(web.esDelMundo('cuantos logros tiene elden ring'), true);
+    assert.equal(web.esDelMundo('cuantos logros hay en el server'), false, 'la mención del server lo trae de vuelta');
+  });
+
+  test('una pregunta de la comunidad que la base no conoce deja la web de reserva', () => {
+    const t = 'acceso a canales temporales';
+    assert.deepEqual(web.decidirBusqueda(t, { perfil: 'consulta', modo: 'comunidad', hayConocimiento: false }), {
+      buscar: true,
+      forzar: false,
+    });
+    assert.deepEqual(
+      web.decidirBusqueda(t, { perfil: 'consulta', modo: 'comunidad', hayConocimiento: true }),
+      { buscar: false, forzar: false },
+      'con el tema cargado, la base del server manda'
+    );
+  });
+});
+
 describe('decidirBusqueda — preguntas del mundo sin palabra interrogativa', () => {
   test('con la clasificación del mundo la búsqueda queda de reserva', () => {
     assert.deepEqual(web.decidirBusqueda('capital de australia', { perfil: 'consulta', modo: 'general' }), { buscar: true, forzar: false });
@@ -527,5 +568,20 @@ describe('pareceSinInfo — las negativas menos obvias', () => {
   test('una respuesta con datos no se confunde con una negativa', () => {
     assert.equal(web.pareceSinInfo('San Martín cruzó los Andes en 1817 con unos 4.000 hombres.'), false);
     assert.equal(web.pareceSinInfo('Son 231 días: el 25 de mayo de 2027.'), false);
+  });
+
+  test('también las negativas con tono amable o de "no me corresponde"', () => {
+    // El modelo se niega de muchas formas: el rescate tiene que reconocerlas todas, si no
+    // la negativa amable se envía como respuesta final.
+    for (const t of [
+      'Lamento no poder ayudarte con eso.',
+      'No puedo ayudarte con eso.',
+      'Mi información no cubre ese tema.',
+      'No tengo los datos necesarios para responder eso.',
+      'No voy a inventar datos.',
+      'Solo puedo responder preguntas sobre el servidor.',
+    ]) {
+      assert.equal(web.pareceSinInfo(t), true, t);
+    }
   });
 });

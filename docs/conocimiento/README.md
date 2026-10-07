@@ -3,8 +3,9 @@
 Los archivos `.md` de esta carpeta son lo que el bot **usa como verdad** para los
 temas de la comunidad cuando alguien le pregunta algo por chat (mencionándolo). La IA
 lee estos archivos, busca los fragmentos más parecidos a la pregunta y responde **solo
-con eso**: si la pregunta es de la comunidad y la respuesta no está acá, dice que no
-tiene esa información y deriva al staff. Nunca inventa una regla, una sanción ni un
+con eso**: si la pregunta es de la comunidad y el dato exacto no está acá, contesta con
+lo que sí está cargado de ese tema, aclara en una frase qué dato le falta y deriva al
+staff (nunca devuelve una negativa seca). Nunca inventa una regla, una sanción ni un
 horario de acá.
 
 > Esto vale para la comunidad. Para preguntas de cultura general (deportes, historia,
@@ -19,16 +20,27 @@ una búsqueda web real (ver `utils/web.js`): ahí no hace falta cargar nada acá
 - Cada `## Título` abre una **sección** independiente; el texto hasta el próximo
   `##` es el contenido de esa sección.
 - El buscador puntúa secciones por coincidencia de palabras (con raíces: `banear`
-  encuentra `baneo`) y devuelve las 3 mejores, hasta 1.200 caracteres cada una.
+  encuentra `baneo`) y, si están los vectores, también por **significado**: así encuentra
+  el tema aunque la pregunta use otras palabras («no me llegan los mensajes» encuentra
+  *Rol Silenciado*). Devuelve las 3 mejores, hasta 1.200 caracteres cada una. La parte
+  semántica es opcional (usa la clave de Gemini): sin clave, o con `KB_SEMANTICO=off`, el
+  buscador sigue funcionando por palabras. `/diag` dice si está activa y `/buscar`
+  (staff) muestra qué trajo cada señal con su similitud.
 - **Solo entran al prompt cuando corresponden**: en una pregunta de la comunidad
-  siempre; en una de cultura general únicamente si la coincidencia tocó alguna palabra
+  siempre, y en una de cultura general únicamente si la coincidencia tocó alguna palabra
   **con contenido del título** ("publicidad" entra por *Norma 3 — Spam, flood y
-  publicidad*; "cuántos" no cuenta, es parte del armado de la pregunta). Por eso los
+  publicidad*; "cuántos" no cuenta, es parte del armado de la pregunta). Salvo que la
+  pregunta nombre una **entidad de afuera** (YouTube, Minecraft, Elden Ring…): ahí el
+  tema es del mundo aunque el título de una sección tenga esa palabra. Por eso los
   títulos deben describir el tema con las palabras que usaría la gente: es lo que hace
   que la sección se encuentre y se inyecte donde tiene que aparecer.
 - Los archivos que empiezan con `_` o se llaman `README.md` se ignoran.
 - Los cambios en estos archivos se recargan solos como máximo **1 minuto** después
   de guardarlos: no hay que reiniciar el bot.
+- Cuando el bot **no encuentra** la respuesta, la pregunta no se pierde: queda registrada
+  y el staff la ve con `/faltantes` (los más preguntados primero, con quién y cuándo).
+  Cargar la sección acá y borrar el tema de esa lista con `/faltantes borrar` es el ciclo
+  completo: la lista es exactamente lo que falta en esta carpeta.
 
 ## Reglas de escritura
 

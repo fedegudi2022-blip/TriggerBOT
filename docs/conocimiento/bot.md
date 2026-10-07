@@ -20,7 +20,12 @@ historia, famosos, ciencia, tecnología, geografía, efemérides, y prácticamen
 cualquier cosa que quieras saber. Para eso, si no me alcanza con lo que sé, busco en
 internet (Wikipedia y DuckDuckGo) y te contesto con el dato; si el dato puede cambiar
 (precios, resultados, noticias), esa búsqueda la hago siempre antes de responder, así
-que podés pedirme directamente "buscá…".
+que podés pedirme directamente "buscá…". Esa búsqueda arranca sola en cuanto veo que
+la pregunta es de verdad, en paralelo con mi respuesta: si ya la sabía, la descarto, y
+si no me salía, la uso y te contesto igual con el dato y su fuente.
+
+Nunca te contesto "no lo tengo cargado" y nada más. Si no sé el dato exacto, te doy
+lo más cercano que sepa, te explico cómo conseguirlo o te pregunto lo que falta.
 
 Cuando una respuesta sale de una búsqueda, te dejo las **fuentes** al final del
 mensaje: si el dato importa, podés abrir el link y verificarlo vos mismo.
@@ -31,8 +36,9 @@ También hago **cuentas, conversiones y fechas al instante**, sin depender de in
 cuota de la IA, así que funciona igual con el presupuesto del día agotado.
 
 Lo único donde no invento nada es en los datos del server: si preguntás algo de la
-comunidad (reglas, sanciones, horarios, configuraciones) que no tengo cargado, te lo
-digo y te derivo al staff. Internet no sabe las reglas de Trigger.Arena; la base de
+comunidad (reglas, sanciones, horarios, configuraciones) que no tengo cargado, te
+contesto con lo que sí tengo de ese tema, te aclaro en una frase qué dato exacto me
+falta y te derivo al staff. Internet no sabe las reglas de Trigger.Arena; la base de
 la comunidad sí.
 
 ## Órdenes del staff por chat

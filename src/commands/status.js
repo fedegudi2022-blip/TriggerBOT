@@ -3,6 +3,7 @@
 const { SlashCommandBuilder, MessageFlags, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { estadoIA, getStatsIA, nombreProveedor } = require('../utils/ia');
 const presupuesto = require('../utils/presupuesto');
+const rendimiento = require('../utils/rendimiento');
 const { brandEmbed, miles, duracion, UMBRALES, nivel, COLORS } = require('../utils/replies');
 const db = require('../db/mariadb');
 
@@ -65,6 +66,9 @@ function vistaStatus(client, m) {
       { name: 'Node.js', value: `\`${process.version}\``, inline: true },
       ...chipsIA,
       { name: 'Velocidad de la IA', value: velocidadIA, inline: false },
+      // Latencia por PERFIL (no por proveedor): la mediana de lo que espera el usuario en
+      // cada tipo de respuesta. El detalle (causas y las más lentas) vive en /latencias.
+      { name: 'Latencia por perfil', value: m.latenciaPerfil, inline: false },
       { name: 'Respuestas de IA', value: m.statsIA, inline: false },
       { name: 'Base de datos (MariaDB)', value: m.textoDB, inline: false },
     ],
@@ -76,6 +80,15 @@ function vistaStatus(client, m) {
   );
 
   return { embeds: [embed], components: [fila] };
+}
+
+// Latencia por perfil en texto compacto: una línea por perfil medido (charla, consulta,
+// profundo). Sin muestras todavía se dice así, en vez de mostrar un 0 que nadie midió.
+function textoLatenciaPerfil(r) {
+  if (!r.total) return 'Sin respuestas medidas todavía en este arranque.';
+  return r.perfiles
+    .map((p) => `**${p.etiqueta}:** ${rendimiento.formatoDeMs(p.p50)} de mediana · ${p.n} respuesta(s) · peor 5 %: ${rendimiento.formatoDeMs(p.p95)}`)
+    .join('\n');
 }
 
 // Mide todo el estado (rendimiento, IAs y BD). Devuelve los valores crudos para vistaStatus.
@@ -118,6 +131,9 @@ async function medir(client, guild = null) {
   partes.push(`\nPresupuesto de IA hoy: **${miles(uso.usadas)}/${miles(uso.limite)}**${uso.agotado ? ' — agotado' : ''}`);
   const statsIA = totalRespuestas === 0 ? `Sin conversaciones todavía\n${partes.at(-1)}` : partes.join(' · ');
 
+  // ---------- Latencia por perfil ----------
+  const latenciaPerfil = textoLatenciaPerfil(rendimiento.resumen());
+
   // ---------- Base de datos ----------
   let textoDB;
   if (!db.configurada) textoDB = 'No configurada — guardando solo en `data/` local';
@@ -138,7 +154,7 @@ async function medir(client, guild = null) {
   const color = db.configurada && !dbOk ? COLORS.error : degradado ? COLORS.warn : COLORS.success;
   const estadoGeneral = db.configurada && !dbOk ? 'Degradado' : degradado ? 'Funcionando con avisos' : 'Todo en orden';
 
-  return { ia, dbOk, api, calPing, mem, heap, calMem, cpu, statsIA, textoDB, degradado, color, estadoGeneral };
+  return { ia, dbOk, api, calPing, mem, heap, calMem, cpu, statsIA, textoDB, latenciaPerfil, degradado, color, estadoGeneral };
 }
 
 module.exports = {

@@ -15,10 +15,14 @@ const path = require('node:path');
 process.env.TRIGGER_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'tgb-status-'));
 process.env.GROQ_API_KEY = 'clave';
 process.env.GEMINI_API_KEY = 'clave';
+// La búsqueda semántica de la base se apaga acá: con la clave de prueba puesta, cada
+// consulta de conocimiento intentaría vectorizar contra la red real.
+process.env.KB_SEMANTICO = 'off';
 
 const status = require('../src/commands/status');
 const ia = require('../src/utils/ia');
 const busqueda = require('../src/utils/web');
+const rendimiento = require('../src/utils/rendimiento');
 
 after(() => {
   sinClavesIA();
@@ -152,5 +156,23 @@ describe('/status', () => {
     const { m, campo } = await correr();
     assert.match(campo('Respuestas de IA').value, new RegExp(`Cerebras: \\*\\*${antes + 1}\\*\\*`));
     assert.match(m.statsIA, /Presupuesto de IA hoy/);
+  });
+
+  test('muestra la latencia por perfil de las respuestas medidas', async () => {
+    sinClavesIA();
+    instalarFetch();
+    rendimiento.reiniciar();
+    rendimiento.registrar({ perfil: 'consulta', camino: 'ia', ms: 2400, generaciones: 1, pregunta: 'que reglas tiene el server' });
+    rendimiento.registrar({ perfil: 'consulta', camino: 'ia', ms: 3000, generaciones: 1, pregunta: 'que reglas tiene el server' });
+    rendimiento.registrar({ perfil: 'consulta', camino: 'cache', ms: 4, pregunta: 'capital de australia' });
+    rendimiento.registrar({ perfil: 'charla', camino: 'calculo', ms: 2, pregunta: 'cuanto es 2 + 2' });
+
+    const { campo } = await correr();
+    const latencia = campo('Latencia por perfil');
+
+    assert.ok(latencia, 'el campo existe: es la medición que el staff mira de paso');
+    assert.match(latencia.value, /Consulta:\*\* 2,4 s de mediana/, 'la mediana del perfil manda, no el promedio');
+    assert.match(latencia.value, /3 respuesta\(s\)/);
+    assert.match(latencia.value, /Charla:/);
   });
 });

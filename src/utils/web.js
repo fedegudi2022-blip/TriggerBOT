@@ -26,12 +26,22 @@
 // ("¿cuántos años tiene Messi?" → "anios tiene messi"); cada etapa solo cuesta cuando
 // la anterior vino vacía. Los pedidos simultáneos de la misma consulta se comparten.
 //
-// Cuándo se busca (`decidirBusqueda`): nunca en charla social; no para datos de la
-// comunidad (ahí manda la base del server, que es la única verdad de las reglas); sí
-// para preguntas de cultura general, y ANTES de responder cuando el usuario lo pide
-// explícitamente ("buscá…") o cuando el dato es de los que cambian (precios,
-// resultados, noticias, clima). Si la IA contesta "eso no lo tengo cargado" estando
-// habilitada la búsqueda, utils/ia.js la reintenta con los resultados (rescate).
+// Cuándo se busca (`decidirBusqueda`): nunca en charla social; no para los datos de la
+// comunidad que la base tiene cargados (ahí manda la base del server, que es la única
+// verdad de las reglas y las sanciones); SÍ para cualquier pregunta de cultura general
+// —con palabra interrogativa o sin ella—, para las preguntas ancladas a la comunidad de
+// las que la base no sabe nada, y ANTES de responder cuando el usuario lo pide
+// explícitamente ("buscá…") o cuando el dato es de los que cambian (precios, resultados,
+// noticias, clima).
+//
+// La búsqueda dejó de ser el último recurso y pasó a ser fuente de primera: utils/ia.js
+// la arranca EN PARALELO a la generación cuando es red de reserva (si la IA ya sabe la
+// respuesta, los resultados se descartan sin haber pagado latencia) y la espera solo
+// cuando el dato es perecedero. Si la IA contesta "eso no lo tengo cargado", los
+// resultados se usan para responder de nuevo —también cuando la búsqueda se había hecho
+// ANTES de la respuesta, que era el caso en el que el bot tenía los datos reales en la
+// mano y le devolvía igual la negativa al usuario—. Y si la búsqueda no trae nada, lo
+// último es pedirle una respuesta con lo que sabe, sin negarse.
 //
 // Costos controlados: caché por consulta (10 min; 1 min si vino vacía), tope global
 // de búsquedas por minuto, cooldown por usuario y timeout total. Una búsqueda lenta
@@ -44,7 +54,7 @@ const TIMEOUT_TOTAL_MS = 6_000; // techo de la búsqueda completa
 const TTL_CACHE_MS = 10 * 60 * 1000;
 const TTL_CACHE_VACIA_MS = 60 * 1000; // lo que falló se reintenta antes
 const MAX_CACHE = 200;
-const MAX_POR_MINUTO = 20; // tope global (protege contra flood y bloqueos de las fuentes)
+const MAX_POR_MINUTO = 30; // tope global (protege contra flood y bloqueos de las fuentes)
 const COOLDOWN_USUARIO_MS = 10 * 1000;
 const MAX_RESULTADOS = 6;
 const MAX_TEXTO_RESULTADO = 600;
@@ -124,11 +134,13 @@ const RE_AMBIGUA =
 const RE_CONTEXTO_SERVER =
   /\b(este|esta|estos|estas|ac[aá]|nuestro|nuestra|del (server|servidor|discord|bot|grupo)|en (el|este) (server|servidor|discord)|de la comunidad|trigger|arena)\b/;
 
-// Nombres propios del mundo (plataformas y gigantes de internet): si la pregunta los
-// menciona sin hablar de este servidor, es una pregunta de afuera aunque las demás
-// palabras ("canal", "cuenta") también existan acá. Sin esto, "cuál es el canal más
-// grande de YouTube" traía las reglas de canales del server al prompt.
-const RE_ENTIDAD_MUNDO = /\b(youtube|google|wikipedia|twitch|tiktok|facebook|netflix|spotify|twitter|github)\b/;
+// Nombres propios del mundo (plataformas, juegos y marcas): si la pregunta los menciona
+// sin hablar de este servidor, es una pregunta de afuera aunque las demás palabras
+// ("canal", "logros", "cuenta") también existan acá. Sin esto, "cuál es el canal más
+// grande de YouTube" traía las reglas de canales del server al prompt y "cuántos logros
+// tiene Elden Ring" caía en el camino del servidor por la palabra "logros".
+const RE_ENTIDAD_MUNDO =
+  /\b(youtube|google|wikipedia|twitch|tiktok|facebook|netflix|spotify|twitter|github|minecraft|roblox|fortnite|valorant|gta|fifa|pokemon|nintendo|playstation|xbox|steam|elden ring|zelda|among us|call of duty|overwatch|league of legends|chatgpt|openai|claude|windows|linux|android|iphone)\b/;
 
 // Pedidos de un dato concreto sin signos de pregunta ("capital de australia", "edad de
 // messi", "precio del dolar"): son consultas reales aunque no empiecen con un signo.
@@ -160,6 +172,14 @@ const RE_PEDIDO_BUSQUEDA =
 const RE_DATO_FRESCO =
   /\b(hoy|manana|ayer|ahora|actual|actuales|actualidad|ultimo|ultima|ultimos|ultimas|reciente(s)?|precio(s)?|cotizacion|dolar|clima|temperatura|pronostico|resultado(s)?|marcador|posiciones|tabla|noticias?|estrena|estreno|en vivo|proximo|proxima|esta (temporada|semana|tarde)|ano)\b/;
 
+// ¿La pregunta nombra una entidad del mundo SIN hablar de este servidor? Es la señal más
+// fuerte de que el tema es de afuera: gana incluso sobre las anclas, porque las palabras
+// del servidor también viven afuera ("logros" de un juego, "torneo" de fútbol, "canal"
+// de YouTube).
+function esDelMundo(t) {
+  return RE_ENTIDAD_MUNDO.test(t) && !RE_CONTEXTO_SERVER.test(t);
+}
+
 // ---------- Fuentes especializadas: se activan por tema ----------
 // Cotización: sin alguna palabra de "valor" no se consulta ("cuántos dólares gana
 // Messi" no es una pregunta de cotización).
@@ -185,10 +205,11 @@ function esPerfilConsulta(perfil) {
 function clasificarConsulta(texto, { perfil = 'charla', hayConocimiento = null } = {}) {
   const t = normalizar(String(texto || '')).trim();
   if (!t || !esPerfilConsulta(perfil)) return 'charla';
+  // Una entidad del mundo (YouTube, Elden Ring…) sin mención de este servidor: la
+  // pregunta es de afuera aunque use palabras que acá también existen, y gana sobre el
+  // ancla ("logros", "torneo", "canal") y sobre la coincidencia floja de la base.
+  if (esDelMundo(t)) return 'general';
   if (RE_ANCLA.test(t)) return 'comunidad';
-  // Una entidad del mundo (YouTube, Google…) sin mención de este servidor: la pregunta es
-  // de afuera aunque la base tenga una coincidencia floja en el título de una sección.
-  if (RE_ENTIDAD_MUNDO.test(t) && !RE_CONTEXTO_SERVER.test(t)) return 'general';
   // El buscador de la base del server reconoció el tema (coincidencia en el título de una
   // sección): es de la comunidad aunque la pregunta no use ninguna palabra ancla.
   if (hayConocimiento === true) return 'comunidad';
@@ -207,16 +228,24 @@ function clasificarConsulta(texto, { perfil = 'charla', hayConocimiento = null }
 }
 
 // ¿Hace falta buscar? `forzar` = buscar antes de responder (pedido explícito, dato
-// perecedero o fuente especializada); `buscar` = dejar la búsqueda de reserva por si la
-// IA contesta que no sabe.
-function decidirBusqueda(texto, { perfil = 'charla', modo = null } = {}) {
+// perecedero o fuente especializada); `buscar` = dejar la búsqueda armada por si la IA
+// contesta que no sabe (arranca en paralelo, ver utils/ia.js).
+// `hayConocimiento` = la base del server reconoció el tema en el título de una sección:
+// cuando es `false`, la pregunta está anclada a la comunidad pero la base no sabe nada de
+// ella, así que la web queda de reserva (nunca por delante de la base).
+function decidirBusqueda(texto, { perfil = 'charla', modo = null, hayConocimiento = null } = {}) {
   const t = normalizar(String(texto || '')).trim();
   if (!t || !esPerfilConsulta(perfil)) return { buscar: false, forzar: false };
   // Cotización y clima solo se consiguen en vivo: van antes de responder siempre.
   if (esConsultaDeDolar(t) || RE_CLIMA.test(t)) return { buscar: true, forzar: true };
-  // Un ancla de la comunidad no se busca afuera: la verdad es la base del servidor.
-  if (RE_ANCLA.test(t)) return { buscar: false, forzar: false };
+  // Un ancla de la comunidad no se busca afuera: la verdad es la base del servidor. La
+  // excepción es la pregunta que nombra una entidad del mundo (ver esDelMundo): ahí las
+  // palabras del servidor no dicen nada del tema.
+  if (RE_ANCLA.test(t) && !esDelMundo(t)) return { buscar: false, forzar: false };
   if (RE_PEDIDO_BUSQUEDA.test(t)) return { buscar: true, forzar: true };
+  // La base no tiene nada cargado sobre el tema: aunque la pregunta sea de la comunidad,
+  // internet queda de reserva (antes esto devolvía una negativa sin haber intentado nada).
+  if (hayConocimiento === false) return { buscar: true, forzar: RE_DATO_FRESCO.test(t) };
   // El clasificador ya decidió que es una pregunta del mundo (no del servidor): la
   // búsqueda queda de reserva, sin costo, por si la IA no sabe. Antes hacía falta una
   // palabra interrogativa para llegar acá, así que "capital de australia" o "messi edad"
@@ -243,7 +272,13 @@ const RE_SIN_INFO = [
   /no (encontre|pude encontrar|hay) (informacion|datos|resultados) (sobre|de|para)/,
   /no tengo (esa|esta|la) (info|informacion|data) a mano/,
   /no dispongo de esa informacion/,
+  /no (tengo|cuento con|dispongo de) (los )?(datos|recursos) (necesarios|suficientes)/,
   /fuera de mi (alcance|conocimiento)/,
+  /lamento no poder (ayudarte|responderte|responder)/,
+  /no puedo ayudarte con (eso|esa|esta|esto)/,
+  /solo puedo (responder|contestar|hablar de) (preguntas|temas|cosas) (sobre|de|relacionad\w*)/,
+  /mi (conocimiento|informacion|base) no (abarca|cubre|incluye|llega a)/,
+  /no (voy a|puedo) (inventar|especular|suponer)/,
   /(mi|la) informacion (no )?(esta|llega) (actualizada|al dia)/,
   /lo siento,? no (tengo|puedo|se|cuento)/,
 ];
@@ -712,6 +747,7 @@ module.exports = {
   buscarClima,
   esPedidoDeDato,
   esPerfilConsulta,
+  esDelMundo,
   consultarFuentes,
   buscarInstantAnswer,
   buscarDuckLite,
