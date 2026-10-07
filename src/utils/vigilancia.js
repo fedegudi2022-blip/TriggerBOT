@@ -331,6 +331,30 @@ function revisarVoz(guild) {
   }
 }
 
+// Canales de estadísticas: canal borrado a mano, renombres rechazados o el conteo de
+// «en línea» sin datos. Reusa el diagnóstico del propio sistema (una sola fuente).
+function revisarStats(guild) {
+  if (!guild) return [];
+  try {
+    const stats = require('./estadisticasServer');
+    return stats
+      .diagnosticoStats(guild)
+      .map((p) =>
+        problema(
+          `stats-${guild.id}-${slug(p.texto)}`,
+          p.nivel === 'error' ? 'error' : 'aviso',
+          'Canales de estadísticas',
+          p.texto,
+          'Abrí `/stats estado` para el detalle completo.',
+          guild.id
+        )
+      );
+  } catch (error) {
+    log.warn(`No pude diagnosticar los canales de estadísticas de ${guild.id}: ${error.message}`);
+    return [];
+  }
+}
+
 // Monitoreo de servidores CS 1.6: que los datos no se queden viejos.
 function revisarServidores(guild) {
   if (!guild) return [];
@@ -415,6 +439,7 @@ async function revisar(client, { ping = false, web = false } = {}) {
 
   for (const guild of client?.guilds?.cache?.values() ?? []) {
     await correr(`Voz (${guild.name})`, () => revisarVoz(guild));
+    await correr(`Estadísticas (${guild.name})`, () => revisarStats(guild));
     await correr(`Servidores (${guild.name})`, () => revisarServidores(guild));
     await correr(`Presupuesto de IA (${guild.name})`, () => revisarPresupuesto(guild));
   }
@@ -553,6 +578,7 @@ module.exports = {
   revisarPendientes,
   revisarServidores,
   revisarVoz,
+  revisarStats,
   revisarWeb,
   revisarPresupuesto,
   UMBRAL_IA_LENTA_MS,

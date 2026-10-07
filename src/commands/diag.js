@@ -123,6 +123,25 @@ async function resumenSistemas(client, guild) {
     /* sin voz */
   }
 
+  // ---------- Canales de estadísticas ----------
+  try {
+    const stats = require('../utils/estadisticasServer');
+    const censo = require('../utils/censo');
+    const metricas = stats.metricasActivas(guild.id);
+    const datos = censo.datosDe(guild.id);
+    campos.push({
+      name: 'Canales de estadísticas',
+      value: stats.activo(guild.id)
+        ? `${metricas.length} canal(es): ${metricas.map((id) => '`' + id + '`').join(' · ')}\n` +
+          `Censo de miembros: ${datos.cuando ? `${miles(datos.bots)} bots contados hace ${duracion((Date.now() - datos.cuando) / 1000)}` : 'sin foto completa todavía'}\n` +
+          `Presence Intent: ${censo.tienePresencias(client) ? 'activo' : 'inactivo (el canal «En línea» queda en «—»)'}`
+        : 'Sistema sin activar (`/stats activar`).',
+      inline: false,
+    });
+  } catch {
+    /* sin stats */
+  }
+
   // ---------- Escrituras y proceso ----------
   const escritura = pendientesDeGuardado();
   const carga = client.fallosCarga?.length ? `⚠️ ${client.fallosCarga.length} archivo(s) no cargaron` : '✅ Todo cargado';
@@ -174,9 +193,7 @@ module.exports = {
   // `vistaDiag` se exporta para los tests: es donde vive el render del diagnóstico.
   vistaDiag,
 
-  data: new SlashCommandBuilder()
-    .setName('diag')
-    .setDescription('Diagnóstico operativo del bot: qué está roto y qué hacer (staff)'),
+  data: new SlashCommandBuilder().setName('diag').setDescription('Diagnóstico operativo del bot: qué está roto y qué hacer (staff)'),
 
   async execute(interaction, client) {
     if (!(await exigirStaff(interaction, PermissionFlagsBits.ManageGuild))) return;

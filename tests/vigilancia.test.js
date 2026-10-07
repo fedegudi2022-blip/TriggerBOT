@@ -483,6 +483,22 @@ describe('/diag', () => {
     assert.match(valores, /Presupuesto de hoy: \*\*\d+\/\d+\*\*/, 'el campo de IA muestra el presupuesto del día');
   });
 
+  test('muestra el estado de los canales de estadísticas y sus problemas', async () => {
+    reset();
+    // Un canal de estadísticas borrado a mano y el conteo de «en línea» sin presencias.
+    configurar({ stats: { activado: true, metricas: ['miembros', 'enLinea'], canales: { miembros: 'canal-borrado' } } });
+    const client = clientFake(guildFake());
+
+    const vista = await diag.vistaDiag(client, client.guilds.cache.get(GUID), { ping: false });
+    const campo = vista.embeds[0].data.fields.find((f) => f.name === 'Canales de estadísticas');
+
+    assert.ok(campo, 'el estado del sistema aparece en /diag');
+    assert.match(campo.value, /2 canal\(es\): `miembros` · `enLinea`/);
+    assert.match(campo.value, /sin foto completa/);
+    assert.match(campo.value, /Presence Intent: inactivo/);
+    assert.match(JSON.stringify(vista.embeds[0].data), /Faltan 2 canal/, 'los canales que faltan se reportan con su arreglo');
+  });
+
   test('es un comando de staff', () => {
     const json = diag.data.toJSON();
     assert.equal(json.name, 'diag');

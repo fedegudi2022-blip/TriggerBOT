@@ -77,7 +77,7 @@ const CATEGORIAS_STAFF = [
   },
   {
     nombre: 'Configuración',
-    comandos: ['config', 'bienvenida', 'rolnivel', 'ticket', 'voz', 'frases'],
+    comandos: ['config', 'bienvenida', 'rolnivel', 'ticket', 'voz', 'frases', 'stats'],
     nota: 'Desde el panel se prenden el anti-spam, el anti-raid y la escalada de advertencias.',
   },
   {

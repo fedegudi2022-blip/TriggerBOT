@@ -2,7 +2,8 @@
 // Bot privado para la comunidad Trigger. Persistencia: JSON local + MariaDB como respaldo maestro.
 
 require('dotenv').config();
-const { Client, Collection, GatewayIntentBits, Partials, MessageFlags } = require('discord.js');
+const { Client, Collection, Partials, MessageFlags } = require('discord.js');
+const { intentsDe } = require('./utils/intents');
 
 // ---------- Logger estructurado (nivel, módulo y contexto en cada línea) ----------
 const crearLogger = require('./logger');
@@ -17,18 +18,19 @@ const logSesion = crearLogger('sesion');
 const logVigilancia = crearLogger('vigilancia');
 const logTempbans = crearLogger('tempbans');
 const logXpVoz = crearLogger('xp-voz');
+const logStats = crearLogger('stats');
+const logCenso = crearLogger('censo');
 
 // Cooldown por usuario de los comandos (política en un solo lugar: utils/cooldowns.js).
 const cooldowns = require('./utils/cooldowns');
 
+// Presence Intent (privilegiado): lo necesitan los canales de estadísticas para contar
+// «en línea». Se puede apagar con PRESENCE_INTENT=false, que es la salida cuando la
+// aplicación todavía no lo tiene habilitado en el portal: pedir un intent NO habilitado
+// hace que Discord cierre la conexión (error «Used disallowed intents») y el bot queda
+// reintentando sin arrancar. La decisión vive en utils/intents.js (probada).
 const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.GuildVoiceStates, // necesario para detectar quién entra a «Crear canal»
-  ],
+  intents: intentsDe(),
   partials: [Partials.Channel, Partials.Message],
 });
 
@@ -162,6 +164,36 @@ setTimeout(() => {
   pasadaDeVoz();
 }, 20 * 1000).unref();
 
+// ---------- Canales de estadísticas del servidor ----------
+// Los nombres («👥 Miembros: 87.614») se revisan cada 10 minutos, que es el ritmo que
+// permite Discord (2 renombres por canal cada 10 min). La primera pasada va a los 90 s de
+// arrancar (después del censo, que sale a los 45 s): si el bot estuvo caído los números
+// viejos se corrigen enseguida, y no se escribe «—» en un canal que ya tenía un número real
+// solo porque la foto de miembros todavía no llegó.
+const stats = require('./utils/estadisticasServer');
+const pasadaDeStats = () => stats.refrescar(client).catch((error) => logStats.error('Error al refrescar los canales de estadísticas', error));
+setInterval(pasadaDeStats, stats.INTERVALO_MS).unref();
+setTimeout(pasadaDeStats, 90 * 1000).unref();
+
+// ---------- Censo de miembros (humanos, bots y gente en línea) ----------
+// Una foto completa cada 6 h y los eventos de presencia en el medio (events/presenceUpdate.js).
+// Solo se descarga la lista de los servidores que muestran esos números: en un server de
+// 87.000 miembros ese fetch no es gratis y no tiene sentido hacerlo para nadie más.
+const censo = require('./utils/censo');
+const pasadaDeCenso = () =>
+  censo
+    .revisar(client, { donde: (guild) => stats.activo(guild.id) })
+    .then((resumen) => {
+      if (resumen.sembrados) {
+        for (const datos of censo.estado())
+          logCenso.info(`Censo de ${datos.guildId}: ${datos.miembros} miembros, ${datos.bots} bots, ${datos.enLinea ?? 's/d'} en línea`);
+      }
+    })
+    .catch((error) => logCenso.error('Error en el censo de miembros', error));
+setInterval(pasadaDeCenso, censo.EDAD_MAXIMA_MS).unref();
+// A los 45 s: después de que Discord termine de conectar y antes de la primera pasada de estadísticas.
+setTimeout(pasadaDeCenso, 45 * 1000).unref();
+
 // ---------- Componentes interactivos (botones, selectores y modales) ----------
 const { manejarBoton } = require('./utils/accionesIA');
 const { manejarComponente } = require('./utils/configPanel');
@@ -255,9 +287,7 @@ client.on('interactionCreate', async (interaction) => {
   // ningún comando nuevo nazca sin límite; los que salen a la red declaran más.
   const bloqueo = cooldowns.esperar(command.data.name, interaction.user.id, command.cooldown);
   if (bloqueo) {
-    return interaction
-      .reply({ content: cooldowns.aviso(command.data.name, bloqueo.restante), flags: MessageFlags.Ephemeral })
-      .catch(() => {});
+    return interaction.reply({ content: cooldowns.aviso(command.data.name, bloqueo.restante), flags: MessageFlags.Ephemeral }).catch(() => {});
   }
 
   try {
@@ -299,7 +329,21 @@ client.on('interactionCreate', async (interaction) => {
 process.on('unhandledRejection', (error) => log.error('Promesa rechazada no manejada', error));
 
 // ---------- Registro de eventos de conexión ----------
-client.on('error', (error) => logDiscord.error('Error en la conexión con Discord', error));
+client.on('error', (error) => {
+  const mensaje = String(error?.message ?? '');
+  // Error 4014: la aplicación pide un intent privilegiado que no tiene habilitado. El
+  // reintento cada 60 s se encarga del resto: apenas se prende el interruptor en el
+  // portal, la conexión siguiente entra sin tocar nada.
+  if (/disallowed intents/i.test(mensaje)) {
+    logDiscord.error(
+      'Discord rechazó la conexión: el bot pide el Presence Intent y la aplicación no lo tiene habilitado. ' +
+        'Habilitalo en https://discord.com/developers/applications → Bot → Privileged Gateway Intents → Presence Intent, ' +
+        'o poné PRESENCE_INTENT=false en las variables del hosting para arrancar sin contar «en línea».'
+    );
+    return;
+  }
+  logDiscord.error('Error en la conexión con Discord', error);
+});
 client.on('shardDisconnect', (event) => logDiscord.warn(`Conexión perdida con Discord. Reintentando automáticamente... ${event?.message ?? ''}`));
 client.on('shardReconnecting', () => logDiscord.info('Reconectando con Discord...'));
 
