@@ -13,6 +13,7 @@ const { anunciarProgreso } = require('../utils/anunciosNivel');
 const { brandEmbed, COLORS } = require('../utils/replies');
 const { getGuildConfig } = require('../store');
 const { procesarMensajeParaSpam, procesarMensajeParaFiltros } = require('../utils/proteccion');
+const { mantenerEscribiendo } = require('../utils/escribiendo');
 
 // Limita el tamaño del buffer de mensajes recientes por canal para no crecer sin control.
 const MAX_BUFFER = 100;
@@ -94,7 +95,12 @@ async function manejarMencion(message) {
   // Si el staff apagó la IA en este servidor, el bot ignora las menciones.
   if (getGuildConfig(message.guild.id).iaActivada === false) return;
 
-  if (estaEnCooldown(message.author.id)) return;
+  // En cooldown el bot no contesta para no spamear, pero deja una marca discreta: antes
+  // ignoraba en silencio y parecía que la mención no había llegado.
+  if (estaEnCooldown(message.author.id)) {
+    await message.react('⏳').catch(() => {});
+    return;
+  }
 
   // Texto que quedó después de la mención: "@TriggerBOT hola" → "hola"
   const texto = normalizar(message.content.replaceAll(`<@${client.user.id}>`, '').replaceAll(`<@!${client.user.id}>`, '').trim());
@@ -116,58 +122,63 @@ async function manejarMencion(message) {
   // Si el mensaje también menciona al dueño, la IA lo sabe por el contexto.
   const mencionaAlDueno = message.mentions.users.has(DUENO_ID);
 
-  // Indicador de "escribiendo" mientras la IA piensa.
-  await message.channel.sendTyping().catch(() => {});
-
   // Desde acá se mide el turno completo cuando la respuesta no sale de la IA.
   const t0 = Date.now();
 
-  // Chat con IA si está configurada; si falla o no hay clave, respaldo local.
+  // Indicador de "escribiendo" durante TODO el turno: Discord lo apaga a los ~10 s y una
+  // respuesta con búsqueda web + reintento puede tardar más. Se frena en el `finally`,
+  // incluso si la respuesta se corta por un error.
+  const detenerEscribiendo = mantenerEscribiendo(message.channel);
   try {
-    const respuesta = await conversar(message.author.id, texto || '(el usuario solo te mencionó)', {
-      usuario: message.member?.displayName || message.author.username,
-      canal: message.channel.name,
-      dueñoPresente: mencionaAlDueno,
-      // Contexto en vivo (utils/contexto.js): ficha del autor, servidores CS, config
-      // y catálogo real de comandos. Sin esto la IA responde a ciegas.
-      guild: message.guild,
-      miembro: message.member,
-      client,
-    });
+    // Chat con IA si está configurada; si falla o no hay clave, respaldo local.
+    try {
+      const respuesta = await conversar(message.author.id, texto || '(el usuario solo te mencionó)', {
+        usuario: message.member?.displayName || message.author.username,
+        canal: message.channel.name,
+        dueñoPresente: mencionaAlDueno,
+        // Contexto en vivo (utils/contexto.js): ficha del autor, servidores CS, config
+        // y catálogo real de comandos. Sin esto la IA responde a ciegas.
+        guild: message.guild,
+        miembro: message.member,
+        client,
+      });
 
-    if (respuesta?.tipo === 'accion') {
-      return pedirConfirmacion(message, respuesta);
-    }
-    if (respuesta?.tipo === 'chat' && respuesta.texto) {
-      // Respuesta larga: se parte en varios mensajes sin cortar palabras al medio.
-      const trozos = trocearMensaje(respuesta.texto);
-      await message.reply({ content: trozos[0] }).catch(() => {});
-      for (const resto of trozos.slice(1)) {
-        await message.channel.send({ content: resto }).catch(() => {});
+      if (respuesta?.tipo === 'accion') {
+        return await pedirConfirmacion(message, respuesta);
       }
-      return;
-    }
-  } catch (error) {
-    console.warn(`[TriggerBOT] IA no disponible, uso respuesta local: ${error.message}`);
-  }
-
-  // Sin IA (no hay claves o se cayeron todos los proveedores) una pregunta de cultura
-  // general todavía se puede contestar: se busca en la web y se cita la fuente. Antes
-  // esto caía en el repertorio local, que solo sabe decir que no entendió.
-  try {
-    if (decidirBusqueda(texto, { perfil: perfilDe(texto) }).buscar) {
-      const directa = await respuestaSinIA(texto, { usuarioId: message.author.id });
-      if (directa) {
-        medirSinIA(message, texto, t0, { web: 'directa' });
-        return message.reply({ content: directa }).catch(() => {});
+      if (respuesta?.tipo === 'chat' && respuesta.texto) {
+        // Respuesta larga: se parte en varios mensajes sin cortar palabras al medio.
+        const trozos = trocearMensaje(respuesta.texto);
+        await message.reply({ content: trozos[0] }).catch(() => {});
+        for (const resto of trozos.slice(1)) {
+          await message.channel.send({ content: resto }).catch(() => {});
+        }
+        return;
       }
+    } catch (error) {
+      console.warn(`[TriggerBOT] IA no disponible, uso respuesta local: ${error.message}`);
     }
-  } catch (error) {
-    console.warn(`[TriggerBOT] búsqueda web sin IA falló: ${error.message}`);
-  }
 
-  medirSinIA(message, texto, t0);
-  await message.reply({ content: responderCharla(texto) }).catch(() => {});
+    // Sin IA (no hay claves o se cayeron todos los proveedores) una pregunta de cultura
+    // general todavía se puede contestar: se busca en la web y se cita la fuente. Antes
+    // esto caía en el repertorio local, que solo sabe decir que no entendió.
+    try {
+      if (decidirBusqueda(texto, { perfil: perfilDe(texto) }).buscar) {
+        const directa = await respuestaSinIA(texto, { usuarioId: message.author.id });
+        if (directa) {
+          medirSinIA(message, texto, t0, { web: 'directa' });
+          return await message.reply({ content: directa }).catch(() => {});
+        }
+      }
+    } catch (error) {
+      console.warn(`[TriggerBOT] búsqueda web sin IA falló: ${error.message}`);
+    }
+
+    medirSinIA(message, texto, t0);
+    await message.reply({ content: responderCharla(texto) }).catch(() => {});
+  } finally {
+    detenerEscribiendo();
+  }
 }
 
 module.exports = {

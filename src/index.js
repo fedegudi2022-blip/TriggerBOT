@@ -10,7 +10,6 @@ const crearLogger = require('./logger');
 const log = crearLogger('bot');
 const logMonitoreo = crearLogger('monitoreo');
 const logFrase = crearLogger('frase');
-const logComponentes = crearLogger('componentes');
 const logComandos = crearLogger('comandos');
 const logDiscord = crearLogger('discord');
 const logApagado = crearLogger('apagado');
@@ -20,6 +19,7 @@ const logTempbans = crearLogger('tempbans');
 const logXpVoz = crearLogger('xp-voz');
 const logStats = crearLogger('stats');
 const logCenso = crearLogger('censo');
+const logSorteos = crearLogger('sorteos');
 
 // Cooldown por usuario de los comandos (política en un solo lugar: utils/cooldowns.js).
 const cooldowns = require('./utils/cooldowns');
@@ -194,8 +194,25 @@ setInterval(pasadaDeCenso, censo.EDAD_MAXIMA_MS).unref();
 // A los 45 s: después de que Discord termine de conectar y antes de la primera pasada de estadísticas.
 setTimeout(pasadaDeCenso, 45 * 1000).unref();
 
+// ---------- Sorteos: cierre automático al vencer ----------
+// Cada 30 s cierra los sorteos vencidos, repinta el panel (sin botones) y anuncia a los
+// ganadores. La primera pasada va a los 25 s del arranque: si el bot estuvo caído, los
+// sorteos que vencieron mientras tanto se cierran enseguida en vez de esperar media hora.
+const sorteos = require('./utils/sorteos');
+const pasadaDeSorteos = () =>
+  sorteos
+    .procesar(client)
+    .then((resumen) => {
+      if (resumen.finalizados) logSorteos.info(`Sorteos cerrados automáticamente: ${resumen.finalizados}`);
+      if (resumen.errores) logSorteos.warn(`Sorteos con error al cerrar: ${resumen.errores}`);
+    })
+    .catch((error) => logSorteos.error('Error en la pasada de sorteos', error));
+setInterval(pasadaDeSorteos, 30 * 1000).unref();
+setTimeout(pasadaDeSorteos, 25 * 1000).unref();
+
 // ---------- Componentes interactivos (botones, selectores y modales) ----------
 const { manejarBoton } = require('./utils/accionesIA');
+const { responderError } = require('./utils/errores');
 const { manejarComponente } = require('./utils/configPanel');
 const memeCmd = require('./commands/meme');
 const warningsCmd = require('./commands/warnings');
@@ -234,6 +251,9 @@ client.on('interactionCreate', async (interaction) => {
       }
     } else if (interaction.isButton() && interaction.customId.startsWith('ticket:')) {
       await manejarBotonTicket(interaction);
+    } else if (interaction.isButton() && interaction.customId.startsWith('sorteo:')) {
+      // Participar / Salir de un sorteo (el panel lo publica /sorteo crear).
+      await sorteos.manejarBoton(interaction);
     } else if (interaction.isButton() && interaction.customId.startsWith('voz:')) {
       await voz.manejarComponente(interaction);
     } else if (interaction.isStringSelectMenu() && interaction.customId.startsWith('ticket:')) {
@@ -249,13 +269,11 @@ client.on('interactionCreate', async (interaction) => {
       await manejarComponente(interaction);
     }
   } catch (error) {
-    logComponentes.error('Error en componente interactivo', error);
-    const payload = { content: 'Ocurrió un error con el panel.', flags: MessageFlags.Ephemeral };
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp(payload).catch(() => {});
-    } else {
-      await interaction.reply(payload).catch(() => {});
-    }
+    // El código (TB-XXXXX) liga lo que ve el usuario con el stack del log.
+    await responderError(interaction, error, {
+      que: 'procesar este botón',
+      contexto: { usuario: interaction.user?.id, guild: interaction.guildId, customId: interaction.customId },
+    });
   }
 });
 
@@ -293,13 +311,10 @@ client.on('interactionCreate', async (interaction) => {
   try {
     await command.execute(interaction, client);
   } catch (error) {
-    logComandos.error(`Error en /${interaction.commandName}`, error, { comando: interaction.commandName });
-    const payload = { content: 'Ocurrió un error al ejecutar el comando.', flags: MessageFlags.Ephemeral };
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp(payload).catch(() => {});
-    } else {
-      await interaction.reply(payload).catch(() => {});
-    }
+    await responderError(interaction, error, {
+      que: `ejecutar /${interaction.commandName}`,
+      contexto: { comando: interaction.commandName, usuario: interaction.user?.id, guild: interaction.guildId },
+    });
   }
 });
 
@@ -315,13 +330,10 @@ client.on('interactionCreate', async (interaction) => {
   try {
     await command.execute(interaction, client);
   } catch (error) {
-    logComandos.error(`Error en el comando contextual ${interaction.commandName}`, error, { comando: interaction.commandName });
-    const payload = { content: 'Ocurrió un error al ejecutar el comando.', flags: MessageFlags.Ephemeral };
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp(payload).catch(() => {});
-    } else {
-      await interaction.reply(payload).catch(() => {});
-    }
+    await responderError(interaction, error, {
+      que: `ejecutar ${interaction.commandName}`,
+      contexto: { comando: interaction.commandName, usuario: interaction.user?.id, guild: interaction.guildId },
+    });
   }
 });
 

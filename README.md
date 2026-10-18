@@ -38,6 +38,9 @@ src/
     ├── estadisticasServer.js # Canales de estadísticas (/stats): nombres con los números en vivo
     ├── censo.js        # Foto de miembros (humanos, bots) + conteo de «en línea» con presencias
     ├── intents.js      # Intents del gateway (incluye el interruptor PRESENCE_INTENT)
+    ├── sorteos.js      # Sorteos: panel con botones, entradas y cierre automático (config del guild)
+    ├── escribiendo.js  # Refresca el «está escribiendo…» en turnos largos de IA
+    ├── errores.js      # Respuesta uniforme a errores de interacción, con código rastreable
     └── replies.js      # Embeds con el estilo visual unificado del bot
 tests/                  # Tests con el runner nativo de Node (npm test)
 docs/ARQUITECTURA.md    # Documentación técnica de cada sistema
@@ -85,6 +88,7 @@ Todos los comandos tienen un **cooldown por usuario** (2 s por defecto) para que
 | `/jugadores [servidor]`                                   | Quién está conectado ahora en cada server CS 1.6, con puntaje y tiempo en línea                                        | Todos                  |
 | `/ticket publicar/categoria/logs/mensaje`                 | Panel de soporte con selector de tipo, canales privados por ticket, reclamar/agregar gente y transcript al cerrar      | Staff (config)         |
 | `/reportar usuario pruebas [adjunto]`                     | Abre un ticket de reporte con pruebas (cualquier miembro)                                                              | Todos                  |
+| `/sorteo crear/terminar/reroll/cancelar/lista`            | Publica un sorteo con panel y botones, lo cierra solo al vencer y anuncia ganadores (con rol de requisito opcional)    | Staff (crear)          |
 | `/diag`                                                   | Diagnóstico operativo: qué está roto y qué hacer, incluida la salida a internet del host y el estado de la base de conocimiento | Staff            |
 | `/buscar consulta`                                        | Búsqueda web a mano: resultados crudos con su fuente, cómo clasificaría el bot esa pregunta y qué trajo la base (con su similitud) | Staff        |
 | `/faltantes ver/borrar/limpiar`                           | Preguntas que la IA no supo contestar, agrupadas y contadas: la lista de qué cargar en la base de conocimiento         | Staff                  |
@@ -225,6 +229,15 @@ XP por escribir (15-25 por mensaje, máximo 1 por minuto para evitar farmeo) con
 | `/8ball pregunta`                                                                  | La bola 8 mágica responde con 20 veredictos                                             |
 | `/dado [caras]`                                                                    | Tira un dado (1-6 o hasta 100 caras)                                                    |
 | `/moneda`                                                                          | Cara o ceca                                                                             |
+
+### Sorteos
+
+`/sorteo crear premio:1 mes de VIP duracion:7d` publica un panel en el canal con un botón **🎉 Participar** y otro **Salir**: la comunidad se anota con un clic, sin comandos. Se puede pedir un **rol como requisito**, elegir **cuántos ganadores** (1-10) y en qué canal publicarlo.
+
+- **Se cierra solo**: al vencer, el bot quita los botones del panel, anuncia a los ganadores en el canal y les manda un DM. Si el bot estuvo caído, los sorteos vencidos se cierran al arrancar.
+- **Una entrada por persona**: el botón no duplica y siempre contesta en efímero (el canal no se llena).
+- **Sin sorpresas**: `/sorteo terminar id` cierra ahora, `/sorteo reroll id` vuelve a sortear (evitando repetir ganadores si hay gente suficiente), `/sorteo cancelar id` lo deja sin efecto y `/sorteo lista` muestra abiertos y últimos resultados.
+- **Estado persistente**: los sorteos viven en la config del servidor, así que sobreviven reinicios y viajan con el respaldo de MariaDB. Un sorteo desierto se informa como desierto, nunca se inventa un ganador.
 
 ### Configuración (solo staff)
 

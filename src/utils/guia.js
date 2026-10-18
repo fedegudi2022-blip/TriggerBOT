@@ -81,6 +81,11 @@ const CATEGORIAS_STAFF = [
     nota: 'Desde el panel se prenden el anti-spam, el anti-raid y la escalada de advertencias.',
   },
   {
+    nombre: 'Comunidad y eventos',
+    comandos: ['sorteo'],
+    nota: 'El panel del sorteo se publica en el canal: la comunidad participa con el botón y el bot cierra solo al vencer.',
+  },
+  {
     nombre: 'Diagnóstico',
     comandos: ['diag', 'buscar'],
     nota: 'Los dos salen a internet a propósito: el diagnóstico prueba la salida del host.',

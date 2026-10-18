@@ -43,6 +43,9 @@ El bot es JavaScript CommonJS sobre **Node 22** (fijado en `engines` y en `.nvmr
 | `src/utils/intents.js`            | Intents del gateway, con el interruptor `PRESENCE_INTENT` (probado)                                       |
 | `src/utils/replies.js`            | Embeds y formato con el estilo visual del bot                                                             |
 | `src/utils/cooldowns.js`          | Cooldown por usuario y por comando, aplicado en el handler de comandos de `index.js`                      |
+| `src/utils/sorteos.js`            | Sorteos comunitarios: crear, entradas, sorteo, reroll y cierre automático (estado en `config`)            |
+| `src/utils/escribiendo.js`        | Refresca el «está escribiendo…» mientras dura un turno largo de IA                                        |
+| `src/utils/errores.js`            | Respuesta uniforme a errores de interacción, con código `TB-XXXXX` ligado al log                          |
 
 ## Flujo de arranque (`index.js`)
 
@@ -127,6 +130,22 @@ Ambas devuelven `null` si todo está bien o un mensaje de error listo para mostr
 - Ventana por guild (`raidJoins` ingresos en `raidSegundos`, por defecto 8 en 60). Siempre alerta al staff con la lista de ingresos y marca cuentas de menos de 7 días 🆕.
 - La auto-acción (opcional, apagada por defecto) solo toca cuentas nuevas **sin roles** y nunca bots; si Discord rechaza, el resumen lo cuenta (`N rechazada(s) por Discord`).
 - Estado 100 % en memoria a propósito: un reinicio limpia ventanas y cooldowns, no hay datos sensibles que perder.
+
+## Sorteos (`sorteos.js` + `/sorteo`)
+
+- El estado vive en la config del servidor (`c.sorteos` + `c.sorteoSeq`), igual que los tempbans: sobrevive reinicios y viaja con el respaldo de MariaDB. Las entradas usan `mutarYAgendar` (escritura diferida) porque una ráfaga de clics no tiene que escribir el archivo entero por cada uno.
+- Reglas en el motor, no solo en el comando: premio obligatorio (≤200), duración de 1 minuto a 30 días, 1-10 ganadores, **5 sorteos abiertos** a la vez, 5 000 entradas por sorteo y un historial acotado que nunca descarta uno abierto. Cualquier llamador futuro (el puente de la web) respeta lo mismo.
+- **Una entrada por persona** y botón de salida: `entrar`/`salir` devuelven `{ error }`, `{ yaEstaba }` o `{ noEstaba }` para que el botón conteste exactamente lo que pasó.
+- **Requisito opcional por rol**: se valida al entrar, no al crear; quien pierde el rol deja de poder anotarse pero no pierde la entrada que ya tenía.
+- `elegirGanadores` es Fisher-Yates sobre una lista sin duplicados: nunca repite persona en el mismo sorteo, nunca elige más gente de la que hay y, en el `reroll`, evita a los ganadores anteriores salvo que no queden participantes nuevos.
+- **Cierre automático**: `index.js` corre `procesar()` cada 30 s (y a los 25 s del arranque). Cierra los vencidos, repinta el panel **sin botones**, anuncia en el canal con `allowedMentions` solo de los ganadores y les manda un DM. Si el panel se borró o falta permiso, lo registra y el sorteo queda cerrado igual: el estado no miente por un mensaje que ya no existe.
+- `/sorteo terminar|reroll|cancelar` son de staff y reusan el mismo motor; `terminar` y `reroll` difieren la respuesta (efímera) antes de tocar Discord, porque editan el panel y publican el anuncio.
+
+## Errores de interacción (`errores.js`)
+
+- Los tres handlers de `index.js` (componentes, slash y menú contextual) comparten `responderError()`: registra el stack con contexto (usuario, guild, comando) y contesta en efímero con un código `TB-XXXXX`. Antes la respuesta era un texto genérico sin nada que permitiera encontrar el error en el log; ahora el código que ve la persona está en la línea del log.
+- Si la interacción ya fue respondida usa `followUp`; si expiró, se ignora. Un error al reportar un error nunca escala.
+- `utils/escribiendo.js` mantiene el «está escribiendo…» durante todo el turno de IA (Discord lo apaga a los ~10 s y una respuesta con búsqueda web + reintento puede tardar más) y lo corta en un `finally`.
 
 ## Comandos: slash y de menú contextual
 
