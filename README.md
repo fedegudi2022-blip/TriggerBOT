@@ -1,418 +1,93 @@
+<div align="center">
+
 # TriggerBOT
 
-Bot de Discord privado para la comunidad **Trigger**, hecho en Node.js con discord.js v14. La configuración y el historial de warns se guardan en archivos JSON simples, con respaldo en la base de datos MariaDB de la web (tablas propias `bot_`).
+**El bot de la comunidad Trigger.Arena** — moderación, tickets, niveles, servidores CS 1.6 e IA, en un solo lugar.
 
-## Estructura
+![Node](https://img.shields.io/badge/Node-22-339933?logo=node.js&logoColor=white)
+![discord.js](https://img.shields.io/badge/discord.js-14-5865F2?logo=discord&logoColor=white)
+![tests](https://img.shields.io/badge/tests-758%20passing-57f287)
+![dependencias](https://img.shields.io/badge/runtime-3%20deps-2c2f33)
 
-```
-src/
-├── index.js            # Punto de entrada: carga comandos/eventos, sesión con reintentos y apagado controlado
-├── commandLoader.js    # Carga ÚNICA de comandos (la usan el runtime y deploy-commands)
-├── deploy-commands.js  # Registra los comandos slash en Discord (npm run register)
-├── logger.js           # Logger estructurado con sanitización de secretos
-├── store.js            # Config por servidor en data/config.json
-├── warns.js            # Historial de warns en data/warns.json
-├── notas.js            # Notas internas del staff en data/notas.json (separadas de los warns)
-├── casos.js            # Registro persistente de casos del mod-log en data/casos.json (lo lee /casos)
-├── niveles.js          # XP, niveles y logros en data/niveles.json (escritura con debounce)
-├── db/
-│   ├── mariadb.js      # Cliente MySQL/MariaDB (pool + tablas bot_ autogestionadas)
-│   ├── puente.js       # Bus de comandos web ↔ bot vía tabla bot_cmd
-│   └── sync.js         # Respaldo/restauración guild-por-guild con debounce
-├── commands/           # Un archivo por comando slash
-├── events/             # Un archivo por evento (ready, logs, ...)
-└── utils/
-    ├── moderation.js   # Validaciones de jerarquía compartidas (comandos + IA + protección)
-    ├── confirmaciones.js # Confirmar/deshacer reutilizable para acciones destructivas
-    ├── guia.js         # Guía de /help armada desde los comandos + detalle por comando
-    ├── proteccion.js   # Anti-spam y anti-raid automáticos
-    ├── accionesIA.js   # Acciones de moderación pedidas por IA (confirmación del staff)
-    ├── contexto.js     # Datos en vivo para el prompt de la IA (nivel, servidores CS, comandos)
-    ├── conocimiento.js # Buscador híbrido (palabras + significado) de la base de conocimiento
-    ├── embeddings.js   # Vectores de la base para la búsqueda por significado (opcional, caché en data/)
-    ├── web.js          # Búsqueda web sin claves (Wikipedia + DuckDuckGo + dólar y clima)
-    ├── presupuesto.js  # Presupuesto diario de IA (tope de respuestas por día)
-    ├── tickets.js      # Sistema de tickets con transcript
-    ├── modlog.js       # Registro de acciones de moderación (mod-log)
-    ├── log.js          # Registro de eventos generales (logs)
-    ├── estadisticasServer.js # Canales de estadísticas (/stats): nombres con los números en vivo
-    ├── censo.js        # Foto de miembros (humanos, bots) + conteo de «en línea» con presencias
-    ├── intents.js      # Intents del gateway (incluye el interruptor PRESENCE_INTENT)
-    ├── sorteos.js      # Sorteos: panel con botones, entradas y cierre automático (config del guild)
-    ├── escribiendo.js  # Refresca el «está escribiendo…» en turnos largos de IA
-    ├── errores.js      # Respuesta uniforme a errores de interacción, con código rastreable
-    └── replies.js      # Embeds con el estilo visual unificado del bot
-tests/                  # Tests con el runner nativo de Node (npm test)
-docs/ARQUITECTURA.md    # Documentación técnica de cada sistema
+[Comandos](docs/COMANDOS.md) · [IA](docs/IA.md) · [Arquitectura](docs/ARQUITECTURA.md) · [Operación](docs/OPERACION.md) · [Integración web](docs/INTEGRACION-WEB.md)
+
+</div>
+
+---
+
+## Qué hace
+
+- 🛡️ **Moderación con auditoría** — warn, ban, timeout, mute, clear y más, con confirmación, deshacer, jerarquía y casos numerados en el mod-log.
+- 🎫 **Tickets de soporte** — panel con tipos (soporte, apelación, cheater), canales privados, reclamo, transcript y encuesta al cerrar.
+- 📈 **Niveles y logros** — XP por texto y voz, 16 logros, rangos, roles automáticos y ranking con podios.
+- 🤖 **Chat con IA** — responde con datos reales del servidor, base de conocimiento propia, búsqueda web y acciones de moderación confirmadas por el staff.
+- 🎮 **Servidores CS 1.6** — estado en vivo por el protocolo de Valve, panel que se actualiza solo e IP lista para copiar.
+- 🔊 **Voz y estadísticas** — canales temporales estilo VoiceMaster y contadores en vivo en el nombre de canales de lectura.
+- 🎉 **Sorteos** — panel con botones, requisito por rol, cierre automático y anuncio de ganadores.
+- 🧹 **Automod** — anti-spam, anti-raid y filtros de invitaciones, links, menciones, mayúsculas y repetidos.
+
+## Stack
+
+Node 22 · discord.js v14 · CommonJS · MariaDB opcional para respaldo · tests con el runner nativo (sin frameworks).
+
+## Empezar
+
+```bash
+npm ci
+cp .env.example .env   # completá DISCORD_TOKEN
+npm start
 ```
 
-> `data/` se crea solo y está en `.gitignore`: cada entorno (local/Wispbyte) tiene su propia configuración.
+Los comandos slash se registran solos al arrancar; `npm run register` solo hace falta para forzarlo. Para invitarlo:
+
+```
+https://discord.com/oauth2/authorize?client_id=CLIENT_ID&scope=bot+applications.commands
+```
+
+## Variables de entorno
+
+| Variable | Para qué |
+| --- | --- |
+| `DISCORD_TOKEN` | **Obligatoria.** Token del bot |
+| `CLIENT_ID`, `GUILD_ID` | Solo para registrar comandos a mano |
+| `PRESENCE_INTENT` | Conteo de «en línea» en `/stats` (`false` si el portal no lo tiene habilitado) |
+| `GROQ_API_KEY`, `GEMINI_API_KEY`, … | Chat con IA: alcanza una clave, más claves = más respaldo |
+| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | Respaldo en MariaDB (sin esto, solo archivos locales) |
+| `IA_LIMITE_DIARIO`, `LOG_LEVEL` | Tope de respuestas por día y nivel de log |
+
+Todas las opciones y sus valores por defecto están en [`.env.example`](.env.example) y en [docs/OPERACION.md](docs/OPERACION.md).
 
 ## Desarrollo
 
-Requiere **Node 22** (está fijado en `engines` y en `.nvmrc`). En Wispbyte, el servidor tiene que arrancar con la imagen Docker de Node 22 (`nodejs_22`): con Node 19, ESLint avisa `EBADENGINE` en cada arranque y el runtime queda sin parches de seguridad.
-
 ```bash
-npm test        # tests (runner nativo de Node, sin dependencias)
-npm run lint    # ESLint: errores reales, no estilo
+npm test        # 758 tests, aislados del data/ real y sin red
+npm run lint    # errores reales, no estilo
 npm run format  # Prettier
 npm run check   # lint + tests: el mínimo antes de subir cambios
 ```
 
-Los tests corren aislados del `data/` real (usan un directorio temporal) y no tocan la red. Cómo funciona cada sistema por dentro: [docs/ARQUITECTURA.md](docs/ARQUITECTURA.md).
+Cada push a `main` corre `npm run check` en GitHub Actions. Como el bot se actualiza solo en cada reinicio, esa barrera evita que un commit roto baje producción.
 
-### Integración continua (GitHub Actions)
+## Despliegue
 
-`.github/workflows/check.yml` corre `npm run check` en cada push a `main` y en cada pull request. El bot se actualiza solo en cada reinicio (`git pull` + `npm install` + arranque), así que sin esta barrera un commit roto no espera a nadie: baja el bot en producción. Con los tests en verde, ese error se ve antes de llegar a `main`.
+En Wispbyte, con la imagen **Node 22** (`nodejs_22`):
 
-Además de los comandos escritos, hay dos de **menú contextual** (click derecho sobre un usuario → Aplicaciones): **Ficha de niveles** y **Ver warnings** (staff, oculto para el resto).
+1. Conectá el repo por GitHub, branch `main`, con **auto-update on startup**.
+2. Comando de arranque: `node src/index.js`.
+3. Cargá `DISCORD_TOKEN` en **Startup → Variables** y dale **Start**.
 
-Los comandos además se validan con un **smoke test de registro** (`tests/registro.test.js`): recorre el payload real que se le manda a Discord y comprueba nombres, descripciones y opciones. Un comando mal armado hace que Discord rechace el registro **completo**, así que un solo error de tipeo deja al bot sin ningún comando.
+Detalle completo en [docs/OPERACION.md](docs/OPERACION.md).
 
-Todos los comandos tienen un **cooldown por usuario** (2 s por defecto) para que una ráfaga no se coma la cuota de las fuentes externas. Los que salen a internet o consultan los servers por UDP declaran un valor más alto (5 s en `/meme`, `/buscar`, `/servidores` y `/jugadores`; 3 s en `/ip` y `/top`). El límite se aplica en un solo lugar y el comando bloqueado avisa en efímero cuánto falta.
+## Documentación
 
-## Comandos
+| Documento | Contenido |
+| --- | --- |
+| [Comandos](docs/COMANDOS.md) | Catálogo completo y cómo funciona cada sistema |
+| [IA](docs/IA.md) | Chat, base de conocimiento, búsqueda web, proveedores y límites |
+| [Arquitectura](docs/ARQUITECTURA.md) | Cómo está hecho el bot por dentro |
+| [Operación](docs/OPERACION.md) | Variables, base de datos, despliegue y privacidad |
+| [Integración web](docs/INTEGRACION-WEB.md) | Panel web ↔ bot sobre la misma MariaDB |
 
-### General
+## Privacidad
 
-| Comando                                                   | Qué hace                                                                                                               | Quién lo usa           |
-| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ---------------------- |
-| `/ping`                                                   | Latencia del bot con indicador de calidad y botón de refresco                                                          | Todos                  |
-| `/status`                                                 | Estado del bot: modelos de IA, latencia, tiempo encendido, uso — con botón de refresco                                 | Todos                  |
-| `/redes`                                                  | Redes oficiales de la comunidad (WhatsApp, Steam, Instagram) con botones de link directo                               | Todos                  |
-| `/web`                                                    | Link del sitio oficial [triggerarena.pro](https://triggerarena.pro/) con botón directo                                 | Todos                  |
-| `/voz activar/hub/categoria/formato/contador/logs/estado` | Staff: activa los **canales de voz temporales** (ver abajo)                                                            | Staff (config)         |
-| `/stats activar/metricas/refrescar/estado/desactivar`     | Staff: canales de voz de solo lectura con los números del server en el nombre (miembros, en línea, roles…)             | Staff (config)         |
-| `/servidores`                                             | Estado en vivo de los servers CS 1.6 (jugadores, mapa, IP). Staff: `publicar:true` fija un panel que se actualiza solo | Todos                  |
-| `/ip [servidor]`                                          | IP para conectarte, lista para copiar. Con filtro por nombre muestra mapa y jugadores de ahora                         | Todos                  |
-| `/jugadores [servidor]`                                   | Quién está conectado ahora en cada server CS 1.6, con puntaje y tiempo en línea                                        | Todos                  |
-| `/ticket publicar/categoria/logs/mensaje`                 | Panel de soporte con selector de tipo, canales privados por ticket, reclamar/agregar gente y transcript al cerrar      | Staff (config)         |
-| `/reportar usuario pruebas [adjunto]`                     | Abre un ticket de reporte con pruebas (cualquier miembro)                                                              | Todos                  |
-| `/sorteo crear/terminar/reroll/cancelar/lista`            | Publica un sorteo con panel y botones, lo cierra solo al vencer y anuncia ganadores (con rol de requisito opcional)    | Staff (crear)          |
-| `/diag`                                                   | Diagnóstico operativo: qué está roto y qué hacer, incluida la salida a internet del host y el estado de la base de conocimiento | Staff            |
-| `/buscar consulta`                                        | Búsqueda web a mano: resultados crudos con su fuente, cómo clasificaría el bot esa pregunta y qué trajo la base (con su similitud) | Staff        |
-| `/faltantes ver/borrar/limpiar`                           | Preguntas que la IA no supo contestar, agrupadas y contadas: la lista de qué cargar en la base de conocimiento         | Staff                  |
-| `/latencias`                                              | Latencia real de las respuestas por perfil (charla, consulta, profundo), la causa de cada demora y las más lentas      | Staff                  |
-| `/help user [comando]`                                    | Guía de comandos para usuarios, por categorías; con `comando` muestra el detalle y el permiso que exige                | Todos                  |
-| `/help staff [comando]`                                   | Guía completa (incluye moderación y configuración); respuesta de staff, no visible en canales públicos                 | Staff                  |
-| Guía de comandos: `/help user` y `/help staff`            | Se arma sola desde los comandos cargados (nunca queda desactualizada)                                                  | Todos / Staff          |
-| `/userinfo [usuario]`                                     | Ficha de usuario: fechas, roles, permisos y warns. **El staff** ve además sus notas internas y sus últimos casos       | Todos (extras: Staff)  |
-| `/serverinfo`                                             | Ficha del server: dueño, canales, roles, boosts                                                                        | Todos                  |
-| `/avatar [usuario]`                                       | Avatar en grande con link de descarga                                                                                  | Todos                  |
-| Mencionar al bot (`@TriggerBOT`)                          | Charla con IA, con indicador de escribiendo y contexto                                                                 | Todos                  |
-| `@TriggerBOT muteá a @fulano por spam`                    | La IA interpreta el pedido y el staff lo confirma con botones                                                          | Todos (confirma staff) |
-| `@TriggerBOT ping`                                        | Ping rápido por mención                                                                                                | Todos                  |
-
-### Moderación
-
-| Comando                                  | Qué hace                                                                                        | Permisos |
-| ---------------------------------------- | ----------------------------------------------------------------------------------------------- | -------- |
-| `/warn usuario [razon]`                  | Advierte a un usuario. **Al 3er warn: timeout de 1 h automático**                               | Mods     |
-| `/warnings usuario`                      | Historial de advertencias, paginado con botones (aguanta historiales largos)                    | Mods     |
-| `/unwarn usuario numero [razon]`         | Elimina una advertencia del historial                                                           | Mods     |
-| `/nota agregar/ver/quitar`               | Notas internas sobre un usuario. **No cuentan** para el silencio automático de 3 warn           | Mods     |
-| `/casos [caso] [usuario]`                | Consulta el registro de casos del mod-log: uno puntual por número o el historial de una persona | Mods     |
-| `/logs buscar [accion] [desde] [pagina]` | Filtra el registro de casos por acción, usuario, moderador y antigüedad, con páginas de 10      | Mods     |
-| `/kick usuario [razon]`                  | Expulsa a un usuario                                                                            | Mods     |
-| `/ban usuario [razon] [borrar_dias]`     | Banea y opcionalmente borra mensajes                                                            | Mods     |
-| `/unban usuario_id [razon]`              | Revoca un baneo por ID                                                                          | Mods     |
-| `/softban usuario [borrar_dias] [razon]` | Expulsa borrando sus mensajes (ban + unban)                                                     | Mods     |
-| `/timeout usuario duracion [razon]`      | Silencia de 5 min a 28 días, o **levanta el silencio** con _Quitarlo ahora_                     | Mods     |
-| `/mute usuario [razon]`                  | Silencia con rol (crea el rol _Silenciado_ solo)                                                | Mods     |
-| `/unmute usuario [razon]`                | Quita el silencio                                                                               | Mods     |
-| `/clear cantidad [usuario] [razon]`      | Borra hasta 100 mensajes recientes                                                              | Mods     |
-| `/lockdown bloquear/desbloquear [canal]` | Cierra o reabre un canal                                                                        | Mods     |
-| `/slowmode segundos [canal]`             | Modo lento de 0 s a 6 h                                                                         | Mods     |
-| `/sanciones`                             | Quién está silenciado ahora: rol Silenciado y silencios temporales activos                      | Mods     |
-
-> **Confirmación y deshacer:** `/ban`, `/softban`, `/kick`, `/mute`, `/clear` y `/lockdown bloquear` piden confirmación con botones antes de tocar Discord (nada se aplica hasta que confirmás). Después traen un botón **Deshacer** para revertir lo reversible: desbanear (`/ban`) y quitar el rol Silenciado (`/mute`). Un kick o un borrado de mensajes no se pueden deshacer con la API; ahí solo se confirma.
-
-> Todos los comandos de moderación validan jerarquía (no podés moderar a alguien con rol igual o superior), avisan al usuario por DM **solo si la sanción se aplicó** y quedan registrados en el mod-log con número de caso (que también aparece en la confirmación).
-
-**Cómo responden:** la confirmación es pública (transparencia) y suma la opción `silencioso:true` para que la veas solo vos; el motivo se muestra siempre (o _No especificado_), los silencios indican **cuándo terminan** con la hora local de cada persona, y si Discord rechaza una acción el bot lo dice con el motivo real y registra el caso como rechazado — nunca confirma algo que no pasó.
-
-> Los errores de Discord se reportan tal cual (permisos, jerarquía, límites) y **todo intento queda en el mod-log**, aplicado o no: es lo que permite auditar el servidor después.
-
-> **Quién ve los comandos de staff:** los comandos de moderación y configuración quedan visibles para todos en el selector **a propósito**. El bot autoriza por staff de `/config` (dueño, roles admin/mod/helper) y no por permisos nativos, justamente para que un moderador configurado por rol no pierda el comando. Si querés ocultárselos al resto, se hace por rol en **Server Settings → Integrations → TriggerBOT**: Discord no permite que las aplicaciones manejen esa visibilidad, así que es un paso del dueño del servidor (ahí también podés habilitar tus roles de staff aunque no tengan permisos nativos).
-
-### Tickets de soporte
-
-Se arma en 3 pasos: `/ticket logs` (dónde quedan los transcripts) → `/ticket categoria` (dónde se crean los canales) → `/ticket publicar` en tu canal de soporte.
-
-- **Panel con selector de tipo**: cada usuario elige **Soporte**, **Apelación** o **Reporte de cheater** y completa el formulario de ese tipo; se crea un canal privado `soporte-001` / `apelacion-002` / `reporte-003` visible solo por él y el staff (roles admin/mod/helper de `/config`). Un ticket abierto por persona. También hay `/reportar usuario pruebas [adjunto]` para reportar sin pasar por el panel.
-- **Al abrir**: el formulario del tipo registra lo que importa (motivo, qué sanción apelás, a quién reportás y con qué pruebas).
-- **Para el staff**: botón **Reclamar** (deja el ticket a nombre de quien lo atiende y avisa si ya lo tiene otro) y **Agregar usuario** (da acceso al canal por ID o mención).
-- **Al cerrar** (botón 🔒, disponible para el dueño o el staff): el bot arma un **resumen** (tipo, abierto por, atendido por, cerrado por, duración, mensajes), genera un **transcript .txt** con toda la conversación, lo manda al canal de logs, se lo deja por **DM al usuario** junto con una **encuesta 1-5** para calificar la atención, y borra el canal 30 segundos después. Todo queda registrado.
-- **Personalizable**: `/ticket mensaje` cambia el texto del panel. También se configura desde `/config → Tickets de soporte`.
-
-### Protección automática (anti-spam y anti-raid)
-
-Se activa desde `/config → Anti-spam y anti-raid` (apagada por defecto):
-
-- **Anti-spam**: si alguien supera el umbral (por defecto 5 mensajes en 5 s), borra la ráfaga, aplica la acción elegida (borrar / timeout 10 min / silenciar / expulsar / banear) y avisa al canal de staff. El staff con permiso de gestionar mensajes está exento, y cada usuario tiene 30 s de gracia entre castigos.
-- **Anti-raid**: si entran más de X cuentas en Y segundos (por defecto 8 en 60 s), alerta al staff con la lista de ingresos (marcando cuentas de menos de 7 días 🆕). Opcionalmente puede **actuar sola** (expulsar o banear) sobre cuentas nuevas sin roles.
-
-Todo queda registrado en el mod-log como acción del bot.
-
-### Canales de voz temporales (estilo VoiceMaster)
-
-Se activa con **`/voz activar`**: el bot crea un canal de voz **«➕ Crear canal»**. Cuando alguien entra ahí, recibe **su propio canal temporal** —por defecto **«🔊 Canal de Voz de {usuario}»** (formato configurable con `/voz formato`)— y un panel de controles:
-
-> 📍 **Categoría destino:** el staff elige dónde se crean los canales temporales con **`/voz categoria`**. Si se cambia, los canales ya creados **se mueven solos** a la nueva categoría (conservando permisos). Si nunca se configuró, se crean en la misma categoría que el hub.
->
-> 📋 **Registro:** por defecto solo se registran los **fallos** (no se pudo crear un canal) para no llenar el canal de logs de spam. Con **`/voz logs todo`** el staff activa el registro de cada creación, transferencia y borrado; con `nada` se silencia todo el registro de voz. Los eventos van al canal de logs de `/config` (o mod-log si no hay logs configurado).
-
-- **📝 Renombrar** y **👥 límite de usuarios** (0-99) con ventanas emergentes.
-- **🔒 Cerrar / 🔓 abrir** el canal (bloquea la entrada de gente nueva).
-- **👢 Expulsar** a alguien del canal y **👑 transferir** la propiedad.
-- **✋ Reclamar**: si el dueño se fue, cualquiera adentro puede tomar el canal.
-- **🗑️ Borrar** el canal cuando quieras.
-
-**Automático:** si el dueño se va pero queda gente, la propiedad pasa al primer humano que quedó; si el canal queda vacío, **se borra solo** (con 2 s de gracia por si el dueño vuelve). Un usuario tiene un solo canal a la vez (si vuelve a entrar al hub, va al suyo). Los canales activos sobreviven reinicios (quedan en la config respaldada en MariaDB) y al arrancar se limpian los que quedaron vacíos. Tope de 25 canales temporales por server (anti-flood).
-
-🔢 **Contador en el nombre:** cada canal muestra cuántos hay adentro —«· 3», o «· 3/5» con límite— y se actualiza solo al entrar o salir gente (se apaga con `/voz contador`). Discord limita los renombres a **2 por canal cada 10 minutos**: el bot junta los cambios y aplica el valor más nuevo apenas se libera el cupo, así que el número puede demorarse un poco en actualizarse.
-
-### Canales de estadísticas del servidor
-
-Se activan con **`/stats activar`**: el bot crea una categoría (**📊 Estadísticas**) y canales de voz **de solo lectura** —nadie puede entrar a hablar— cuyo **nombre lleva el número**, que es el único lugar donde Discord deja poner un contador en vivo:
-
-> 👥 **Miembros: 87.614** · 🟢 **En línea: 21.945** · 🎭 **Roles: 40**
-
-- **Métricas disponibles** (`/stats metricas lista`): `miembros`, `humanos` (sin contar bots), `enLinea` (conectados ahora), `roles`, `canales` y `boosts`. Por defecto van `miembros`, `enLinea` y `roles`; cambiar la lista crea y borra los canales que hagan falta en una sola pasada.
-- **Refresco automático cada 10 minutos**, que es el ritmo que permite Discord: solo deja **2 renombres por canal cada 10 minutos**. Si un número cambia justo después de otro, el cambio queda agendado y se aplica (con el valor más nuevo) apenas se libera el cupo — spamear el comando no acelera nada.
-- **Sin datos no se inventa un número**: un canal que no se pudo medir muestra `—` y `/stats estado` explica por qué.
-- **`/stats estado`** (efímero) muestra los canales con su valor actual, el estado del Presence Intent, la edad del último censo de miembros, la última pasada y el diagnóstico (canal borrado a mano, renombres rechazados por permisos).
-- **`/stats refrescar`** fuerza una pasada e informa qué se renombró de verdad, qué quedó en espera de cupo y qué rechazó Discord.
-- **`/stats desactivar [borrar]`** apaga el sistema; los canales se borran por defecto, o se conservan congelados con `borrar:false`.
-
-> 🔑 **En línea** necesita el **Presence Intent** (privilegiado): habilitarlo en el [portal de Discord](https://discord.com/developers/applications) → tu app → **Bot → Privileged Gateway Intents → Presence Intent**. Si el bot lo pide sin tenerlo habilitado, Discord cierra la conexión (`Used disallowed intents`) y el bot no arranca; para salir de ese estado sin tocar el portal, poné `PRESENCE_INTENT=false` en las variables del hosting (el bot arranca igual, con `humanos`, `roles` y los demás funcionando y el canal de «en línea» mostrando `—`).
->
-> El conteo de **humanos vs bots** y de **en línea** sale de un **censo** (`utils/censo.js`): una foto completa de la lista de miembros al arrancar y cada 6 h, y a partir de ahí los eventos de presencia mantienen el número al día. Es lo que hace viable contarlos en un servidor de decenas de miles de miembros: descargar la lista entera en cada refresco no lo sería.
-
-### Servidores CS 1.6 (monitoreo y panel en vivo)
-
-Se configura desde `/config → Servidores CS 1.6`: cargás cada server con nombre e `IP:puerto` (por ejemplo `cs.nostalgia.ar:27015`). Con eso:
-
-- **`/servidores`** consulta cada server por el protocolo de Valve (A2S, UDP directo, sin depender de la web) y muestra estado, jugadores, mapa, latencia y ocupación. El staff puede publicar un **panel auto-actualizado** (`/servidores → publicar`) que el bot edita solo cada 90 s.
-- **`/ip`** responde la IP en bloque de código para copiar; con filtro por nombre muestra el mapa y los jugadores de ahora.
-- **Alertas**: si un server deja de responder o vuelve, avisa al canal de staff (canal de avisos, logs o mod-log). Se pueden apagar desde el panel.
-
-El monitoreo hace 2 intentos con timeout de 2,5 s antes de dar un server por caído (UDP pierde paquetes), y los comandos consultan en paralelo con la caché del monitoreo para responder al instante.
-
-### Niveles y logros
-
-| Comando                          | Qué hace                                                                                    |
-| -------------------------------- | ------------------------------------------------------------------------------------------- |
-| `/estadisticas [usuario]`        | Perfil completo: rango, nivel, XP con barra, bonus activos, racha, puesto y próximos logros |
-| `/logros [usuario]`              | Progreso logro por logro, del más cercano al más lejano, con cuánto falta para cada uno     |
-| `/rolnivel definir/quitar/lista` | Staff: roles que se otorgan automáticamente al alcanzar un nivel                            |
-| `/top [pagina]`                  | Ranking con podio, tu puesto y botones Anterior/Siguiente                                   |
-
-XP por escribir (15-25 por mensaje, máximo 1 por minuto para evitar farmeo) con **bonus acumulables**: +1% por día de racha (tope +35%), **x2 los fines de semana** y +10% de madrugada (00-06 h Argentina). **16 logros desbloqueables con recompensa de XP** (se pagan solos al cumplirlos), rangos por nivel (Novato → Activo → Experto → Veterano → Leyenda) y **roles por nivel**: el staff define con `/rolnivel` qué rol se otorga automáticamente al alcanzar cada nivel. También hay **XP por voz**: 8 XP por minuto completo en un canal de voz, hasta 200 por día, y solo si estás acompañado y sin mutearte (no cuentan el canal AFK ni los canales que el staff marque como excluidos). El staff configura el canal de anuncios en el panel `/config → Niveles y XP`.
-
-### Utilidades
-
-| Comando                                            | Qué hace                                                                        |
-| -------------------------------------------------- | ------------------------------------------------------------------------------- |
-| `/afk [motivo]`                                    | Te marca ausente; al mencionarte, el bot avisa. Se saca solo al volver a hablar |
-| `/encuesta tema [opciones]`                        | Encuesta con reacciones (Sí/No o hasta 6 opciones propias)                      |
-| `/embed titulo texto [color] [imagen] [canal]`     | Anuncios profesionales con embeds (staff)                                       |
-| `/plantillas agregar/quitar/lista`                 | Razones rápidas que autocompletan `/warn`, `/ban`, `/kick`, etc. (staff)        |
-| `/frases configurar/agregar/publicar/lista/quitar` | Frase del día publicada automáticamente a la hora elegida (staff)               |
-
-### Diversión y comunidad
-
-| Comando                                                                            | Qué hace                                                                                |
-| ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| `/beso` `/abrazo` `/caricia` `/abofetear` `/morder` `/pellizco` `/chocar` `/guino` | Interacciones con GIF animado y contadores persistentes (uno por comando, con @usuario) |
-| `/meme`                                                                            | Meme al azar de Reddit (r/memes, r/memesesp y más) con botón Otro                       |
-| `/8ball pregunta`                                                                  | La bola 8 mágica responde con 20 veredictos                                             |
-| `/dado [caras]`                                                                    | Tira un dado (1-6 o hasta 100 caras)                                                    |
-| `/moneda`                                                                          | Cara o ceca                                                                             |
-
-### Sorteos
-
-`/sorteo crear premio:1 mes de VIP duracion:7d` publica un panel en el canal con un botón **🎉 Participar** y otro **Salir**: la comunidad se anota con un clic, sin comandos. Se puede pedir un **rol como requisito**, elegir **cuántos ganadores** (1-10) y en qué canal publicarlo.
-
-- **Se cierra solo**: al vencer, el bot quita los botones del panel, anuncia a los ganadores en el canal y les manda un DM. Si el bot estuvo caído, los sorteos vencidos se cierran al arrancar.
-- **Una entrada por persona**: el botón no duplica y siempre contesta en efímero (el canal no se llena).
-- **Sin sorpresas**: `/sorteo terminar id` cierra ahora, `/sorteo reroll id` vuelve a sortear (evitando repetir ganadores si hay gente suficiente), `/sorteo cancelar id` lo deja sin efecto y `/sorteo lista` muestra abiertos y últimos resultados.
-- **Estado persistente**: los sorteos viven en la config del servidor, así que sobreviven reinicios y viajan con el respaldo de MariaDB. Un sorteo desierto se informa como desierto, nunca se inventa un ganador.
-
-### Configuración (solo staff)
-
-`/config` abre un **panel interactivo**: un menú desplegable con las secciones (Bienvenida, Mod-log, Logs, Avisos, Staff, Rol de silenciado, Chat con IA, Niveles, Frase del día, Anti-spam y anti-raid, Tickets de soporte, Desactivar) y, dentro de cada una, selectores nativos para elegir canales y roles con un clic — sin tipear IDs ni opciones. El mensaje de bienvenida se edita en una ventana emergente y cada desactivado pide confirmación. Todo se guarda al instante y el panel es visible solo para quien lo abre.
-
-`/bienvenida test` muestra el mensaje de bienvenida **tal como lo reciben los nuevos** (el mismo embed que publica el bot) y avisa si el canal configurado ya no existe, si le falta permiso para escribir o si el rol de autorol se borró. Con `enviar:true` lo publica de verdad en el canal, aclarando que es una prueba y sin mencionar a nadie.
-
-## Chat con IA (opcional)
-
-El bot puede conversar cuando lo mencionás, con memoria de contexto por usuario (los últimos 6 turnos, se olvida a los 10 minutos). Responde **con datos reales del servidor**, no de memoria: antes de cada respuesta el prompt se arma con
-
-- tu ficha (`nivel`, XP, puesto en el ranking, racha, logros y advertencias) y si estás silenciado,
-- el estado en vivo de los servidores CS 1.6 (jugadores, mapa, caído) y lo que esté activo (tickets, voz, anti-spam),
-- el **catálogo real de comandos** (sale de los comandos cargados: nunca se desincroniza), y
-- los fragmentos más parecidos de la **base de conocimiento** (`docs/conocimiento/*.md`).
-
-**Búsqueda por significado (`utils/embeddings.js`, opcional):** el buscador de la base trabaja con dos señales: las **palabras** (BM25: `banear` encuentra `baneo` por la raíz) y el **significado**. Con la clave de Gemini ya configurada para el chat, la pregunta y las secciones se comparan como vectores, así el bot encuentra el tema aunque la pregunta use otras palabras («no me llegan los mensajes» → *Rol Silenciado*). **Sin clave, con `KB_SEMANTICO=off` o si el proveedor falla, todo sigue igual que siempre**: la semántica es una mejora, nunca un requisito, y no gasta el presupuesto diario de IA (no es una respuesta, es una consulta de índice). Los vectores se cachean en `data/embeddings.json` (dato derivado: si se borra, se recalcula; no va al respaldo de MariaDB) y una sección editada solo se vuelve a vectorizar si cambió su texto. Si las palabras ya reconocieron el tema en el título, no se pide ningún vector: el camino común no paga latencia. `/diag` muestra si está activa, `/buscar` muestra **consulta por consulta** qué fragmento trajo cada señal y con qué similitud (ahí se calibran `KB_SEMANTICO_UMBRAL` y `KB_SEMANTICO_TITULO`), y la vigilancia avisa al staff si el proveedor de embeddings se cayó.
-
-Si la pregunta es **de la comunidad** y el dato exacto no está ahí, el bot **no la deja sin responder**: contesta con lo que sí está cargado de ese tema, aclara en una frase que ese detalle no lo tiene y te deriva al staff — pero nunca devuelve una negativa seca, y si el tema no es de la comunidad lo responde igual (con la web si hace falta). Es la única forma de que no invente una regla o una sanción. Para enseñarle algo nuevo (reglas, FAQ, horarios), editá o agregá un `.md` en `docs/conocimiento/` siguiendo el [README de esa carpeta](docs/conocimiento/README.md): se recarga solo en menos de un minuto, sin reiniciar. Las 12 normativas de la comunidad ya están cargadas en `docs/conocimiento/reglas.md`: si el staff las cambia, se edita ese archivo (o se agrega uno nuevo) y el bot responde la versión actualizada.
-
-**Preguntas del mundo real (`utils/web.js`):** la precisión estricta vale para los datos del server, no para todo. Preguntas de cultura general ("¿cuántos años tiene Messi?", "¿quién fue San Martín?", "¿a cuánto está el dólar?") se responden con el conocimiento del modelo y, cuando hace falta, con una **búsqueda web real** — sin claves de API:
-
-- **Fuentes:** resumen de **Wikipedia en español** (y en inglés si en español no hay nada), **DuckDuckGo Instant Answer** y, como extra, el HTML público de DuckDuckGo Lite (DDG suele bloquear clientes automatizados, así que aporta cuando quiere y si viene vacío no pasa nada).
-- **Datos vivos que ningún modelo tiene al día:** cotización del **dólar y el euro** (API pública de Bluelytics) y **clima** de una ciudad (Open-Meteo, con geocodificación). Se consultan solos cuando la pregunta es de ese tema, siempre antes de responder, y en el clima hace falta que la ciudad esté clara: si no, no se responde nada en vez de dar el clima de otra ciudad.
-- **Investiga en rondas:** si la primera ronda no trae nada, reintenta con la Wikipedia en inglés y, si tampoco, con la **consulta reducida a sus palabras con contenido** ("¿cuántos años tiene Messi?" → `anos messi`). Cada ronda solo cuesta cuando la anterior vino vacía, y dos pedidos simultáneos de la misma consulta salen a internet una sola vez.
-- **Comunidad o mundo lo decide la pregunta, no una lista fija:** las palabras que existen en los dos lados ("canal", "rol", "nivel", "jugador", "logro") ya no mandan solas. Manda el ancla del server ("reglas", "ticket", "CS 1.6"…), el contexto ("este server", "nuestro discord") y las **entidades del mundo** (YouTube, Google, Twitch, Minecraft, Elden Ring, Valorant…): “¿cuál es el canal más grande de YouTube?” es una pregunta del mundo aunque “canal” también exista acá, y “¿cuántos logros tiene Elden Ring?” no se contesta con los logros de la comunidad. La entidad de afuera **gana incluso sobre el ancla** mientras no se hable de este server; una coincidencia floja de la base (una sola palabra ambigua en el título de una sección) **no** alcanza para arrastrar las reglas del server al prompt.
-- **La base de la comunidad no viaja en preguntas generales:** en consultas de comunidad se inyectan las secciones más parecidas de `docs/conocimiento`; en las de cultura general, **ninguna**. Así una pregunta por la edad de Messi no arrastra las reglas del server.
-- **Cuándo busca:** nunca en charla social; nunca para los datos de la comunidad que la base tiene cargados (ahí manda la base del server); sí para **cualquier** pregunta de cultura general, también las que no llevan palabra interrogativa, y también para las preguntas de la comunidad de las que la base no sabe nada. Busca **antes de responder** si el usuario lo pide ("buscame…") o si el dato cambia con el tiempo (precios, resultados, noticias, clima); en el resto de los casos la búsqueda **arranca en paralelo** a la respuesta, así que no cuesta latencia: si la IA ya sabía, los resultados se descartan. Cuenta como pedido de dato tanto "edad de Messi" como la forma invertida "messi edad" (el sujeto primero y el dato al final).
-- **Nunca se queda en el "no lo tengo cargado":** si la IA contesta que no tiene la información, el bot usa los datos reales —los que ya estaban buscados en paralelo, y si no hay, busca en el momento— y **le hace contestar de nuevo** con los resultados a la vista; si el modelo vuelve a negarse, entrega el dato crudo con su fuente, y si la búsqueda no trajo nada le pide una respuesta con lo que sabe en vez de la negativa. En las reglas de la comunidad sigue mandando la base del server: ahí no se inventa nada, pero tampoco se contesta con una negativa seca.
-- **Cuentas, unidades y fechas exactas:** las resuelve `utils/calculos.js` **sin llamar a la IA** (`18% de 3800`, `12 * (3 + 4)`, `120 km a millas`, `30 °C a °F`, `¿cuántos días faltan para el 25 de mayo?`): respuesta al instante, sin margen de error y aunque la cuota del día esté agotada.
-- **Sin claves de IA** (o con todos los proveedores caídos) las preguntas generales igual se responden: se devuelve el dato de la búsqueda citando la fuente.
-- **Cita las fuentes:** cuando la respuesta sale de una búsqueda, el mensaje cierra con `🔎 Fuentes:` y los links (hasta 3, sin repetir). Si el modelo ya nombró el link, no se duplica.
-- **Caché de respuestas:** las preguntas de cultura general repetidas se contestan de una caché por usuario (10 minutos) sin gastar cuota; las de la comunidad **nunca** se cachean, porque dependen de datos vivos (tu nivel, los jugadores, la config del server).
-- **Costos acotados:** caché por consulta (10 min; 1 min si vino vacía), tope de 30 búsquedas por minuto, cooldown por usuario y timeouts de 3,5 s por fuente y 6 s totales: una fuente lenta o caída no deja al bot mudo, y la búsqueda en paralelo no se espera cuando la IA ya sabe la respuesta. Lo usado se ve en `/status` como `Web: N`.
-
-**Presupuesto diario (`utils/presupuesto.js`):** los planes gratuitos tienen cuota diaria, y el cooldown de 3 s por mención no alcanza: una ráfaga de menciones se comía la cuota y dejaba al bot sin IA el resto del día. Ahora hay un **tope de respuestas por día** (`IA_LIMITE_DIARIO`, 300 por defecto): al agotarse, el bot deja de llamar al modelo —y de buscar en internet— hasta la medianoche (hora de Argentina) y contesta con su repertorio local, mientras la vigilancia avisa al staff **una vez por jornada**. El contador se respalda en `bot_stats` y se restaura al arrancar, así un reinicio no regala cupo. `/status` y `/diag` muestran `usadas/límite` y cuántas respuestas salieron de la caché.
-
-**Acciones de moderación por chat:** el staff le da órdenes en lenguaje natural y la IA prepara la acción, siempre con un embed de confirmación. Hay dos familias:
-
-- **Sobre una persona:** `@TriggerBOT banear a @fulano por flodeo`, "mutealo", "advertile", "dale 1 hora de silencio".
-- **Sobre el canal:** "borrá todos los mensajes de este canal" (hasta 100 por vez; los de más de 14 días no se pueden borrar en bloque), "poné modo lento de 30 segundos", "cerrá el canal", "abrilo".
-
-**Solo el staff** puede apretar **Ejecutar**: el dueño y los roles admin/mod/helper de `/config`, y para cualquier otro vale el mismo permiso que exige el comando equivalente —moderar miembros para las acciones sobre personas, Gestionar mensajes para `/clear`, Gestionar canales para `/slowmode` y `/lockdown`—. Así, por chat nadie puede hacer algo que por comando no podría. Las órdenes sobre el canal solo las puede _pedir_ el staff. La acción queda registrada en el mod-log. Hay cooldown de 20 s por usuario para evitar abusos y las solicitudes expiran a los 5 minutos.
-
-**Cadena de respaldo automática (optimizada por velocidad):** los proveedores viven en una **tabla** (`PROVEEDORES` en `utils/ia.js`): sumar uno nuevo es agregar su clave, sin escribir código.
-
-1. **Groq** (principal) — chips LPU: responde en ~0,3-0,8 s, 5-10x más rápido que Gemini. Modelos del plan gratuito: `openai/gpt-oss-120b` (calidad) y `openai/gpt-oss-20b` (1000 tps, el más rápido).
-2. **Cerebras** — inferencia en silicio propio: el más rápido de la lista y un respaldo ideal cuando Groq se queda sin cuota.
-3. **Gemini** (respaldo de calidad) — si los anteriores no tienen clave, fallan o se quedan sin cuota; si Google retira un modelo, el bot lo descarta solo.
-4. **OpenRouter** — un endpoint con modelos de varios laboratorios, **solo los gratuitos** (los que terminan en `:free`): la clave nunca gasta en un modelo de pago.
-5. **Mistral** — su plan gratuito como último respaldo antes del repertorio local.
-6. **Respuestas locales** — si no hay claves o todo falla, usa su repertorio propio. Nunca se queda mudo.
-
-Cada proveedor entra solo si tiene clave: sin `CEREBRAS_API_KEY`, por ejemplo, el bot ni lo intenta ni lo muestra en `/status`. Si uno se cae (clave inválida, cuota agotada o un modelo retirado), se aparta por un rato —según el error— y el mensaje siguiente sale por el que siga, sin que el usuario espere nada.
-
-**Optimizado para responder rápido:**
-
-- **Respuestas instantáneas (0 ms):** preguntas canónicas (quién te creó, cuál es la web, las redes, saludos de identidad) se responden sin llamar a la IA — funcionan siempre, incluso sin claves o con los proveedores caídos.
-- **Carrera con respaldo (hedged request):** el proveedor preferido arranca al instante y, si no contestó en 1,4 s, el respaldo sale **en paralelo** y gana el primero que responda. Cuando Groq va rápido no cuesta ninguna llamada extra; cuando está lento, la respuesta llega igual en ~1,5 s en vez de esperar la cadena completa.
-- **Memoria de fallos:** un modelo retirado o sin permiso se descarta por horas y una clave inválida aparta al proveedor según el error (1 h si la clave no sirve, 1 min si se agotó la cuota). Sin esto, un modelo muerto costaba un viaje de red fallido en **cada** mensaje.
-- **Prueba de modelos al arrancar:** el bot prueba el modelo elegido con una petición mínima antes de que llegue el primer mensaje, así el usuario nunca paga el descubrimiento de un modelo caído.
-- **Enrutado por complejidad:** los mensajes sociales cortos ("hola", "todo bien?", "gracias", "jaja") van al modelo chico `openai/gpt-oss-20b` (~2x más rápido que el grande) y el `120b` queda para preguntas que sí requieren pensar.
-- **Tres perfiles:** _charla_ (temperatura 0,75, respuestas de 1-3 frases), _consulta_ (temperatura 0,3, respuestas completas) y _profundo_ (temperatura 0,35, hasta 1.400 tokens y sin apurar al modelo) para lo que pide desarrollo: explicaciones, comparaciones, traducciones, resúmenes o código. Es lo que hace que no invente cuando le preguntan algo concreto y que no se corte a mitad de camino cuando le piden explicar.
-- **Respuestas largas:** si el modelo se queda sin tokens, reintenta con más margen; al publicar, el texto se parte en varios mensajes sin cortar palabras al medio.
-- **Precalentamiento:** el bot consulta la lista de modelos al arrancar, no en el primer mensaje: la primera respuesta tras un reinicio no se come la demora del listado. Si el listado falla, no lo reintenta en cada mensaje (antes costaba hasta 5 s por respuesta).
-- Los modelos con **thinking** (razonamiento previo) están excluidos: solo chat directo.
-
-Para activarlo alcanza **una** clave (más claves = más respaldo):
-
-1. Clave gratis de Groq en [console.groq.com/keys](https://console.groq.com/keys) (la principal).
-2. Clave gratis de Gemini en [aistudio.google.com/apikey](https://aistudio.google.com/apikey) (cuenta Google, 2 min, sin tarjeta).
-3. Agregá `GROQ_API_KEY` y `GEMINI_API_KEY` en el panel de Wispbyte (Startup → Variables) o en tu `.env` local.
-4. (Opcionales, más respaldo) `CEREBRAS_API_KEY` ([cloud.cerebras.ai](https://cloud.cerebras.ai)), `OPENROUTER_API_KEY` ([openrouter.ai/keys](https://openrouter.ai/keys), solo modelos `:free`) y `MISTRAL_API_KEY` ([console.mistral.ai](https://console.mistral.ai)).
-5. (Opcional) `GEMINI_MODEL` / `GROQ_MODEL` para fijar modelos — por defecto el bot detecta solo los mejores disponibles.
-
-Con `/status` ves qué modelo usa cada IA, su **latencia real** (mediana y peor 5 %), los errores acumulados, si algún proveedor está en pausa y qué modelos quedaron descartados. Además muestra la **latencia por perfil** (charla, consulta, profundo) de las respuestas del bot, y `/latencias` la abre con el detalle: cuánto cuesta una búsqueda antes de responder, un rescate con web o un turno sin IA, y cuáles fueron las preguntas más lentas con su causa. `/diag` muestra el estado de la IA con el detalle para decidir.
-
-**Lo que el bot no supo se convierte en trabajo para la base:** cuando la respuesta final queda en negativa (ni la base del server ni la búsqueda web cubrieron el tema), la pregunta se registra en `data/faltantes.json` (con respaldo en la base de datos, como el resto de los almacenes) agrupada por tema, con cuántas veces se preguntó, quién y cuándo. `/faltantes` es esa lista: cargás la sección en `docs/conocimiento/*.md`, el bot la recarga sola en menos de un minuto y el tema se borra con `/faltantes borrar`. Así lo que falta se ve en vez de depender de que alguien se acuerde de lo que le preguntaron.
-
-**Sin clave configurada el bot funciona igual**: usa su repertorio local de respuestas. Si la IA falla o se queda sin cuota, también cae al respaldo automáticamente — nunca se queda mudo.
-
-## Base de datos (MariaDB de la web)
-
-El bot comparte la base de datos de la web TriGGer.Arena (`trigger-arena-db` en MariaDB). Usa **sus propias tablas con prefijo `bot_`** y nunca toca las tablas de la web:
-
-| Tabla del bot | Para qué                                                                                                |
-| ------------- | ------------------------------------------------------------------------------------------------------- |
-| `bot_data`    | Respaldo maestro: config, warns, niveles, afk e interacciones (un snapshot JSON por servidor y almacén) |
-| `bot_stats`   | Estadísticas globales sueltas                                                                           |
-| `bot_cmd`     | Bus de comandos web ↔ bot: la web encola comandos y el bot los ejecuta cada 5 s                         |
-
-- Cada cambio local se sube a la base 3 segundos después (agrupa ráfagas de escrituras).
-- Al arrancar, el bot compara local vs base y aplica la copia más nueva: si el host borra `data/`, todo se restaura solo desde MariaDB.
-- **Las tablas se crean solas** al primer arranque (`CREATE TABLE IF NOT EXISTS`): no hace falta importar nada a mano. `sql/schema.sql` queda como referencia y para crearlas desde phpMyAdmin si el usuario no tiene permisos de `CREATE`.
-- Cuando el bot es expulsado de un servidor, sus datos se limpian de ambos lados.
-
-**Configuración:**
-En Wispbyte (Startup → Variables) o en tu `.env` local:
-
-```
-DB_HOST=127.0.0.1
-DB_PORT=3306
-DB_NAME=trigger-arena-db
-DB_USER=trigger-user
-DB_PASSWORD=••••••••
-```
-
-Son las mismas credenciales que usa la web. El usuario necesita permisos de `SELECT/INSERT/UPDATE/DELETE` (+ `CREATE` la primera vez, o importá `sql/schema.sql` desde phpMyAdmin).
-
-Restart. En el log vas a ver `Base de datos conectada: ...` y `/status` muestra el estado de la BD.
-
-Sin variables `DB_*` el bot funciona igual, solo con archivos locales. **Seguridad:** el aislamiento con los datos de la web es por usuario de BD y prefijo `bot_`: todas las consultas van parametrizadas y la capa de BD valida tabla/columna contra una whitelist.
-
-## Setup local
-
-1. Instalar dependencias:
-   ```
-   npm install
-   ```
-2. Copiar `.env.example` a `.env` y completar:
-   - `DISCORD_TOKEN` → token del bot (Discord Developer Portal → Bot → Reset Token)
-   - `CLIENT_ID` → ID de la aplicación (Developer Portal → General Information → Application ID)
-   - `GUILD_ID` → ID de tu servidor Discord (clic derecho en el servidor → Copiar ID, con modo desarrollador activado)
-3. Invitar el bot al servidor con permisos de aplicaciones:
-   ```
-   https://discord.com/oauth2/authorize?client_id=CLIENT_ID&scope=bot+applications.commands
-   ```
-4. Registrar los comandos slash (OPCIONAL — el bot los registra solo al arrancar):
-   ```
-   npm run register
-   ```
-5. Encender el bot:
-   ```
-   npm start
-   ```
-
-## Despliegue en Wispbyte
-
-1. Subir el repo a GitHub (ya conectado) y en Wispbyte crear un servidor **Node.js** (el plan gratuito corre 24/7; 1 bot por server).
-2. Subir el código con la **integración de GitHub**: en Files/Deploy poné la URL del repo (`https://github.com/fedegudi2022-blip/TriggerBOT`), branch `main`, y activá **auto-update on startup** para que cada reinicio haga pull.
-3. En la pestaña **Startup**:
-   - **Imagen de Node:** elegí la variante **Node 22** (`nodejs_22`). Con la de Node 19 el bot funciona, pero el `npm install` llena la consola de avisos `EBADENGINE` y esa versión ya no recibe parches de seguridad.
-   - Comando de arranque: `node src/index.js`
-   - Variables de entorno: `DISCORD_TOKEN` (es la única imprescindible; `CLIENT_ID` y `GUILD_ID` solo hacen falta si usás `npm run register` manual)
-   - Las dependencias se instalan solas (hay `package.json`)
-4. Start y mirar la consola: deberías ver la sesión iniciada y los comandos sincronizados en cada servidor.
-5. Para actualizar: `git push` desde tu máquina → **Restart** en el panel (con auto-update hace pull solo).
-
-> No hace falta subir `.env` a Wispbyte: las variables del panel llegan al bot igual (dotenv no las pisa).
-
-**Importante:** nunca subir el `.env` a GitHub (ya está en `.gitignore`). Poner el token como variable en el panel de Wispbyte.
-
-## Privacidad y datos
-
-El bot está pensado para **un solo servidor**: la comunidad Trigger.
-
-**Qué guarda y dónde:**
-
-| Dato                                                      | Dónde vive                                               |
-| --------------------------------------------------------- | -------------------------------------------------------- |
-| Configuración del server (`data/config.json`)             | Disco local + respaldo en MariaDB (`bot_data`)           |
-| Historial de warns                                        | Disco + MariaDB (`bot_data`)                             |
-| XP, niveles, logros                                       | Disco + MariaDB (`bot_data`)                             |
-| Estado AFK y contadores de interacciones                  | Disco + MariaDB (`bot_data`)                             |
-| Notas internas del staff                                  | Disco + MariaDB (`bot_data`)                             |
-| Casos de moderación (lo que muestra `/casos`)             | Disco + MariaDB (`bot_data`)                             |
-| Transcripts de tickets (.txt)                             | Canal de logs y DM del usuario; no se persiste en el bot |
-| Logs de mensajes borrados/editados                        | Canal de logs del server; no se persiste en el bot       |
-| Ventanas de anti-spam/anti-raid, cooldowns, memoria de IA | Solo memoria; se pierden al reiniciar (intencional)      |
-
-**Servicios externos:**
-
-- **Discord**: inherente al bot.
-- **MariaDB de la web** (si está configurada): respaldo de los datos de la tabla de arriba, en tablas propias `bot_*`. La contraseña `DB_PASSWORD` es un secreto: nunca en logs (el logger la enmascara si un error la arrastra), capturas ni el repo.
-- **Proveedores de IA** (solo si configurás alguna clave de IA, ver la cadena arriba): al mencionar al bot se envía tu mensaje, tu nombre visible, el canal, tus datos públicos del sistema de niveles (nivel, XP, puesto, racha) y el estado público de los servidores CS (desde su propia pregunta), más los últimos 6 turnos de la conversación con vos. No se envían IDs de Discord ni mensajes de otros usuarios. Sin claves configuradas, el chat usa solo respuestas locales y **nada sale del host**.
-- **Reddit / APIs de GIFs**: solo peticiones anónimas de contenido público (memes, GIFs de interacciones).
-
-**Retención:** los JSON locales viven mientras el bot esté en el server; al ser expulsado, sus datos se limpian del disco y de la base (`bot_data`). Los transcripts de tickets y los logs de moderación quedan en Discord (canal/DM) según la retención de Discord misma.
+Los datos de configuración, warns, niveles y casos viven en el servidor y, si está configurada, en tablas propias `bot_*` de MariaDB. Sin claves de IA, nada sale del host. El detalle de qué se guarda, qué se envía a cada servicio y por cuánto tiempo está en [docs/OPERACION.md](docs/OPERACION.md#privacidad-y-datos).
