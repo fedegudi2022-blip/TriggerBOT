@@ -20,6 +20,7 @@ const logXpVoz = crearLogger('xp-voz');
 const logStats = crearLogger('stats');
 const logCenso = crearLogger('censo');
 const logSorteos = crearLogger('sorteos');
+const logTickets = crearLogger('tickets');
 
 // Cooldown por usuario de los comandos (política en un solo lugar: utils/cooldowns.js).
 const cooldowns = require('./utils/cooldowns');
@@ -210,6 +211,25 @@ const pasadaDeSorteos = () =>
 setInterval(pasadaDeSorteos, 30 * 1000).unref();
 setTimeout(pasadaDeSorteos, 25 * 1000).unref();
 
+// ---------- Tickets: auto-cierre por inactividad ----------
+// Cada 10 minutos revisa los tickets abiertos: avisa una hora antes de vencer y cierra
+// los que superaron el plazo (72 h por defecto, configurable con /ticket inactividad).
+// La primera pasada va al minuto: si el bot estuvo caído, los tickets vencidos se
+// cierran enseguida en vez de esperar otra pasada.
+const ticketsUtil = require('./utils/tickets');
+const pasadaDeTickets = () =>
+  ticketsUtil
+    .procesarInactividad(client)
+    .then((resumen) => {
+      if (resumen.cerrados) logTickets.info(`Tickets cerrados por inactividad: ${resumen.cerrados}`);
+      if (resumen.avisados) logTickets.info(`Tickets avisados antes del cierre automático: ${resumen.avisados}`);
+      if (resumen.limpiados) logTickets.info(`Registros de tickets sin canal limpiados: ${resumen.limpiados}`);
+      if (resumen.errores) logTickets.warn(`Tickets que no se pudieron cerrar por inactividad: ${resumen.errores}`);
+    })
+    .catch((error) => logTickets.error('Error en la pasada de auto-cierre de tickets', error));
+setInterval(pasadaDeTickets, 10 * 60 * 1000).unref();
+setTimeout(pasadaDeTickets, 60 * 1000).unref();
+
 // ---------- Componentes interactivos (botones, selectores y modales) ----------
 const { manejarBoton } = require('./utils/accionesIA');
 const { responderError } = require('./utils/errores');
@@ -238,8 +258,10 @@ client.on('interactionCreate', async (interaction) => {
     } else if (interaction.isButton() && interaction.customId === 'diag:refresh') {
       await diagCmd.boton(interaction, client);
     } else if (interaction.isButton() && interaction.customId.startsWith('top:page:')) {
-      // El comando /top expone su render para que el botón pida otra página.
-      await topCmd.ejecutar(interaction, Number(interaction.customId.split(':')[2]) || 1);
+      // El comando /top expone su render para que el botón pida otra página. El período
+      // y la página viajan en el customId (`top:page:2` o `top:page:semana:2`), así que
+      // el render los deduce solo.
+      await topCmd.ejecutar(interaction);
     } else if (interaction.isButton() && interaction.customId.startsWith('warnings:')) {
       // Página del historial de advertencias (customId: warnings:<userId>:<pagina>).
       const [, userId, pagina] = interaction.customId.split(':');

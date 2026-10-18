@@ -12,7 +12,8 @@ const {
   ChannelType,
   MessageFlags,
 } = require('discord.js');
-const { getGuildConfig, setGuildConfig } = require('../store');
+const { getGuildConfig } = require('../store');
+const { guardarConfigAuditada } = require('./auditoria');
 const { brandEmbed, errorEmbed, COLORS } = require('./replies');
 const { nivelStaff, esStaff } = require('./permisos');
 const {
@@ -459,15 +460,21 @@ function vistaSeccion(interaction, seccion, guardado = false) {
     );
   } else if (seccion === 'tickets') {
     const t = config.tickets || {};
+    const calificaciones = (t.calificaciones ?? []).filter((c) => Number.isFinite(c.valor));
+    const promedio = calificaciones.length ? calificaciones.reduce((a, c) => a + c.valor, 0) / calificaciones.length : null;
+    const horas = Number.isFinite(Number(t.horasInactividad)) ? Number(t.horasInactividad) : 72;
     embed = new EmbedBuilder()
       .setTitle('Tickets de soporte')
       .setColor(COLORS.info)
       .setDescription(
         `**Categoría de tickets:** ${canalActual(t.categoriaId)}\n` +
           `**Canal de transcripts:** ${canalActual(t.canalLogs)}\n` +
-          `**Texto del panel:** ${t.mensajes ? 'personalizado' : 'por defecto'}\n\n` +
-          'Publicá el panel con `/ticket publicar` en tu canal de soporte: cada usuario abre su canal privado ' +
-          'y al cerrarlo el bot guarda el transcript en logs y se lo manda por DM al usuario.'
+          `**Texto del panel:** ${t.mensajes ? 'personalizado' : 'por defecto'}\n` +
+          `**Auto-cierre por inactividad:** ${horas > 0 ? `${horas} h (aviso 1 h antes)` : 'apagado'}\n` +
+          `**Calificación promedio:** ${promedio === null ? 'sin encuestas todavía' : `${promedio.toFixed(1)}/5 (${calificaciones.length})`}\n\n` +
+          'Publicá el panel con `/ticket publicar` en tu canal de soporte: cada usuario abre su canal privado, ' +
+          'al cerrarlo elige un motivo y el bot guarda el transcript HTML en logs y se lo manda por DM. ' +
+          'El detalle de calificaciones y motivos está en `/ticket stats`; las horas de inactividad se cambian con `/ticket inactividad`.'
       );
 
     components.push(
@@ -561,8 +568,8 @@ function seccionDeComponente(interaction) {
 }
 
 // ---------- Guardado por sección ----------
-function aplicarSet(guildId, seccion, campo, valor) {
-  setGuildConfig(guildId, (c) => {
+function aplicarSet(interaction, seccion, campo, valor) {
+  return guardarConfigAuditada(interaction, NOMBRE_SECCION[seccion] ?? seccion, (c) => {
     if (seccion === 'bienvenida' && campo === 'canal') {
       c.welcome = c.welcome || {};
       c.welcome.channelId = valor;
@@ -597,8 +604,8 @@ function aplicarSet(guildId, seccion, campo, valor) {
   });
 }
 
-function aplicarDesactivado(guildId, feature) {
-  setGuildConfig(guildId, (c) => {
+function aplicarDesactivado(interaction, feature) {
+  return guardarConfigAuditada(interaction, `Desactivar ${NOMBRE_SECCION[feature] ?? feature}`, (c) => {
     if (feature === 'bienvenida') {
       delete c.welcome;
       delete c.autorole;
@@ -655,7 +662,7 @@ async function manejarComponente(interaction) {
   if (accion === 'set' && interaction.isAnySelectMenu()) {
     const [, , seccionSet, campo] = partes;
     const valor = interaction.values[0];
-    aplicarSet(guild.id, seccionSet, campo, valor);
+    aplicarSet(interaction, seccionSet, campo, valor);
     return interaction.update(vistaSeccion(interaction, seccionSet, true));
   }
 
@@ -682,7 +689,7 @@ async function manejarComponente(interaction) {
   // Modal enviado: guardar mensaje y redibujar
   if (accion === 'modal' && partes[2] === 'bienvenida' && interaction.isModalSubmit()) {
     const texto = interaction.fields.getTextInputValue('mensaje');
-    setGuildConfig(guild.id, (c) => {
+    guardarConfigAuditada(interaction, NOMBRE_SECCION.bienvenida, (c) => {
       c.welcome = c.welcome || {};
       c.welcome.message = texto;
     });
@@ -699,7 +706,7 @@ async function manejarComponente(interaction) {
   if (accion === 'toggle' && partes[2] === 'ia' && interaction.isButton()) {
     const config = getGuildConfig(guild.id);
     const nuevo = config.iaActivada === false;
-    setGuildConfig(guild.id, (c) => {
+    guardarConfigAuditada(interaction, NOMBRE_SECCION.ia, (c) => {
       c.iaActivada = nuevo;
     });
     return interaction.update(vistaSeccion(interaction, 'ia', true));
@@ -708,7 +715,7 @@ async function manejarComponente(interaction) {
   // Toggle de la escalada de advertencias
   if (accion === 'toggle' && partes[2] === 'escalada' && interaction.isButton()) {
     const actual = resolverEscalada(getGuildConfig(guild.id));
-    setGuildConfig(guild.id, (c) => {
+    guardarConfigAuditada(interaction, NOMBRE_SECCION.escalada, (c) => {
       c.escalada = { ...(c.escalada || {}), activada: !actual.activada };
     });
     return interaction.update(vistaSeccion(interaction, 'escalada', true));
@@ -750,7 +757,7 @@ async function manejarComponente(interaction) {
     const base = resolverEscalada(getGuildConfig(guild.id));
     const umbral = numero('umbral', LIMITES_ESCALADA.umbral, base.umbral);
     const duracion = numero('duracion', LIMITES_ESCALADA.duracion, base.duracion);
-    setGuildConfig(guild.id, (c) => {
+    guardarConfigAuditada(interaction, NOMBRE_SECCION.escalada, (c) => {
       c.escalada = { ...(c.escalada || {}), umbral, duracion };
     });
     if (interaction.isFromMessage()) return interaction.update(vistaSeccion(interaction, 'escalada', true));
@@ -772,7 +779,7 @@ async function manejarComponente(interaction) {
     if (!filtro) return interaction.reply({ embeds: [errorEmbed('Ese filtro no existe.')], flags: MessageFlags.Ephemeral });
     const config = getGuildConfig(guild.id);
     const nuevo = config.proteccion?.[filtro.clave] !== true;
-    setGuildConfig(guild.id, (c) => {
+    guardarConfigAuditada(interaction, NOMBRE_SECCION.proteccion, (c) => {
       c.proteccion = { ...PROTECCION_DEFECTO, ...(c.proteccion || {}) };
       c.proteccion[filtro.clave] = nuevo;
     });
@@ -783,7 +790,7 @@ async function manejarComponente(interaction) {
   if (accion === 'toggle' && partes[2] === 'proteccion' && !partes[3] && interaction.isButton()) {
     const config = getGuildConfig(guild.id);
     const nuevo = config.proteccion?.activado !== true;
-    setGuildConfig(guild.id, (c) => {
+    guardarConfigAuditada(interaction, NOMBRE_SECCION.proteccion, (c) => {
       c.proteccion = { ...PROTECCION_DEFECTO, ...(c.proteccion || {}) };
       c.proteccion.activado = nuevo;
     });
@@ -794,7 +801,7 @@ async function manejarComponente(interaction) {
   if (accion === 'toggle' && partes[2] === 'raidAuto' && interaction.isButton()) {
     const config = getGuildConfig(guild.id);
     const nuevo = config.proteccion?.accionesRapidas !== true;
-    setGuildConfig(guild.id, (c) => {
+    guardarConfigAuditada(interaction, NOMBRE_SECCION.proteccion, (c) => {
       c.proteccion = { ...PROTECCION_DEFECTO, ...(c.proteccion || {}) };
       c.proteccion.accionesRapidas = nuevo;
     });
@@ -871,7 +878,7 @@ async function manejarComponente(interaction) {
         .split(/[,;\s]+/)
         .filter(Boolean)
     );
-    setGuildConfig(guild.id, (c) => {
+    guardarConfigAuditada(interaction, NOMBRE_SECCION.proteccion, (c) => {
       c.proteccion = { ...PROTECCION_DEFECTO, ...(c.proteccion || {}) };
       Object.assign(c.proteccion, { mencionesMaximas, mayusculasPorcentaje, mayusculasMinimo, repetidosVeces, linksPermitidos });
     });
@@ -936,7 +943,7 @@ async function manejarComponente(interaction) {
     const spamSegundos = num('spamSegundos', 2, 120, PROTECCION_DEFECTO.spamSegundos);
     const raidJoins = num('raidJoins', 3, 50, PROTECCION_DEFECTO.raidJoins);
     const raidSegundos = num('raidSegundos', 10, 600, PROTECCION_DEFECTO.raidSegundos);
-    setGuildConfig(guild.id, (c) => {
+    guardarConfigAuditada(interaction, NOMBRE_SECCION.proteccion, (c) => {
       c.proteccion = { ...PROTECCION_DEFECTO, ...(c.proteccion || {}) };
       Object.assign(c.proteccion, { spamMensajes, spamSegundos, raidJoins, raidSegundos });
     });
@@ -1019,7 +1026,7 @@ async function manejarComponente(interaction) {
       });
     }
 
-    setGuildConfig(guild.id, (c) => {
+    guardarConfigAuditada(interaction, NOMBRE_SECCION.servidores, (c) => {
       c.servidores = c.servidores || {};
       c.servidores.lista = c.servidores.lista || [];
       c.servidores.lista.push({ nombre, host, puerto, modo, descripcion, imagen: imagen || undefined });
@@ -1034,7 +1041,7 @@ async function manejarComponente(interaction) {
   // Quitar un server del listado
   if (accion === 'servers' && partes[2] === 'quitar' && interaction.isStringSelectMenu()) {
     const indice = Number(interaction.values[0]);
-    setGuildConfig(guild.id, (c) => {
+    guardarConfigAuditada(interaction, NOMBRE_SECCION.servidores, (c) => {
       if (c.servidores?.lista?.[indice]) c.servidores.lista.splice(indice, 1);
     });
     return interaction.update(vistaSeccion(interaction, 'servidores', true));
@@ -1042,7 +1049,7 @@ async function manejarComponente(interaction) {
 
   // Toggle de alertas de caída/vuelta
   if (accion === 'toggle' && partes[2] === 'servMonitoreo' && interaction.isButton()) {
-    setGuildConfig(guild.id, (c) => {
+    guardarConfigAuditada(interaction, NOMBRE_SECCION.servidores, (c) => {
       c.servidores = c.servidores || {};
       c.servidores.monitoreo = c.servidores.monitoreo === false ? true : false;
     });
@@ -1051,7 +1058,7 @@ async function manejarComponente(interaction) {
 
   // Olvidar el panel publicado (por si lo borraron a mano)
   if (accion === 'servers' && partes[2] === 'limpiarPanel' && interaction.isButton()) {
-    setGuildConfig(guild.id, (c) => {
+    guardarConfigAuditada(interaction, NOMBRE_SECCION.servidores, (c) => {
       if (c.servidores) {
         delete c.servidores.canalPanel;
         delete c.servidores.mensajePanel;
@@ -1073,7 +1080,7 @@ async function manejarComponente(interaction) {
   // Desactivar: confirmado
   if (accion === 'off' && partes[2] === 'si' && interaction.isButton()) {
     const feature = partes[3];
-    aplicarDesactivado(guild.id, feature);
+    aplicarDesactivado(interaction, feature);
     return interaction.update(vistaSeccion(interaction, feature, true));
   }
 

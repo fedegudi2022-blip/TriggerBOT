@@ -22,6 +22,23 @@ const MAX_BUFFER = 100;
 const COOLDOWN_MS = 3_000;
 const cooldowns = new Map();
 
+// Las respuestas de la IA son texto libre: puede repetir un `@everyone`, una mención de
+// rol o de usuario que aparezca en el prompt. Discord NO aplica un allowedMentions por
+// defecto, así que sin esto el bot podía pingear a todo el servidor o sonarle el celular
+// a alguien que nunca escribió. `parse: []` deja el texto igual (se lee «@everyone»)
+// pero no dispara ninguna notificación.
+const SIN_MENCIONES = { parse: [] };
+
+// Envía un texto de la IA (o de la búsqueda web) partido en trozos, sin menciones.
+async function responderTexto(message, texto) {
+  const trozos = trocearMensaje(texto);
+  if (!trozos.length) return;
+  await message.reply({ content: trozos[0], allowedMentions: SIN_MENCIONES }).catch(() => {});
+  for (const resto of trozos.slice(1)) {
+    await message.channel.send({ content: resto, allowedMentions: SIN_MENCIONES }).catch(() => {});
+  }
+}
+
 function clave(guildId, channelId) {
   return `${guildId}:${channelId}`;
 }
@@ -112,12 +129,12 @@ async function manejarMencion(message) {
       title: 'Pong!',
       description: `**Latencia de la API:** ${Math.round(client.ws.ping)}ms\nPara más detalle usá /ping.`,
     });
-    return message.reply({ embeds: [embed] }).catch(() => {});
+    return message.reply({ embeds: [embed], allowedMentions: SIN_MENCIONES }).catch(() => {});
   }
 
   // Respuestas instantáneas (0 ms): identidad, quién creó el bot, links oficiales.
   const instantanea = respuestaInstantanea(texto);
-  if (instantanea) return message.reply({ content: instantanea }).catch(() => {});
+  if (instantanea) return message.reply({ content: instantanea, allowedMentions: SIN_MENCIONES }).catch(() => {});
 
   // Si el mensaje también menciona al dueño, la IA lo sabe por el contexto.
   const mencionaAlDueno = message.mentions.users.has(DUENO_ID);
@@ -148,12 +165,7 @@ async function manejarMencion(message) {
       }
       if (respuesta?.tipo === 'chat' && respuesta.texto) {
         // Respuesta larga: se parte en varios mensajes sin cortar palabras al medio.
-        const trozos = trocearMensaje(respuesta.texto);
-        await message.reply({ content: trozos[0] }).catch(() => {});
-        for (const resto of trozos.slice(1)) {
-          await message.channel.send({ content: resto }).catch(() => {});
-        }
-        return;
+        return await responderTexto(message, respuesta.texto);
       }
     } catch (error) {
       console.warn(`[TriggerBOT] IA no disponible, uso respuesta local: ${error.message}`);
@@ -167,7 +179,7 @@ async function manejarMencion(message) {
         const directa = await respuestaSinIA(texto, { usuarioId: message.author.id });
         if (directa) {
           medirSinIA(message, texto, t0, { web: 'directa' });
-          return await message.reply({ content: directa }).catch(() => {});
+          return await responderTexto(message, directa);
         }
       }
     } catch (error) {
@@ -175,18 +187,28 @@ async function manejarMencion(message) {
     }
 
     medirSinIA(message, texto, t0);
-    await message.reply({ content: responderCharla(texto) }).catch(() => {});
+    await message.reply({ content: responderCharla(texto), allowedMentions: SIN_MENCIONES }).catch(() => {});
   } finally {
     detenerEscribiendo();
   }
 }
 
 module.exports = {
-  // Se exporta para los tests: es la única parte del evento que no depende de Discord.
+  // Se exportan para los tests: son las partes del evento que no dependen de Discord.
   medirSinIA,
+  responderTexto,
+  SIN_MENCIONES,
   name: Events.MessageCreate,
   async execute(message) {
     if (!message.guild || message.author?.bot) return;
+
+    // Ticket abierto: cualquier mensaje humano cuenta como actividad y corre el reloj
+    // del auto-cierre por inactividad (se anota como mucho una vez cada 5 min).
+    try {
+      require('../utils/tickets').registrarActividad(message.channel);
+    } catch {
+      /* un ticket viejo o un canal raro no puede cortar el flujo del mensaje */
+    }
 
     // Automod: invitaciones, enlaces, menciones masivas, mayúsculas y repetidos.
     // Va antes del anti-spam: un mensaje filtrado no se cuenta ni se responde.
@@ -234,7 +256,11 @@ module.exports = {
         const minutos = Math.floor((Date.now() - afk.desde) / 60000);
         const tiempo = minutos >= 60 ? `${Math.floor(minutos / 60)} h` : `${Math.max(minutos, 1)} min`;
         await message
-          .reply(`**${message.guild.members.cache.get(userId)?.displayName || 'Ese usuario'}** está AFK desde hace ${tiempo}: ${afk.motivo}`)
+          .reply({
+            content: `**${message.guild.members.cache.get(userId)?.displayName || 'Ese usuario'}** está AFK desde hace ${tiempo}: ${afk.motivo}`,
+            // El motivo lo escribió un usuario: un `@everyone` ahí no debe sonar.
+            allowedMentions: SIN_MENCIONES,
+          })
           .catch(() => {});
         break; // un solo aviso por mensaje
       }

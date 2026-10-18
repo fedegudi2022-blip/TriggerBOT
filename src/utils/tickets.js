@@ -1,13 +1,17 @@
 // Sistema de tickets de soporte: un panel con selector de tipo en un canal; al elegir
 // uno se abre el formulario del tipo y se crea un canal privado visible solo por el
 // usuario y el staff. El staff puede reclamarlo (queda a su nombre), sumar gente y
-// cerrarlo. Al cerrar se genera un transcript .txt, se manda a los logs, se borra el
-// canal y el usuario recibe una encuesta 1-5 para calificar la atención.
+// cerrarlo. Al cerrar se genera un transcript HTML legible, se manda a los logs, se
+// borra el canal y el usuario recibe una encuesta 1-5 para calificar la atención.
 // Tipos: soporte, apelación y reporte de cheater (ver TIPOS). /reportar abre un
 // reporte sin pasar por el panel.
 //
+// El cierre pide un MOTIVO (resuelto / no resuelto / duplicado / otro) antes de
+// ejecutarse, y los tickets sin actividad se cierran solos a las 72 h (configurable
+// con /ticket inactividad), con un aviso una hora antes.
+//
 // Config (config.tickets en store.js): { categoriaId, canalLogs, mensajes, contador,
-//   activos, encuestas, calificaciones }
+//   activos, encuestas, calificaciones, cierres, horasInactividad }
 // Estado de cada ticket (en el topic del canal): guildId:userId:numero:tipo
 const {
   ActionRowBuilder,
@@ -65,6 +69,24 @@ const TIPOS = {
 };
 const TIPO_POR_DEFECTO = 'soporte';
 const MAX_CALIFICACIONES = 100; // se guardan las últimas: es un termómetro, no un archivo
+const MAX_CIERRES = 200; // historial para /ticket stats (motivos y tiempos)
+
+// Motivos de cierre: el staff elige uno al cerrar. `inactividad` no se ofrece en el
+// selector porque la usa el cierre automático.
+const MOTIVOS_CIERRE = [
+  { valor: 'resuelto', etiqueta: 'Resuelto', descripcion: 'El problema o la consulta quedó solucionada' },
+  { valor: 'no_resuelto', etiqueta: 'No resuelto', descripcion: 'Se cerró sin dar una solución' },
+  { valor: 'duplicado', etiqueta: 'Duplicado', descripcion: 'Ya había otro ticket con el mismo tema' },
+  { valor: 'otro', etiqueta: 'Otro motivo', descripcion: 'Cierre administrativo o caso particular' },
+];
+const MOTIVO_POR_DEFECTO = MOTIVOS_CIERRE[0];
+
+// Auto-cierre por inactividad: 72 h por defecto, con aviso una hora antes. La
+// actividad se anota como mucho una vez cada 5 min para no escribir la config en cada
+// mensaje de un ticket activo.
+const HORAS_INACTIVIDAD_POR_DEFECTO = 72;
+const AVISO_INACTIVIDAD_MS = 60 * 60 * 1000;
+const ACTIVIDAD_MINIMA_MS = 5 * 60 * 1000;
 
 // Tipo con su id incluido (así el resto del código usa tipo.id / tipo.prefijo).
 function tipoDe(id) {
@@ -110,8 +132,134 @@ const LIMITE_ADJUNTO_BYTES = 7_800_000;
 // Gracia antes de borrar el canal ya cerrado (los tests la bajan a 0).
 const GRACIA_MS = 30_000;
 
-// Parte un transcript en archivos de a lo sumo LIMITE_ADJUNTO_BYTES, cortando por
-// línea y numerando las partes. Devuelve [{ attachment, name }] listos para `files`.
+// ---------- Transcript HTML ----------
+// El .txt era ilegible para el staff: sin autores destacados, sin adjuntos clicables y
+// sin formato. El HTML conserva los saltos de línea, muestra avatar, hora y adjuntos, y
+// se puede abrir en cualquier navegador. Se parte por MENSAJE (no por línea) para no
+// cortar una etiqueta HTML al medio; cada parte es un documento completo.
+function escaparHtml(texto) {
+  return String(texto ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function urlSegura(url) {
+  try {
+    const parsed = new URL(String(url));
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+function fechaLegible(ms) {
+  try {
+    return new Date(ms).toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', dateStyle: 'short', timeStyle: 'short' });
+  } catch {
+    return new Date(ms).toISOString();
+  }
+}
+
+function bloqueMensaje(mensaje) {
+  const avatar = urlSegura(mensaje.avatar);
+  const adjuntos = mensaje.adjuntos
+    .map((url) => urlSegura(url))
+    .filter(Boolean)
+    .map((url, i) => `<a href="${escaparHtml(url)}" rel="noopener noreferrer">adjunto ${i + 1}</a>`)
+    .join(' · ');
+  const embeds = mensaje.embeds
+    .map((e) => `<div class="embed">${e.titulo ? `<strong>${escaparHtml(e.titulo)}</strong>` : ''}${e.descripcion ? `<p>${escaparHtml(e.descripcion)}</p>` : ''}</div>`)
+    .join('');
+
+  return (
+    `<article class="msg" id="m-${escaparHtml(mensaje.id)}">` +
+    (avatar ? `<img class="avatar" src="${escaparHtml(avatar)}" alt="" loading="lazy">` : '<div class="avatar sin-foto"></div>') +
+    '<div class="burbuja">' +
+    `<div class="cab"><span class="autor">${escaparHtml(mensaje.autor)}</span>` +
+    `<time datetime="${new Date(mensaje.ts).toISOString()}" title="${escaparHtml(new Date(mensaje.ts).toISOString())}">${escaparHtml(fechaLegible(mensaje.ts))}</time></div>` +
+    `<div class="texto">${escaparHtml(mensaje.contenido).replace(/\n/g, '<br>') || '<em>(sin texto)</em>'}</div>` +
+    (embeds ? `<div class="embeds">${embeds}</div>` : '') +
+    (adjuntos ? `<div class="adjuntos">📎 ${adjuntos}</div>` : '') +
+    '</div></article>'
+  );
+}
+
+function documentoHtml({ titulo, meta, cuerpo, parte, total }) {
+  return (
+    '<!doctype html><html lang="es"><head><meta charset="utf-8">' +
+    '<meta name="viewport" content="width=device-width, initial-scale=1">' +
+    `<title>${escaparHtml(titulo)}</title><style>` +
+    ':root{color-scheme:dark}body{margin:0;background:#1e1f22;color:#dbdee1;font:15px/1.5 system-ui,Segoe UI,Roboto,sans-serif}' +
+    'main{max-width:860px;margin:0 auto;padding:24px 16px 48px}h1{font-size:22px;margin:0 0 8px}' +
+    '.meta{color:#949ba4;font-size:13px;margin:0 0 4px}.meta b{color:#dbdee1}' +
+    '.aviso{margin:16px 0;padding:10px 12px;border-left:4px solid #f0b232;background:#2b2d31;border-radius:4px}' +
+    '.chat{display:flex;flex-direction:column;gap:10px;margin-top:20px}' +
+    '.msg{display:flex;gap:10px;align-items:flex-start}.avatar{width:38px;height:38px;border-radius:50%;flex:none;background:#5865f2}' +
+    '.avatar.sin-foto{opacity:.35}.burbuja{background:#2b2d31;border-radius:8px;padding:8px 12px;min-width:0;flex:1}' +
+    '.cab{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}.autor{font-weight:700;color:#f2f3f5}' +
+    'time{color:#949ba4;font-size:12px}.texto{margin-top:4px;overflow-wrap:anywhere}.texto a{color:#00a8fc}' +
+    '.embed{margin-top:6px;border-left:3px solid #5865f2;padding-left:8px}.embed p{margin:2px 0}' +
+    '.adjuntos{margin-top:6px;font-size:13px}.adjuntos a{color:#00a8fc}' +
+    'footer{margin-top:28px;color:#949ba4;font-size:12px;text-align:center}' +
+    '</style></head><body><main>' +
+    `<h1>${escaparHtml(titulo)}</h1>` +
+    meta.map((linea) => `<p class="meta">${linea}</p>`).join('') +
+    (total > 1 ? `<p class="aviso">Parte ${parte} de ${total} del transcript.</p>` : '') +
+    '<section class="chat">' +
+    cuerpo +
+    '</section><footer>TriggerBOT • transcript generado automáticamente</footer></main></body></html>'
+  );
+}
+
+// Arma las partes del HTML respetando el límite de adjuntos. Devuelve [{ attachment, name }].
+function partesTranscriptHtml(mensajes, meta) {
+  const nombreBase = `transcript-${meta.canalNombre}.html`;
+  const titulo = `Ticket #${meta.numero} — ${meta.tipo}`;
+  const lineasMeta = [
+    `Servidor: <b>${escaparHtml(meta.guildNombre)}</b>`,
+    `Canal: <b>#${escaparHtml(meta.canalNombre)}</b>`,
+    `Abierto por: <b>${escaparHtml(meta.abiertoPor)}</b> · Atendido por: <b>${escaparHtml(meta.atendidoPor)}</b>`,
+    `Cerrado por: <b>${escaparHtml(meta.cerradoPor)}</b> · Motivo: <b>${escaparHtml(meta.motivo)}</b>`,
+    `Mensajes: <b>${mensajes.length}</b>` + (meta.integro ? '' : ' · <b>INCOMPLETO</b>'),
+  ];
+  if (!meta.integro) {
+    lineasMeta.push(`⚠️ ${escaparHtml(meta.parcial ? 'Falló la lectura de mensajes.' : 'Se superó el tope de mensajes guardados.')}`);
+  }
+
+  const bloques = mensajes.map(bloqueMensaje);
+  const vacio = documentoHtml({ titulo, meta: lineasMeta, cuerpo: '<p class="meta">Sin mensajes.</p>', parte: 1, total: 1 });
+  const base = Buffer.byteLength(vacio, 'utf8');
+  const grupos = [];
+  let actual = [];
+  let bytes = base;
+
+  for (const bloque of bloques) {
+    const tamano = Buffer.byteLength(bloque, 'utf8');
+    if (actual.length && bytes + tamano > LIMITE_ADJUNTO_BYTES) {
+      grupos.push(actual);
+      actual = [];
+      bytes = base;
+    }
+    actual.push(bloque);
+    bytes += tamano;
+  }
+  if (actual.length || !grupos.length) grupos.push(actual);
+
+  const total = grupos.length;
+  return grupos.map((grupo, i) => ({
+    attachment: Buffer.from(
+      documentoHtml({ titulo, meta: lineasMeta, cuerpo: grupo.join(''), parte: i + 1, total }),
+      'utf8'
+    ),
+    name: total > 1 ? nombreBase.replace(/\.html$/, `-parte-${i + 1}.html`) : nombreBase,
+  }));
+}
+
+// Parte un transcript de texto en archivos de a lo sumo LIMITE_ADJUNTO_BYTES, cortando
+// por línea y numerando las partes (se mantiene para compatibilidad y tests).
 function dividirTranscript(cabecera, lineas, nombreBase) {
   const partes = [];
   let actual = cabecera;
@@ -258,23 +406,41 @@ async function abrirTicketInterno(interaction, { tipo, campos }, { config, raiz 
 
 // Cierra el ticket del canal actual: transcript, DM, encuesta de calificación, log y
 // borra el canal (30 s de gracia, configurable para los tests).
-async function cerrarTicket(interaction, cerradoPor, { graciaMs = GRACIA_MS } = {}) {
-  const canal = interaction.channel;
+async function cerrarTicket(interaction, cerradoPor, { graciaMs = GRACIA_MS, motivo, motivoClave = null } = {}) {
+  return cerrarCanal(interaction.channel, cerradoPor, { graciaMs, motivo, motivoClave });
+}
+
+// Núcleo del cierre, sin depender de una interacción: lo usan el botón/selector y el
+// auto-cierre por inactividad. Devuelve true si el canal quedó cerrado y borrado.
+async function cerrarCanal(canal, cerradoPor, { graciaMs = GRACIA_MS, motivo = MOTIVO_POR_DEFECTO.etiqueta, motivoClave = null } = {}) {
   const [, userId, numero] = canal.topic?.split(':') ?? [];
   const guild = canal.guild;
   const activo = activoDe(guild.id, canal.id);
   const tipo = tipoDe(activo?.tipo) ?? tipoDe(canal.topic?.split(':')[3]) ?? tipoDe(TIPO_POR_DEFECTO);
   const atendidoPor = activo?.reclamadoPor ?? null;
-  const duracionTxt = activo?.ts ? textoDuracion(Date.now() - activo.ts) : null;
+  const duracionMs = activo?.ts ? Date.now() - activo.ts : null;
+  const duracionTxt = duracionMs === null ? null : textoDuracion(duracionMs);
+  const motivoFinal = String(motivo ?? '').trim() || MOTIVO_POR_DEFECTO.etiqueta;
+  // Se resuelve una sola vez: el nombre del dueño va en el HTML y el mismo usuario
+  // recibe el DM con la copia (antes se pedía dos veces).
+  const duenio = userId ? await guild.client.users.fetch(userId).catch(() => null) : null;
+  const miembroAtendedor = atendidoPor ? guild.members?.cache?.get?.(atendidoPor) ?? null : null;
+  const nombreAtendedor = atendidoPor
+    ? miembroAtendedor
+      ? nombreDe(miembroAtendedor.user, miembroAtendedor)
+      : `ID ${atendidoPor}`
+    : 'nadie lo reclamó';
 
-  await canal.send({ embeds: [brandEmbed({ color: COLORS.warn, title: 'Generando transcript…', description: `El canal se cierra en un momento, ${cerradoPor}.` })] }).catch(() => {});
+  await canal.send({
+    embeds: [brandEmbed({ color: COLORS.warn, title: 'Generando transcript…', description: `El canal se cierra en un momento, ${nombreDe(cerradoPor)}.` })],
+  }).catch(() => {});
 
   // Transcript: todos los mensajes del canal, en orden (de a 100 por fetch).
   // Tope práctico: 50.000 mensajes (500 páginas). Un ticket normal nunca llega.
   // Si un fetch falla o la conversación es más larga que el tope, el transcript
   // queda marcado como INCOMPLETO y no se borra el canal (ver más abajo).
   const MAX_PAGINAS = 500;
-  const lineas = [];
+  const mensajes = [];
   let antes = null;
   let parcial = false; // un fetch falló a mitad: no sabemos si faltan mensajes
   let truncado = false; // se alcanzó el tope de páginas guardando solo una parte
@@ -289,26 +455,35 @@ async function cerrarTicket(interaction, cerradoPor, { graciaMs = GRACIA_MS } = 
     }
     if (!lote?.size) break;
     for (const m of lote.values()) {
-      const stamp = new Date(m.createdTimestamp).toISOString().replace('T', ' ').slice(0, 19);
-      const adjuntos = m.attachments.size ? `\n   [adjunto: ${[...m.attachments.values()].map((a) => a.url).join(', ')}]` : '';
-      lineas.push(`[${stamp}] ${nombreDe(m.author)}: ${m.content || '(sin texto)'}${adjuntos}`);
+      mensajes.push({
+        id: m.id,
+        ts: m.createdTimestamp,
+        autor: nombreDe(m.author),
+        avatar: m.author?.displayAvatarURL?.({ size: 64 }) ?? null,
+        contenido: m.content || '',
+        adjuntos: [...(m.attachments?.values?.() ?? [])].map((a) => a.url),
+        embeds: [...(m.embeds ?? [])].map((e) => ({ titulo: e.title ?? e.data?.title ?? '', descripcion: e.description ?? e.data?.description ?? '' })),
+      });
     }
     antes = lote.last().id;
     if (lote.size < 100) break;
     if (vuelta === MAX_PAGINAS - 1) truncado = true; // quedaba más y cortamos
   }
-  lineas.reverse();
+  mensajes.reverse();
   const integro = !parcial && !truncado;
 
-  const cabecera =
-    `Transcript del ticket #${numero} — ${guild.name}\n` +
-    `Canal: #${canal.name} · Cerrado por: ${nombreDe(cerradoPor)} · ${new Date().toISOString()}\n` +
-    `Mensajes: ${lineas.length}` +
-    (integro ? '' : `  ⚠️ INCOMPLETO (${parcial ? 'falló la lectura de mensajes' : 'se superó el tope de mensajes'})`) +
-    '\n' +
-    '='.repeat(60) + '\n\n';
-  const nombreArchivo = `transcript-${canal.name}.txt`;
-  const partes = dividirTranscript(cabecera, lineas, nombreArchivo);
+  const partes = partesTranscriptHtml(mensajes, {
+    guildNombre: guild.name,
+    canalNombre: canal.name,
+    numero,
+    tipo: tipo.etiqueta,
+    abiertoPor: duenio ? nombreDe(duenio) : (userId ?? 'desconocido'),
+    atendidoPor: nombreAtendedor,
+    cerradoPor: nombreDe(cerradoPor),
+    motivo: motivoFinal,
+    integro,
+    parcial,
+  });
 
   const config = configDe(guild.id);
   const raiz = getGuildConfig(guild.id);
@@ -331,7 +506,8 @@ async function cerrarTicket(interaction, cerradoPor, { graciaMs = GRACIA_MS } = 
                     title: `Ticket #${numero} cerrado`,
                     description:
                       `**Tipo:** ${tipo.etiqueta}\n**Abierto por:** <@${userId}>\n**Atendido por:** ${atendidoPor ? `<@${atendidoPor}>` : '*nadie lo reclamó*'}\n` +
-                      `**Cerrado por:** ${cerradoPor}${duracionTxt ? `\n**Duración:** ${duracionTxt}` : ''}\n**Mensajes:** ${lineas.length}` +
+                      `**Cerrado por:** ${nombreDe(cerradoPor)}\n**Motivo:** ${motivoFinal}` +
+                      `${duracionTxt ? `\n**Duración:** ${duracionTxt}` : ''}\n**Mensajes:** ${mensajes.length}` +
                       (integro ? '' : '\n⚠️ **Transcript incompleto**'),
                   }),
                 ]
@@ -349,7 +525,6 @@ async function cerrarTicket(interaction, cerradoPor, { graciaMs = GRACIA_MS } = 
 
   // 2) Copia por DM al usuario del ticket (mejor esfuerzo: no decide el cierre).
   if (userId) {
-    const duenio = await guild.client.users.fetch(userId).catch(() => null);
     if (duenio) {
       for (let i = 0; i < partes.length; i++) {
         await duenio
@@ -361,7 +536,7 @@ async function cerrarTicket(interaction, cerradoPor, { graciaMs = GRACIA_MS } = 
                       color: COLORS.info,
                       title: `Tu ticket #${numero} fue cerrado`,
                       description:
-                        `Gracias por contactar al staff de **${guild.name}**. Te dejamos la conversación por si la necesitás.` +
+                        `Gracias por contactar al staff de **${guild.name}**. Motivo: **${motivoFinal}**. Te dejamos la conversación por si la necesitás.` +
                         (integro ? '' : '\n⚠️ El transcript quedó incompleto.'),
                     }),
                   ]
@@ -376,7 +551,7 @@ async function cerrarTicket(interaction, cerradoPor, { graciaMs = GRACIA_MS } = 
   // 3) Solo se borra el canal si el transcript ÍNTEGRO quedó guardado en logs. Si
   //    no, se conserva la conversación y se avisa al staff para que reintente.
   if (!integro || !guardadoEnLogs) {
-    const motivo = !integro
+    const motivoFallo = !integro
       ? parcial
         ? 'no pude leer todos los mensajes del canal'
         : 'la conversación supera el tope de mensajes que puedo guardar de una vez'
@@ -390,7 +565,7 @@ async function cerrarTicket(interaction, cerradoPor, { graciaMs = GRACIA_MS } = 
             color: COLORS.error,
             title: '⚠️ No cerré el ticket',
             description:
-              `No pude guardar el transcript completo: ${motivo}.\n` +
+              `No pude guardar el transcript completo: ${motivoFallo}.\n` +
               '**Este canal no se borra** para no perder la conversación. Arreglá el problema y volvé a cerrar el ticket.',
           }),
         ],
@@ -399,9 +574,9 @@ async function cerrarTicket(interaction, cerradoPor, { graciaMs = GRACIA_MS } = 
     loguear(guild, {
       color: COLORS.error,
       title: `⚠️ Ticket #${numero} sin cerrar (transcript incompleto)`,
-      description: `Por ${cerradoPor} · ${motivo}. El canal quedó abierto.`,
+      description: `Por ${nombreDe(cerradoPor)} · ${motivoFallo}. El canal quedó abierto.`,
     });
-    return;
+    return false;
   }
 
   // Resumen del staff con lo que importa para saber qué pasó con el ticket.
@@ -410,16 +585,17 @@ async function cerrarTicket(interaction, cerradoPor, { graciaMs = GRACIA_MS } = 
     `**Abierto por:** <@${userId}>`,
     `**Atendido por:** ${atendidoPor ? `<@${atendidoPor}>` : '*nadie lo reclamó*'}`,
     `**Cerrado por:** ${nombreDe(cerradoPor)}`,
+    `**Motivo:** ${motivoFinal}`,
     ...(duracionTxt ? [`**Duración:** ${duracionTxt}`] : []),
-    `**Mensajes:** ${lineas.length}`,
+    `**Mensajes:** ${mensajes.length}`,
   ].join('\n');
 
   await canal.send({
     embeds: [
       brandEmbed({
-        color: COLORS.error,
+        color: COLORS.warn,
         title: `Ticket cerrado por ${nombreDe(cerradoPor)}`,
-        description: `${resumen}\n\nSe guardó un transcript con **${lineas.length}** mensajes. El canal se borra en **30 segundos**.`,
+        description: `${resumen}\n\nSe guardó un transcript HTML con **${mensajes.length}** mensajes. El canal se borra en **30 segundos**.`,
       }),
     ],
   }).catch(() => {});
@@ -427,11 +603,24 @@ async function cerrarTicket(interaction, cerradoPor, { graciaMs = GRACIA_MS } = 
   // Encuesta 1-5 al dueño del ticket (le dice al staff cómo estuvo la atención).
   const encuestaEnviada = await pedirCalificacion(guild, { userId, numero, atendidoPor, cerradoPor });
 
+  registrarCierre(guild.id, {
+    numero,
+    userId: userId ?? null,
+    tipo: tipo.id,
+    motivo: motivoFinal,
+    motivoClave: motivoClave ?? 'otro',
+    cerradoPor: cerradoPor?.id ?? null,
+    atendidoPor,
+    duracionMs,
+    mensajes: mensajes.length,
+    ts: Date.now(),
+  });
+
   loguear(guild, {
     color: COLORS.warn,
     title: `Ticket #${numero} cerrado`,
     description:
-      `Por ${cerradoPor} · transcript enviado a logs y al DM del usuario.` +
+      `Por ${nombreDe(cerradoPor)} · motivo: **${motivoFinal}** · transcript HTML enviado a logs y al DM del usuario.` +
       (encuestaEnviada ? ' Se le pidió una calificación de 1 a 5.' : ' No pude mandarle la encuesta por DM.'),
   });
 
@@ -442,6 +631,160 @@ async function cerrarTicket(interaction, cerradoPor, { graciaMs = GRACIA_MS } = 
     setTimeout(r, graciaMs);
   });
   await canal.delete(`Ticket cerrado por ${nombreDe(cerradoPor)}`).catch(() => {});
+  return true;
+}
+
+// ---------- Actividad y auto-cierre ----------
+// Anota que el ticket tuvo movimiento. Se escribe como mucho cada 5 minutos: en un
+// ticket con charla activa, guardar en cada mensaje sería escritura de config inútil
+// (el debounce de store.js lo absorbe, pero el sync a MariaDB no).
+function registrarActividad(canal, { ahora = Date.now() } = {}) {
+  const guildId = canal?.guild?.id;
+  if (!guildId || !canal.topic?.startsWith(`${guildId}:`)) return false;
+  const activo = activoDe(guildId, canal.id);
+  if (!activo) return false;
+  const base = activo.ultimaActividad ?? activo.ts ?? 0;
+  if (ahora - base < ACTIVIDAD_MINIMA_MS) return false;
+  marcarActivo(guildId, canal.id, { ultimaActividad: ahora, avisoInactividad: false, inactividadFallida: false });
+  return true;
+}
+
+const cerrandoAhora = new Set();
+
+// Pasada del auto-cierre: avisa una hora antes y cierra al vencer el plazo. Es una
+// función pura respecto del scheduler (recibe el cliente y el reloj) para poder probarla
+// sin esperar 72 horas.
+async function procesarInactividad(client, { ahora = Date.now(), horasPorDefecto = HORAS_INACTIVIDAD_POR_DEFECTO, avisoMs = AVISO_INACTIVIDAD_MS, graciaMs = GRACIA_MS } = {}) {
+  const resumen = { cerrados: 0, avisados: 0, limpiados: 0, errores: 0 };
+
+  for (const guild of client?.guilds?.cache?.values() ?? []) {
+    const config = configDe(guild.id);
+    const horas = Number.isFinite(Number(config.horasInactividad)) ? Number(config.horasInactividad) : horasPorDefecto;
+    if (!(horas > 0)) continue; // 0 = auto-cierre apagado
+    const limiteMs = horas * 60 * 60 * 1000;
+
+    for (const [canalId, activo] of Object.entries(config.activos ?? {})) {
+      const base = activo.ultimaActividad ?? activo.ts;
+      if (!base || activo.inactividadFallida) continue;
+
+      const canal = guild.channels?.cache?.get(canalId);
+      if (!canal) {
+        borrarActivo(guild.id, canalId);
+        resumen.limpiados += 1;
+        continue;
+      }
+
+      const transcurrido = ahora - base;
+      if (transcurrido >= limiteMs) {
+        if (cerrandoAhora.has(canalId)) continue;
+        cerrandoAhora.add(canalId);
+        try {
+          const ok = await cerrarCanal(canal, client.user, {
+            motivo: 'Cierre automático por inactividad',
+            motivoClave: 'inactividad',
+            graciaMs,
+          });
+          if (ok) resumen.cerrados += 1;
+          else {
+            // No se pudo guardar el transcript: no se reintenta en cada pasada (el
+            // canal queda abierto para que el staff lo resuelva a mano).
+            marcarActivo(guild.id, canalId, { inactividadFallida: true });
+            resumen.errores += 1;
+          }
+        } catch (error) {
+          marcarActivo(guild.id, canalId, { inactividadFallida: true });
+          resumen.errores += 1;
+          log.warn(`No pude cerrar por inactividad el ticket ${canalId}`, error, { guild: guild.id });
+        } finally {
+          cerrandoAhora.delete(canalId);
+        }
+      } else if (transcurrido >= limiteMs - avisoMs && !activo.avisoInactividad) {
+        const aviso = await canal
+          .send({
+            content: activo.userId ? `<@${activo.userId}>` : undefined,
+            embeds: [
+              brandEmbed({
+                color: COLORS.warn,
+                title: 'Este ticket se cierra por inactividad',
+                description:
+                  `No hubo movimiento en **${Math.round(transcurrido / 3_600_000)} h**. Se cierra automáticamente en **1 hora**.\n` +
+                  'Si todavía necesitás ayuda, escribí algo acá (o pedile al staff que responda) para mantenerlo abierto.',
+              }),
+            ],
+            allowedMentions: activo.userId ? { users: [activo.userId] } : { parse: [] },
+          })
+          .then(() => true)
+          .catch(() => false);
+        if (aviso) {
+          marcarActivo(guild.id, canalId, { avisoInactividad: true });
+          resumen.avisados += 1;
+        }
+      }
+    }
+  }
+
+  return resumen;
+}
+
+function registrarCierre(guildId, registro) {
+  setGuildConfig(guildId, (c) => {
+    c.tickets = c.tickets || {};
+    c.tickets.cierres = [...(c.tickets.cierres ?? []), registro].slice(-MAX_CIERRES);
+  });
+  return registro;
+}
+
+// Resumen para /ticket stats: promedio, distribución, por staff y motivos de cierre.
+function estadisticasTickets(guildId) {
+  const config = configDe(guildId);
+  const calificaciones = (config.calificaciones ?? []).filter((c) => Number.isFinite(c.valor));
+  const valores = calificaciones.map((c) => c.valor);
+  const promedio = valores.length ? valores.reduce((a, b) => a + b, 0) / valores.length : null;
+  const distribucion = [1, 2, 3, 4, 5].map((valor) => ({ valor, cantidad: valores.filter((v) => v === valor).length }));
+
+  const porStaff = new Map();
+  for (const c of calificaciones) {
+    if (!c.staffId) continue;
+    const entrada = porStaff.get(c.staffId) ?? { staffId: c.staffId, total: 0, suma: 0 };
+    entrada.total += 1;
+    entrada.suma += c.valor;
+    porStaff.set(c.staffId, entrada);
+  }
+  const staff = [...porStaff.values()]
+    .map((e) => ({ staffId: e.staffId, total: e.total, promedio: e.suma / e.total }))
+    .sort((a, b) => b.promedio - a.promedio || b.total - a.total);
+
+  const cierres = config.cierres ?? [];
+  const motivos = new Map();
+  for (const c of cierres) {
+    const clave = c.motivoClave ?? 'otro';
+    motivos.set(clave, (motivos.get(clave) ?? 0) + 1);
+  }
+
+  const horasInactividad = Number.isFinite(Number(config.horasInactividad))
+    ? Number(config.horasInactividad)
+    : HORAS_INACTIVIDAD_POR_DEFECTO;
+
+  return {
+    total: calificaciones.length,
+    promedio,
+    distribucion,
+    staff,
+    ultimas: [...calificaciones].slice(-5).reverse(),
+    cierres: cierres.length,
+    motivos: [...motivos.entries()].map(([clave, cantidad]) => ({ clave, cantidad })).sort((a, b) => b.cantidad - a.cantidad),
+    horasInactividad,
+  };
+}
+
+// Selector con los motivos. Se muestra en un mensaje efímero al apretar «Cerrar».
+function filaMotivosCierre() {
+  return new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId('ticket:motivo')
+      .setPlaceholder('¿Por qué se cierra el ticket?')
+      .addOptions(MOTIVOS_CIERRE.map((m) => ({ label: m.etiqueta, value: m.valor, description: m.descripcion })))
+  );
 }
 
 // ---------- Calificación del cierre ----------
@@ -622,9 +965,19 @@ async function manejarBotonTicket(interaction) {
     if (!esDuenio && !esStaff(interaction.member)) {
       return interaction.reply({ content: 'Solo el dueño del ticket o el staff pueden cerrarlo.', flags: MessageFlags.Ephemeral });
     }
-    await interaction.reply({ content: 'Cerrando el ticket…', flags: MessageFlags.Ephemeral });
-    await cerrarTicket(interaction, interaction.user);
-    return;
+    // El motivo se pregunta ANTES de cerrar: el transcript y el log lo dejan asentado
+    // (y /ticket stats puede mostrar por qué se cierran los tickets).
+    return interaction.reply({
+      embeds: [
+        brandEmbed({
+          color: COLORS.info,
+          title: 'Cerrar ticket',
+          description: 'Elegí el motivo del cierre. El usuario va a recibir el transcript HTML por DM y una encuesta de 1 a 5.',
+        }),
+      ],
+      components: [filaMotivosCierre()],
+      flags: MessageFlags.Ephemeral,
+    });
   }
 
   // Calificación 1-5 desde el DM (el customId lleva el server porque en DM no hay guild).
@@ -663,8 +1016,25 @@ async function manejarBotonTicket(interaction) {
   }
 }
 
-// Selector del panel: el tipo elegido abre su formulario.
+// Selectores de ticket: el tipo del panel abre su formulario; el motivo del cierre
+// ejecuta el cierre con esa razón.
 async function manejarSelectTicket(interaction) {
+  if (interaction.customId === 'ticket:motivo') {
+    const canal = interaction.channel;
+    const duenioId = canal?.topic?.split(':')[1];
+    const esDuenio = interaction.user.id === duenioId;
+    if (!esDuenio && !esStaff(interaction.member)) {
+      return interaction.reply({ content: 'Solo el dueño del ticket o el staff pueden cerrarlo.', flags: MessageFlags.Ephemeral });
+    }
+    const motivo = MOTIVOS_CIERRE.find((m) => m.valor === interaction.values?.[0]);
+    if (!motivo) {
+      return interaction.reply({ content: 'No reconocí ese motivo de cierre.', flags: MessageFlags.Ephemeral });
+    }
+    await interaction.update({ content: `Cerrando el ticket (${motivo.etiqueta})…`, embeds: [], components: [] }).catch(() => {});
+    await cerrarTicket(interaction, interaction.user, { motivo: motivo.etiqueta, motivoClave: motivo.valor });
+    return;
+  }
+
   const tipo = tipoDe(interaction.values?.[0]);
   if (!tipo) {
     return interaction.reply({ content: 'No reconocí ese tipo de ticket.', flags: MessageFlags.Ephemeral });
@@ -731,6 +1101,16 @@ async function manejarModalTicket(interaction) {
 module.exports = {
   abrirTicket,
   cerrarTicket,
+  cerrarCanal,
+  procesarInactividad,
+  registrarActividad,
+  registrarCierre,
+  estadisticasTickets,
+  MOTIVOS_CIERRE,
+  HORAS_INACTIVIDAD_POR_DEFECTO,
+  AVISO_INACTIVIDAD_MS,
+  ACTIVIDAD_MINIMA_MS,
+  MAX_CIERRES,
   panel,
   configDe,
   esStaff,
@@ -746,6 +1126,8 @@ module.exports = {
   manejarSelectTicket,
   manejarModalTicket,
   dividirTranscript,
+  partesTranscriptHtml,
+  escaparHtml,
   LIMITE_ADJUNTO_BYTES,
   GRACIA_MS,
 };

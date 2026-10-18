@@ -13,6 +13,7 @@
 // Los avisos tienen memoria: un problema se avisa UNA vez (no cada 5 minutos) y se
 // avisa de nuevo cuando se resuelve o cuando empeora (de aviso a error).
 
+const { PermissionFlagsBits } = require('discord.js');
 const { getGuildConfig } = require('../store');
 const { brandEmbed, COLORS, miles } = require('./replies');
 const crearLogger = require('../logger');
@@ -366,6 +367,150 @@ function revisarVoz(guild) {
   }
 }
 
+// Permisos en los canales configurados.
+//
+// Por qué existe: /diag revisaba IA, base y servicios, pero no lo más común cuando algo
+// "no funciona": que el bot no pueda escribir en el canal de logs, de bienvenida o de
+// tickets. El síntoma (no llegan los transcripts, no se anuncian los niveles) se
+// descubría recién cuando un usuario se quejaba. Acá se revisa cada canal configurado
+// con el permiso exacto que necesita la función, y se dice cuál falta.
+const NOMBRE_PERMISO = {
+  [PermissionFlagsBits.ViewChannel]: 'Ver canal',
+  [PermissionFlagsBits.SendMessages]: 'Enviar mensajes',
+  [PermissionFlagsBits.EmbedLinks]: 'Insertar enlaces',
+  [PermissionFlagsBits.AttachFiles]: 'Adjuntar archivos',
+  [PermissionFlagsBits.ManageChannels]: 'Gestionar canales',
+  [PermissionFlagsBits.ReadMessageHistory]: 'Leer historial',
+};
+
+// Canales de texto donde el bot publica algo. El canal de transcripts además adjunta
+// archivos HTML; el resto solo manda embeds.
+function canalesDeTexto(config) {
+  const base = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks];
+  return [
+    { funcion: 'Bienvenida', id: config.welcome?.channelId, permisos: base },
+    { funcion: 'Mod-log', id: config.modlog, permisos: base },
+    { funcion: 'Logs de eventos', id: config.logs, permisos: base },
+    { funcion: 'Avisos al staff', id: config.avisosChannel, permisos: base },
+    { funcion: 'Anuncios de nivel', id: config.canalNiveles, permisos: base },
+    { funcion: 'Frase del día', id: config.fraseDelDia?.canalId, permisos: base },
+    { funcion: 'Panel de servidores', id: config.servidores?.canalPanel, permisos: base },
+    { funcion: 'Transcripts de tickets', id: config.tickets?.canalLogs, permisos: [...base, PermissionFlagsBits.AttachFiles] },
+  ];
+}
+
+function permisosEn(guild, canal) {
+  const bot = guild.members?.me;
+  if (!bot) return null;
+  try {
+    if (typeof bot.permissionsIn === 'function') return bot.permissionsIn(canal);
+    return bot.permissions ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function revisarPermisos(guild) {
+  if (!guild) return [];
+  const config = getGuildConfig(guild.id);
+  const problemas = [];
+  const canales = guild.channels?.cache;
+  if (!canales) return problemas;
+
+  for (const { funcion, id, permisos } of canalesDeTexto(config)) {
+    if (!id) continue;
+    const canal = canales.get(id);
+    if (!canal) {
+      problemas.push(
+        problema(
+          `permisos-${guild.id}-${slug(funcion)}-borrado`,
+          'error',
+          `El canal de ${funcion.toLowerCase()} ya no existe`,
+          `La configuración apunta a \`${id}\` y ese canal no está en el servidor.`,
+          `Elegí un canal nuevo: \`/config → ${funcion === 'Transcripts de tickets' ? 'Tickets de soporte' : funcion}\`${funcion === 'Transcripts de tickets' ? ' o `/ticket logs`' : ''}.`,
+          guild.id
+        )
+      );
+      continue;
+    }
+
+    const permisosBot = permisosEn(guild, canal);
+    if (!permisosBot) continue; // sin miembro propio no se puede verificar (tests/arranque)
+    const faltantes = permisos.filter((p) => !permisosBot.has(p)).map((p) => NOMBRE_PERMISO[p] ?? String(p));
+    if (!faltantes.length) continue;
+
+    problemas.push(
+      problema(
+        `permisos-${guild.id}-${slug(funcion)}-${canal.id}-${slug(faltantes.join('-'))}`,
+        'error',
+        `Faltan permisos para ${funcion.toLowerCase()} en #${canal.name ?? canal.id}`,
+        `El bot no puede **${faltantes.join(', ')}** en <#${canal.id}> (canal de ${funcion.toLowerCase()}).`,
+        `En Discord → Canal → Permisos, dale al rol del bot: **${faltantes.join('**, **')}**.`,
+        guild.id
+      )
+    );
+  }
+
+  // Categoría de tickets: el bot crea y borra canales ahí.
+  if (config.tickets?.categoriaId) {
+    const categoria = canales.get(config.tickets.categoriaId);
+    if (!categoria) {
+      problemas.push(
+        problema(
+          `permisos-${guild.id}-tickets-categoria-borrada`,
+          'error',
+          'La categoría de tickets ya no existe',
+          `La configuración apunta a \`${config.tickets.categoriaId}\` y esa categoría no está en el servidor: los tickets nuevos se crean sin categoría.`,
+          'Elegí otra categoría con `/config → Tickets de soporte` o `/ticket categoria`.',
+          guild.id
+        )
+      );
+    } else {
+      const permisosBot = permisosEn(guild, categoria);
+      if (permisosBot && !permisosBot.has(PermissionFlagsBits.ManageChannels)) {
+        problemas.push(
+          problema(
+            `permisos-${guild.id}-tickets-categoria-${categoria.id}`,
+            'error',
+            'El bot no puede crear tickets en la categoría',
+            `Le falta **Gestionar canales** en la categoría **${categoria.name ?? categoria.id}**: no puede crear ni borrar los canales de ticket.`,
+            'Dale al rol del bot **Gestionar canales** en esa categoría (o en el servidor).',
+            guild.id
+          )
+        );
+      }
+    }
+  }
+
+  // Canales de estadísticas: el bot los renombra, así que necesita Gestionar canales.
+  try {
+    const stats = require('./estadisticasServer');
+    if (stats.activo(guild.id)) {
+      for (const metrica of stats.metricasActivas(guild.id)) {
+        const canal = canales.get(stats.canalIdDe(guild.id, metrica));
+        if (!canal) continue; // el diagnóstico de /stats ya avisa que falta
+        const permisosBot = permisosEn(guild, canal);
+        if (permisosBot && !permisosBot.has(PermissionFlagsBits.ManageChannels)) {
+          problemas.push(
+            problema(
+              `permisos-${guild.id}-stats-${canal.id}-${slug(metrica)}`,
+              'error',
+              'El bot no puede renombrar un canal de estadísticas',
+              `Le falta **Gestionar canales** en <#${canal.id}> (métrica \`${metrica}\`): el número no se va a actualizar.`,
+              'Dale al rol del bot **Gestionar canales** en los canales de estadísticas o en el servidor.',
+              guild.id
+            )
+          );
+        }
+      }
+    }
+  } catch {
+    /* sin módulo de estadísticas no hay nada que revisar */
+  }
+
+  return problemas;
+}
+
 // Canales de estadísticas: canal borrado a mano, renombres rechazados o el conteo de
 // «en línea» sin datos. Reusa el diagnóstico del propio sistema (una sola fuente).
 function revisarStats(guild) {
@@ -474,6 +619,7 @@ async function revisar(client, { ping = false, web = false } = {}) {
   if (web) await correr('Búsqueda web', () => revisarWeb());
 
   for (const guild of client?.guilds?.cache?.values() ?? []) {
+    await correr(`Permisos (${guild.name})`, () => revisarPermisos(guild));
     await correr(`Voz (${guild.name})`, () => revisarVoz(guild));
     await correr(`Estadísticas (${guild.name})`, () => revisarStats(guild));
     await correr(`Servidores (${guild.name})`, () => revisarServidores(guild));
@@ -614,6 +760,7 @@ module.exports = {
   revisarBaseDeDatos,
   revisarPendientes,
   revisarServidores,
+  revisarPermisos,
   revisarVoz,
   revisarStats,
   revisarWeb,

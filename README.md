@@ -18,7 +18,7 @@
 ## Qué hace
 
 - 🛡️ **Moderación con auditoría** — warn, ban, timeout, mute, clear y más, con confirmación, deshacer, jerarquía y casos numerados en el mod-log.
-- 🎫 **Tickets de soporte** — panel con tipos (soporte, apelación, cheater), canales privados, reclamo, transcript y encuesta al cerrar.
+- 🎫 **Tickets de soporte** — panel con tipos (soporte, apelación, cheater), canales privados, reclamo, motivo de cierre, transcript HTML, auto-cierre por inactividad y encuesta con estadísticas para el staff.
 - 📈 **Niveles y logros** — XP por texto y voz, 16 logros, rangos, roles automáticos y ranking con podios.
 - 🤖 **Chat con IA** — responde con datos reales del servidor, base de conocimiento propia, búsqueda web y acciones de moderación confirmadas por el staff.
 - 🎮 **Servidores CS 1.6** — estado en vivo por el protocolo de Valve, panel que se actualiza solo e IP lista para copiar.

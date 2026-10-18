@@ -58,7 +58,9 @@ Se arma en 3 pasos: `/ticket logs` (dónde quedan los transcripts) → `/ticket 
 
 - **Panel con selector de tipo:** Soporte, Apelación o Reporte de cheater. Cada uno pide su formulario y crea un canal privado `soporte-001` / `apelacion-002` / `reporte-003`, visible solo para quien lo abrió y el staff. Un ticket abierto por persona. También existe `/reportar usuario pruebas [adjunto]`.
 - **Para el staff:** botón **Reclamar** (deja el ticket a nombre de quien lo atiende) y **Agregar usuario** (acceso por ID o mención).
-- **Al cerrar:** resumen (tipo, quién lo abrió/atendió/cerró, duración, mensajes), transcript `.txt` al canal de logs, DM al usuario con una encuesta 1-5 y borrado del canal 30 s después.
+- **Al cerrar:** el staff elige un **motivo** (resuelto / no resuelto / duplicado / otro), el bot guarda un **transcript HTML** legible (con autores, horas, adjuntos y embeds) en el canal de logs, manda una copia por DM con una encuesta 1-5 y borra el canal 30 s después. El motivo queda en el resumen, el log y el historial.
+- **Auto-cierre por inactividad:** a las **72 h** sin mensajes (configurable con `/ticket inactividad horas:N`, `0` lo apaga) el bot avisa **1 h antes** y cierra solo, con motivo «inactividad». Cualquier mensaje en el canal reinicia el reloj.
+- **Calificaciones visibles:** `/ticket stats` (staff) muestra el promedio general, la distribución 1-5, el promedio por staff y los motivos de cierre. El panel `/config → Tickets de soporte` muestra el promedio y las horas de inactividad.
 - **Personalizable:** `/ticket mensaje` cambia el texto del panel; también se edita desde `/config → Tickets de soporte`.
 
 ## Protección automática (anti-spam y anti-raid)
@@ -111,9 +113,11 @@ El monitoreo hace 2 intentos con timeout de 2,5 s antes de dar un server por ca�
 | `/estadisticas [usuario]` | Perfil completo: rango, nivel, XP con barra, bonus, racha, puesto y próximos logros |
 | `/logros [usuario]` | Progreso logro por logro, del más cercano al más lejano |
 | `/rolnivel definir/quitar/lista` | Roles que se otorgan automáticamente al alcanzar un nivel (staff) |
-| `/top [pagina]` | Ranking con podio, tu puesto y páginas |
+| `/top [periodo] [pagina]` | Ranking con podio, tu puesto y páginas; `periodo` permite ver el acumulado (por defecto), la semana o el mes |
 
 XP por escribir (15-25, máximo 1 vez por minuto) con bonus acumulables: +1 % por día de racha (tope +35 %), **x2 los fines de semana** y +10 % de madrugada (00-06 h Argentina). 16 logros con recompensa de XP, rangos por nivel y roles automáticos. También hay **XP por voz**: 8 por minuto completo, hasta 200 por día, solo si estás acompañado, sin mutearte y fuera de los canales excluidos.
+
+`/top` guarda la XP de cada día: `periodo:semana` (desde el lunes) y `periodo:mes` (mes calendario) compiten solo con lo ganado en ese rango, sin borrar ni alterar el acumulado histórico.
 
 ## Utilidades
 
@@ -148,7 +152,7 @@ XP por escribir (15-25, máximo 1 vez por minuto) con bonus acumulables: +1 % po
 
 | Comando | Qué hace |
 | --- | --- |
-| `/diag` | Diagnóstico operativo: qué está roto, qué hacer, salida a internet del host y estado de la base de conocimiento |
+| `/diag` | Diagnóstico operativo: qué está roto, qué hacer, salida a internet del host, estado de la base de conocimiento y **permisos del bot en cada canal configurado** (logs, bienvenida, avisos, tickets, estadísticas) |
 | `/buscar consulta` | Búsqueda web a mano: resultados con su fuente, cómo clasificaría el bot la pregunta y qué trajo la base (con su similitud) |
 | `/faltantes ver/borrar/limpiar` | Preguntas que la IA no supo contestar, agrupadas y contadas: la lista de qué cargar en la base |
 | `/latencias` | Latencia real por perfil, la causa de cada demora y las respuestas más lentas |
@@ -156,6 +160,8 @@ XP por escribir (15-25, máximo 1 vez por minuto) con bonus acumulables: +1 % po
 ## Configuración (staff)
 
 `/config` abre un **panel interactivo**: un menú con las secciones (Bienvenida, Mod-log, Logs, Avisos, Staff, Rol de silenciado, Chat con IA, Niveles, Frase del día, Anti-spam y anti-raid, Tickets, Desactivar) y selectores nativos para canales y roles. El mensaje de bienvenida se edita en una ventana emergente y cada desactivado pide confirmación. Todo se guarda al instante y el panel solo lo ve quien lo abre.
+
+Cada cambio queda **auditado** en el canal de logs (o mod-log/avisos si no hay logs): quién lo hizo, qué sección y el valor anterior → nuevo. El estado vivo de los tickets (abiertos, encuestas, calificaciones) se excluye para no llenar el registro de ruido.
 
 `/bienvenida test` muestra el embed **tal como lo reciben los nuevos** y avisa si el canal no existe, si falta permiso para escribir o si el rol de autorol se borró. Con `enviar:true` lo publica de verdad, aclarando que es una prueba y sin mencionar a nadie.
 

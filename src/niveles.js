@@ -148,6 +148,73 @@ function esFinde(fecha) {
   return dia === 'Sat' || dia === 'Sun';
 }
 
+// ---------- XP por período (ranking semanal y mensual) ----------
+// El acumulado no alcanza para un ranking semanal: un veterano con 40.000 XP es
+// imbatible para siempre y la tabla deja de decir algo de la semana. Se guarda la XP
+// de cada día en `xpPorDia` (clave YYYY-MM-DD en hora argentina) y el período se suma
+// al vuelo. Se conservan los últimos 40 días, que cubren el mes calendario completo.
+const DIAS_HISTORIAL = 40;
+const FORMATO_CLAVE = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'America/Argentina/Buenos_Aires',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
+// 2026-10-18 (en-CA ya devuelve el orden ISO, que se puede comparar como texto).
+function fechaArgClave(fecha = new Date()) {
+  return FORMATO_CLAVE.format(fecha);
+}
+
+function inicioSemanaClave(fecha = new Date()) {
+  const [anio, mes, dia] = fechaArgClave(fecha).split('-').map(Number);
+  const base = new Date(Date.UTC(anio, mes - 1, dia));
+  const desdeLunes = (base.getUTCDay() + 6) % 7; // domingo=0 → 6, lunes=1 → 0
+  base.setUTCDate(base.getUTCDate() - desdeLunes);
+  return base.toISOString().slice(0, 10);
+}
+
+function inicioMesClave(fecha = new Date()) {
+  return `${fechaArgClave(fecha).slice(0, 7)}-01`;
+}
+
+// Rango del período pedido. `null` = acumulado (no se toca el comportamiento viejo).
+function rangoPeriodo(periodo, fecha = new Date()) {
+  const hasta = fechaArgClave(fecha);
+  if (periodo === 'semana') return { desde: inicioSemanaClave(fecha), hasta, etiqueta: 'esta semana' };
+  if (periodo === 'mes') return { desde: inicioMesClave(fecha), hasta, etiqueta: 'este mes' };
+  return null;
+}
+
+function sumarRango(xpPorDia, desde, hasta) {
+  let total = 0;
+  for (const [dia, xp] of Object.entries(xpPorDia ?? {})) {
+    if (dia >= desde && dia <= hasta) total += Number(xp) || 0;
+  }
+  return total;
+}
+
+function registrarXPPeriodo(u, cantidad, fecha = new Date()) {
+  const xp = Math.round(Number(cantidad) || 0);
+  if (xp <= 0) return;
+  u.xpPorDia = u.xpPorDia || {};
+  const clave = fechaArgClave(fecha);
+  u.xpPorDia[clave] = (u.xpPorDia[clave] || 0) + xp;
+
+  // Poda: se conservan los días más recientes. Las claves ISO ordenan bien como texto.
+  const claves = Object.keys(u.xpPorDia).sort();
+  while (claves.length > DIAS_HISTORIAL) delete u.xpPorDia[claves.shift()];
+}
+
+// XP de un usuario dentro del período (semana/mes). Sin período devuelve la acumulada.
+function xpEnPeriodo(guildId, userId, periodo, fecha = new Date()) {
+  const u = cache[guildId]?.[userId];
+  if (!u) return 0;
+  const rango = rangoPeriodo(periodo, fecha);
+  if (!rango) return u.xp || 0;
+  return sumarRango(u.xpPorDia, rango.desde, rango.hasta);
+}
+
 // Multiplicador total por bonus del usuario (lo usan anuncios y /estadisticas).
 function multiplicador(racha, fecha = new Date()) {
   const partes = [];
@@ -232,6 +299,7 @@ function usuario(guildId, userId) {
     ultimoMensaje: 0,
     ultimoDia: null,
     logros: [],
+    xpPorDia: {},
   };
   return cache[guildId][userId];
 }
@@ -270,6 +338,7 @@ function procesarMensaje(guildId, userId, fecha = new Date()) {
     };
     u.xp += total;
     u.ultimoMensaje = ahora;
+    registrarXPPeriodo(u, total, fecha);
   }
 
   let nivelNuevo = nivelDe(u.xp);
@@ -286,6 +355,7 @@ function procesarMensaje(guildId, userId, fecha = new Date()) {
   const premioTotal = logrosNuevos.reduce((suma, l) => suma + (l.premio || 0), 0);
   if (premioTotal > 0) {
     u.xp += premioTotal;
+    registrarXPPeriodo(u, premioTotal, fecha);
     nivelNuevo = nivelDe(u.xp);
     if (nivelNuevo > u.nivel) {
       u.nivel = nivelNuevo;
@@ -318,11 +388,14 @@ function procesarMensaje(guildId, userId, fecha = new Date()) {
 // devuelve la misma forma que procesarMensaje, así el anuncio de subida sirve igual.
 // Los logros NO se reclaman acá: se pagan en el próximo mensaje, cuando procesarMensaje
 // vuelve a mirar las condiciones (se miden por estado, así que no se pierde ninguno).
-function otorgarXP(guildId, userId, cantidad) {
+function otorgarXP(guildId, userId, cantidad, fecha = new Date()) {
   const premio = Math.max(Math.round(Number(cantidad) || 0), 0);
   const u = usuario(guildId, userId);
   const nivelAnterior = u.nivel;
-  if (premio > 0) u.xp += premio;
+  if (premio > 0) {
+    u.xp += premio;
+    registrarXPPeriodo(u, premio, fecha);
+  }
   const nivelNuevo = nivelDe(u.xp);
   u.nivel = nivelNuevo;
 
@@ -376,6 +449,27 @@ function ranking(guildId, limite = 10) {
   return rankingCompleto(guildId).slice(0, limite);
 }
 
+// Ranking por período: mismos datos, pero ordenado y mostrado con la XP de la semana o
+// del mes. Se calcula al vuelo (son pocos usuarios activos) y no toca la caché del
+// acumulado, así /top semanal no puede pisar el histórico.
+function rankingPeriodo(guildId, periodo, limite = 10, fecha = new Date()) {
+  const rango = rangoPeriodo(periodo, fecha);
+  if (!rango) return ranking(guildId, limite).map((e) => ({ ...e, xpTotal: e.xp }));
+
+  const lista = Object.entries(cache[guildId] || {})
+    .map(([userId, datos]) => ({
+      userId,
+      xp: sumarRango(datos.xpPorDia, rango.desde, rango.hasta),
+      xpTotal: datos.xp || 0,
+      nivel: datos.nivel || 0,
+      mensajes: datos.mensajes || 0,
+    }))
+    .filter((e) => e.xp > 0)
+    .sort((a, b) => b.xp - a.xp || b.mensajes - a.mensajes || a.userId.localeCompare(b.userId));
+
+  return lista.slice(0, limite);
+}
+
 // Posición de un usuario en el ranking (1 = primero; 0 si no tiene actividad).
 function posicion(guildId, userId) {
   const indice = rankingCompleto(guildId).findIndex((e) => e.userId === userId);
@@ -421,6 +515,12 @@ module.exports = {
   procesarMensaje,
   otorgarXP,
   diaArg,
+  fechaArgClave,
+  inicioSemanaClave,
+  inicioMesClave,
+  rangoPeriodo,
+  xpEnPeriodo,
+  rankingPeriodo,
   datosDe,
   ranking,
   posicion,

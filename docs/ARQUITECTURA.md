@@ -177,6 +177,7 @@ Ambas devuelven `null` si todo está bien o un mensaje de error listo para mostr
 ## Niveles (`niveles.js`)
 
 - XP base 15-25 por mensaje con cooldown de 60 s (anti-farm). Bonus acumulables: racha (+1 %/día, tope 35 %), noche (+10 %, 00-06 h Argentina), finde (x2, sáb/dom).
+- **XP por día (`xpPorDia`)**: cada pago (mensaje, logro o voz) suma también a la clave `YYYY-MM-DD` en hora argentina. `/top periodo:semana` suma desde el lunes y `periodo:mes` desde el día 1; se conservan 40 días, suficiente para el mes calendario. El ranking acumulado no se modifica: la caché y los botones viejos (`top:page:2`) siguen funcionando igual.
 - Nivel = `floor(0.1 * sqrt(xp))` (curva cuadrática); 16 logros con premio de XP que pueden encadenar subidas de nivel.
 - **Anuncio en un solo mensaje de texto** (`utils/anunciosNivel.js`, nada de embeds): línea 1 qué pasó con la XP que lo causó y el bonus (x2 finde, racha, noche), línea 2 el total y cuánto falta traducido a mensajes, y solo si aplican las líneas de logros agrupados, rol otorgado y cambio de rango. Antes era un embed por logro más el de nivel: una subida con 3 logros nuevos eran 4 mensajes.
 - Los **roles por nivel** (`utils/rolesNivel.js`) se asignan _antes_ de anunciar y `asignarRolesNivel()` devuelve solo los que otorgó de verdad, así el anuncio nombra el rol sin prometer uno que Discord rechazó.
@@ -268,7 +269,7 @@ Sin esto, un reinicio del host perdía hasta 5 s de XP y 3 s de subidas.
 ## Vigilancia (`utils/vigilancia.js`)
 
 - Una sola función, `revisar(client, { ping, web })`, produce la lista de problemas; la usan `/diag` (cuando quiere el staff) y `vigilar()` (avisos automáticos). Comparten el núcleo para que el comando y el aviso nunca digan cosas distintas.
-- Chequeos: IA (pausas, modelos descartados, latencia), base de conocimiento (vacía = error; **semántica caída = aviso**, con la acción para revisar la clave de Gemini), carga de archivos, base de datos, escrituras pendientes, voz, servidores CS, **presupuesto de IA agotado** (id con el día, para avisar una vez por jornada) y —solo cuando `/diag` lo pide— **salida a internet** (`web: false` por defecto: la vigilancia automática no golpea la red en cada ciclo).
+- Chequeos: IA (pausas, modelos descartados, latencia), base de conocimiento (vacía = error; **semántica caída = aviso**, con la acción para revisar la clave de Gemini), carga de archivos, base de datos, escrituras pendientes, **permisos por canal configurado** (`revisarPermisos`: ver/enviar/insertar enlaces en logs, bienvenida, avisos, niveles, frase y tickets; adjuntar en transcripts; Gestionar canales en la categoría de tickets y en los canales de estadísticas), voz, servidores CS, **presupuesto de IA agotado** (id con el día, para avisar una vez por jornada) y —solo cuando `/diag` lo pide— **salida a internet** (`web: false` por defecto: la vigilancia automática no golpea la red en cada ciclo).
 - **Los chequeos se esperan** (`await correr(...)`). Antes el helper era síncrono y `revisarBaseDeDatos` (async) devolvía una promesa que se descartaba: los problemas de base **nunca** llegaban ni a `/diag` ni a los avisos. Hay un test que lo cubre.
 
 ## Base de conocimiento (`docs/conocimiento/` + `utils/conocimiento.js`)
@@ -299,10 +300,13 @@ Sin esto, un reinicio del host perdía hasta 5 s de XP y 3 s de subidas.
 - **Estado en la config** (`tickets.activos[canalId]`): número, dueño, tipo, apertura y quién lo reclamó. Sobrevive un reinicio, y el topic del canal (última fuente) sigue sirviendo para tickets abiertos antes de este cambio.
 - **Reclamar / Agregar usuario**: el primero que reclama deja el ticket a su nombre (el segundo recibe el aviso de quién lo atiende); agregar usuario da acceso al canal por ID o mención y queda anunciado.
 - **Calificación al cerrar**: al dueño le llega un DM con botones 1-5 (el `customId` lleva el guild porque en DM no hay guild). El pendiente vive en `tickets.encuestas[userId]` y las respuestas en `tickets.calificaciones` (últimas 100), con el promedio de las últimas en el aviso al canal de logs. Si el DM no sale, no queda encuesta pendiente.
-- **Resumen del cierre** (canal, logs y transcript): tipo, abierto por, atendido por (o "nadie lo reclamó"), cerrado por, duración y cantidad de mensajes.
+- **Motivo de cierre**: el botón **Cerrar** abre un selector efímero (resuelto / no resuelto / duplicado / otro) y recién después cierra. El motivo queda en el resumen, el log, el DM y `tickets.cierres` (últimos 200), que alimenta `/ticket stats`.
+- **Resumen del cierre** (canal, logs y transcript): tipo, abierto por, atendido por (o "nadie lo reclamó"), cerrado por, motivo, duración y cantidad de mensajes.
+- **Calificaciones visibles**: `/ticket stats` muestra promedio general, distribución 1-5, promedio por staff y motivos de cierre; el panel de `/config` muestra el promedio y las horas de inactividad. Las respuestas siguen en `tickets.calificaciones` (últimas 100).
+- **Auto-cierre por inactividad** (`procesarInactividad`): cada 10 min revisa `tickets.activos`; a `horasInactividad` (72 h por defecto, `0` apaga, configurable con `/ticket inactividad`) cierra con motivo «inactividad» y avisa una hora antes. `registrarActividad()` anota el último mensaje como mucho una vez cada 5 min. Si el transcript no se pudo guardar, el ticket queda abierto y marcado (`inactividadFallida`) para que el staff lo resuelva, sin reintentar en cada pasada.
 - Apertura con **bloqueo por usuario**: dos clics casi simultáneos no crean dos canales (el segundo ve el bloqueo activo y no hace nada).
-- Transcript .txt hasta 50.000 mensajes (500 páginas). Si un `fetch` falla a mitad o se alcanza el tope, el transcript queda marcado como **INCOMPLETO**.
-- **Adjuntos grandes**: si el transcript supera el límite de adjunto de Discord (~8 MiB), `dividirTranscript()` lo parte en varios archivos numerados (`-parte-1`, `-parte-2`…) en vez de que el envío falle.
+- Transcript **HTML** hasta 50.000 mensajes (500 páginas): escapa el contenido, muestra autor/avatar/hora, adjuntos clicables y embeds. Si un `fetch` falla a mitad o se alcanza el tope, queda marcado como **INCOMPLETO**.
+- **Adjuntos grandes**: si el transcript supera el límite de adjunto de Discord (~8 MiB), `partesTranscriptHtml()` lo parte **por mensaje** en documentos completos numerados (`-parte-1`, `-parte-2`…), sin cortar etiquetas HTML al medio.
 - **Solo se borra el canal si el transcript íntegro quedó guardado en logs** (y hay canal de logs configurado). Si la lectura fue parcial, si el envío a logs falló o si no hay logs, el canal **se conserva** y se avisa al staff para que reintente: nunca se pierde la conversación por un transcript incompleto.
 
 ## Tests (`tests/`)
