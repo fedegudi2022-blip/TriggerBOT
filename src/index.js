@@ -356,8 +356,41 @@ client.on('error', (error) => {
   }
   logDiscord.error('Error en la conexión con Discord', error);
 });
-client.on('shardDisconnect', (event) => logDiscord.warn(`Conexión perdida con Discord. Reintentando automáticamente... ${event?.message ?? ''}`));
-client.on('shardReconnecting', () => logDiscord.info('Reconectando con Discord...'));
+// ---------- Reconexiones ----------
+// El log anterior no alcanzaba para diagnosticar: no decía el código de cierre (un
+// `event.message` que no existe en ese evento) ni cuántos intentos llevaba. Con el
+// código se distingue red del host (1006), token inválido (4004) o mantenimiento de
+// Discord. Además se agrupa: una tormenta de reconexiones no llena la consola con la
+// misma línea repetida.
+let reconexiones = 0;
+client.on('shardDisconnect', (event) => {
+  const codigo = event?.code ?? '?'; // 1000 = cierre normal · 1006 = red · 4004 = token
+  const motivo = event?.reason ? ` (${event.reason})` : '';
+  logDiscord.warn(`Conexión perdida con Discord: código ${codigo}${motivo}.`);
+  if (codigo === 4004) {
+    logDiscord.error('Discord rechazó el token (4004): revisá DISCORD_TOKEN en las variables del hosting.');
+  }
+});
+client.on('shardReconnecting', () => {
+  reconexiones += 1;
+  // Primera y luego una de cada cinco: suficiente para ver que sigue intentando sin
+  // repetir la línea en cada reintento.
+  if (reconexiones === 1 || reconexiones % 5 === 0) {
+    logDiscord.info(`Reconectando con Discord (intento ${reconexiones})...`);
+  }
+  // Una ráfaga de reconexiones no es normal: o la red del host está inestable o hay
+  // otra instancia del bot con el mismo token peleando por la sesión.
+  if (reconexiones === 5) {
+    logDiscord.warn('Cinco reconexiones seguidas: revisá la red del host y que no haya otra instancia del bot con el mismo token.');
+  }
+});
+client.on('shardResume', (_id, recuperados) => {
+  logDiscord.info(`Conexión reanudada${recuperados ? ` (${recuperados} evento(s) recuperado(s))` : ''}.`);
+  reconexiones = 0;
+});
+client.on('shardReady', () => {
+  reconexiones = 0;
+});
 
 // ---------- Apagado controlado (SIGTERM/SIGINT: Wispbyte, Ctrl+C, etc.) ----------
 // Orden: 1) bloquear nuevas señales, 2) volcar a disco los JSON pendientes,

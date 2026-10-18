@@ -52,6 +52,11 @@ const calculos = require('./calculos');
 const presupuesto = require('./presupuesto');
 const faltantes = require('./faltantes');
 const rendimiento = require('./rendimiento');
+const crearLogger = require('../logger');
+
+// Todas las líneas de IA pasan por el logger: así comparten formato y nivel con el
+// resto del bot y los secretos se enmascaran si un error los arrastra.
+const log = crearLogger('ia');
 
 const TIMEOUT_MS = 10_000;
 const TOKENS_MAX = 1200; // techo de reintento cuando la respuesta sale cortada
@@ -88,17 +93,53 @@ const MAX_MUESTRAS = 50; // ventana de latencias que se conserva por proveedor
 // Cuánto se aparta un proveedor según el error que devolvió. No es lo mismo una
 // clave inválida (no se arregla sola) que un pico de cuota (se recupera en un minuto).
 function castigoPorEstado(status) {
-  if (status === 401) return { ms: 60 * 60 * 1000, motivo: 'la clave de API no es válida' };
+  if (status === 401) return { ms: 60 * 60 * 1000, motivo: 'la clave de API no es válida o fue revocada' };
+  if (status === 402) return { ms: 6 * 60 * 60 * 1000, motivo: 'la cuenta no tiene acceso (pago requerido)' };
   if (status === 403) return { ms: 60 * 60 * 1000, motivo: 'la clave no tiene permiso para este modelo' };
   if (status === 429) return { ms: 60 * 1000, motivo: 'cuota agotada (se reintenta en un minuto)' };
   if (status === 404) return { ms: 30 * 60 * 1000, motivo: 'ningún modelo disponible para esta clave' };
+  // 5xx: el proveedor está saturado. Reintentarlo en cada mensaje suma latencia sin
+  // arreglar nada; un minuto es suficiente para que se recupere.
+  if (status >= 500) return { ms: 60 * 1000, motivo: 'el proveedor está saturado (HTTP 5xx)' };
   return { ms: 15 * 1000, motivo: 'error temporal del proveedor' };
+}
+
+// Errores que no se arreglan probando otro modelo: hablan de la cuenta o de la clave.
+// Ante uno de estos se aparta el proveedor entero en vez de gastar un request por
+// modelo (el caso real: Cerebras devolvía 402 en los dos modelos del arranque).
+// Un 5xx queda afuera a propósito: puede ser un modelo saturado y el siguiente del
+// mismo proveedor contestar bien; en la prueba del arranque sí se aparta (ver
+// `verificarProveedor`).
+function esErrorDeProveedor(status) {
+  return status === 401 || status === 402 || status === 403 || status === 429;
 }
 
 // Extrae el código HTTP del mensaje de error (todos los proveedores lo arman así).
 function estadoDeError(error) {
   const m = /HTTP (\d{3})/.exec(String(error?.message || ''));
   return m ? Number(m[1]) : null;
+}
+
+// Cuerpo de error de una API → una sola línea legible. Los proveedores devuelven JSON
+// con saltos de línea (Gemini los imprime formateados): sin esto, un 503 ocupaba 5
+// renglones del log y rompía el formato de una línea por evento.
+function detalleDeError(cuerpo) {
+  const texto = String(cuerpo ?? '').trim();
+  if (!texto) return '';
+  let mensaje = texto;
+  try {
+    const datos = JSON.parse(texto);
+    mensaje = datos?.error?.message || datos?.message || datos?.error?.status || texto;
+  } catch {
+    /* no era JSON: se usa el texto tal cual */
+  }
+  return String(mensaje).replace(/\s+/g, ' ').trim().slice(0, 140);
+}
+
+// Error HTTP uniforme: "Proveedor HTTP 503: mensaje en una línea".
+function errorHttp(nombre, status, cuerpo) {
+  const detalle = detalleDeError(cuerpo);
+  return new Error(`${nombre} HTTP ${status}${detalle ? `: ${detalle}` : ''}`);
 }
 
 function claveModelo(proveedor, modelo) {
@@ -240,7 +281,9 @@ async function listarModelosGemini() {
       );
       if (modelosGemini.length) {
         olvidarListadoFallido('gemini');
-        console.log(`[TriggerBOT] IA: Gemini usando ${modelosGemini[0]} (${modelosGemini.length} disponibles como respaldo)`);
+        // El "listo con…" lo informa la prueba real: acá solo se deja el detalle en
+        // debug, para no anunciar un modelo que después puede rechazar la prueba.
+        log.debug(`Gemini: ${modelosGemini.length} modelos disponibles, candidato ${modelosGemini[0]}`);
       } else {
         // Listado vacío: no tiene sentido volver a pedirlo en cada mensaje.
         marcarListadoFallido('gemini');
@@ -267,7 +310,7 @@ function quitarModeloGemini(modelo, motivo = 'modelo retirado') {
 // obligaba a copiar cuatro funciones. Cualquier proveedor con la API de OpenAI
 // (chat/completions + models) es ahora una entrada acá y el código es uno solo.
 //
-// Todos los de la tabla tienen plan gratuito (ver README). El bot usa los que tengan
+// Todos los de la tabla tienen plan gratuito (ver docs/IA.md). El bot usa los que tengan
 // clave configurada, en el orden de ORDEN_PROVEEDORES, y saltea los que estén en pausa:
 // si Groq se queda sin cuota, el mensaje siguiente sale por el que siga. Sin clave, el
 // proveedor no existe para el bot: agregar uno es pegar la variable de entorno.
@@ -426,11 +469,13 @@ async function listarModelosDe(id) {
       if (ordenados.length) {
         listados.set(id, ordenados);
         olvidarListadoFallido(id);
-        console.log(`[TriggerBOT] IA: ${prov.nombre} usando ${ordenados[0]} (${ordenados.length} modelos disponibles)`);
+        // La línea visible la da la prueba real ("listo con…"). Anunciar acá "usando X"
+        // era engañoso cuando la prueba después rechazaba ese modelo.
+        log.debug(`${prov.nombre}: ${ordenados.length} modelos disponibles, candidato ${ordenados[0]}`);
       } else {
         // Listado vacío: no tiene sentido volver a pedirlo en cada mensaje.
         marcarListadoFallido(id);
-        console.warn(`[TriggerBOT] IA: el listado de ${prov.nombre} llegó vacío; uso los modelos conocidos.`);
+        log.warn(`El listado de ${prov.nombre} llegó vacío; uso los modelos conocidos.`);
       }
     } else {
       // 401/403/429 en el propio listado: se aparta el proveedor y se sigue con el
@@ -438,13 +483,13 @@ async function listarModelosDe(id) {
       marcarListadoFallido(id);
       const castigo = castigoPorEstado(resp.status);
       pausarProveedor(id, castigo.ms, castigo.motivo);
-      console.warn(`[TriggerBOT] IA: ${prov.nombre} (listado) HTTP ${resp.status}: ${castigo.motivo}.`);
+      log.warn(`${prov.nombre}: el listado respondió HTTP ${resp.status} — ${castigo.motivo}. Se aparta y sigo con el respaldo.`);
     }
   } catch (error) {
     // Sin listado (red caída) se sigue siendo optimista: los preferidos se intentan
     // igual y el primero que devuelva 404 queda marcado como caído.
     marcarListadoFallido(id);
-    console.warn(`[TriggerBOT] IA: no pude listar los modelos de ${prov.nombre} (${error.message}).`);
+    log.warn(`No pude listar los modelos de ${prov.nombre}`, error);
   }
   return listados.get(id) ?? null;
 }
@@ -795,8 +840,7 @@ async function generarConGemini(modelo, contenidos, sistema, cfg, maxTokens, { p
   });
 
   if (!respuesta.ok) {
-    const detalle = await respuesta.text().catch(() => '');
-    throw new Error(`Gemini HTTP ${respuesta.status}: ${detalle.slice(0, 200)}`);
+    throw errorHttp('Gemini', respuesta.status, await respuesta.text().catch(() => ''));
   }
 
   const datos = await respuesta.json();
@@ -885,8 +929,7 @@ async function generarConProveedor(id, modelo, mensajes, cfg, maxTokens) {
   });
 
   if (!respuesta.ok) {
-    const detalle = await respuesta.text().catch(() => '');
-    throw new Error(`${prov.nombre} HTTP ${respuesta.status}: ${detalle.slice(0, 200)}`);
+    throw errorHttp(prov.nombre, respuesta.status, await respuesta.text().catch(() => ''));
   }
 
   const datos = await respuesta.json();
@@ -927,11 +970,21 @@ async function llamarProveedor(id, mensajeUsuario, previos, sistema, { rapido = 
       // Modelo inaceptable para esta clave (retirado o sin permiso): se marca caído
       // por horas en vez de reintentarlo en cada mensaje.
       if (status === 404 || status === 400) marcarModeloCaido(id, candidatos[i], `HTTP ${status}`);
+
+      // Error de cuenta, clave, cuota o saturación: probar otro modelo del mismo
+      // proveedor daría el mismo resultado. Se aparta el proveedor entero y se sigue.
+      if (esErrorDeProveedor(status)) {
+        const castigo = castigoPorEstado(status);
+        pausarProveedor(id, castigo.ms, castigo.motivo);
+        log.warn(`${prov.nombre}: ${castigo.motivo}. Sigo con el respaldo.`);
+        throw error;
+      }
+
       if (i === candidatos.length - 1) {
-        // Si no quedó ningún modelo vivo —o el error es de clave/cuota— se aparta el
-        // proveedor entero: así el próximo mensaje arranca directo en el que siga.
+        // Se quedó sin modelos usables: se aparta el proveedor para que el próximo
+        // mensaje arranque directo en el que siga.
         const sinModelos = candidatosDe(id, { rapido }).length === 0;
-        if (sinModelos || [401, 403, 429].includes(status)) {
+        if (sinModelos) {
           const castigo = castigoPorEstado(status);
           pausarProveedor(id, castigo.ms, castigo.motivo);
         }
@@ -958,8 +1011,7 @@ async function probarProveedor(id, modelo) {
     signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
   });
   if (!resp.ok) {
-    const detalle = await resp.text().catch(() => '');
-    throw new Error(`${prov.nombre} HTTP ${resp.status}: ${detalle.slice(0, 120)}`);
+    throw errorHttp(prov.nombre, resp.status, await resp.text().catch(() => ''));
   }
 }
 
@@ -975,8 +1027,7 @@ async function probarGemini(modelo) {
     signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
   });
   if (!resp.ok) {
-    const detalle = await resp.text().catch(() => '');
-    throw new Error(`Gemini HTTP ${resp.status}: ${detalle.slice(0, 120)}`);
+    throw errorHttp('Gemini', resp.status, await resp.text().catch(() => ''));
   }
 }
 
@@ -994,23 +1045,35 @@ async function verificarProveedor(id) {
       const ms = Date.now() - inicio;
       registrarMetrica(id, ms, true);
       listo = { modelo, ms };
-      console.log(`[TriggerBOT] IA: ${prov.nombre} listo con ${modelo} (probado en ${ms} ms)`);
+      log.info(`${prov.nombre} listo con ${modelo} (probado en ${ms} ms)`);
       break;
     } catch (error) {
       registrarMetrica(id, Date.now() - inicio, false);
       const status = estadoDeError(error);
-      if (status === 404 || status === 400) marcarModeloCaido(id, modelo, `HTTP ${status} al probar`);
-      if ([401, 403, 429].includes(status)) {
+
+      // Ese modelo no sirve para esta clave (retirado o sin permiso): se descarta y
+      // se prueba el siguiente candidato.
+      if (status === 404 || status === 400) {
+        marcarModeloCaido(id, modelo, `HTTP ${status} al probar`);
+        log.warn(`${prov.nombre} descartó ${modelo} (HTTP ${status}); pruebo el siguiente.`);
+        continue;
+      }
+
+      // Cuenta sin acceso (402), clave inválida (401), sin permiso (403), cuota (429)
+      // o proveedor saturado (5xx): en la prueba del arranque no se insiste con otro
+      // modelo, se aparta el proveedor.
+      if (esErrorDeProveedor(status) || (Number.isFinite(status) && status >= 500)) {
         const castigo = castigoPorEstado(status);
         pausarProveedor(id, castigo.ms, castigo.motivo);
-        console.warn(`[TriggerBOT] IA: ${prov.nombre} no está disponible (${castigo.motivo}). Sigo con el respaldo.`);
+        log.warn(`${prov.nombre}: ${castigo.motivo}. Se aparta de la cadena y sigo con el respaldo.`);
         break;
       }
-      console.warn(`[TriggerBOT] IA: ${prov.nombre} rechazó ${modelo} (${String(error.message).slice(0, 100)}); pruebo el siguiente.`);
+
+      log.warn(`${prov.nombre} rechazó ${modelo}: ${String(error.message).slice(0, 140)}. Pruebo el siguiente.`);
     }
   }
   if (!listo && !estadoProveedor(id).pausado) {
-    console.warn(`[TriggerBOT] IA: ningún modelo de ${prov.nombre} respondió en la prueba; queda como respaldo.`);
+    log.warn(`Ningún modelo de ${prov.nombre} respondió en la prueba; queda como respaldo.`);
   }
 }
 
@@ -1031,15 +1094,17 @@ async function verificarModelos() {
     const inicio = Date.now();
     try {
       await probarGemini(modelo);
-      console.log(`[TriggerBOT] IA: Gemini listo con ${modelo} (probado en ${Date.now() - inicio} ms)`);
+      log.info(`Gemini listo con ${modelo} (probado en ${Date.now() - inicio} ms)`);
     } catch (error) {
       const status = estadoDeError(error);
-      console.warn(`[TriggerBOT] IA: la prueba de Gemini falló (${String(error.message).slice(0, 100)}).`);
-      if (status === 429) {
+      log.warn('Gemini no pasó la prueba', error);
+      if (status === 404 || status === 400) {
+        quitarModeloGemini(modelo, `HTTP ${status} al probar`);
+      } else {
+        // 401/402/403/429/5xx o red: se aparta un rato (la cadena sigue con Groq, que
+        // es el principal) en vez de pagar el fallo en cada mensaje.
         const castigo = castigoPorEstado(status);
         pausarProveedor('gemini', castigo.ms, castigo.motivo);
-      } else if (status === 404 || status === 400) {
-        quitarModeloGemini(modelo, `HTTP ${status} al probar`);
       }
     }
   }
@@ -1054,7 +1119,7 @@ function precalentar() {
   // Sin ninguna clave no hay nada que verificar: el bot queda con el repertorio local.
   if (!proveedoresConfigurados().length) return;
   verificarModelos().catch((error) => {
-    console.warn(`[TriggerBOT] IA: no pude verificar los modelos al arrancar: ${error.message}`);
+    log.warn('No pude verificar los modelos al arrancar', error);
   });
 }
 
@@ -1103,7 +1168,7 @@ function contextoVivoDe(contexto, perfil) {
       detallado: esPerfilConsulta(perfil),
     });
   } catch (error) {
-    console.warn(`[TriggerBOT] IA: no pude armar el contexto en vivo: ${error.message}`);
+    log.warn('No pude armar el contexto en vivo', error);
     return '';
   }
 }
@@ -1135,7 +1200,7 @@ async function fragmentosDe(mensaje) {
   try {
     return (await buscarConocimiento(mensaje)) ?? [];
   } catch (error) {
-    console.warn(`[TriggerBOT] IA: no pude buscar en la base de conocimiento: ${error.message}`);
+    log.warn('No pude buscar en la base de conocimiento', error);
     return [];
   }
 }
@@ -1249,7 +1314,7 @@ async function generarRespuesta(mensaje, previos, { sistema, perfil, rapido, gui
     statsIA[ganador.proveedor] = (statsIA[ganador.proveedor] ?? 0) + 1;
     return ganador.texto;
   } catch (error) {
-    console.warn(`[TriggerBOT] IA: cayeron todos los proveedores (${error.message.slice(0, 140)}); uso el repertorio local.`);
+    log.warn('Cayeron todos los proveedores; uso el repertorio local', error);
     return null;
   }
 }
@@ -1264,7 +1329,7 @@ async function investigarEnWeb(mensaje, usuarioId, { forzar = false } = {}) {
     const resultados = await buscar(mensaje, { usuarioId, forzar });
     return { texto: formatear(resultados), resultados };
   } catch (error) {
-    console.warn(`[TriggerBOT] IA: la búsqueda web falló (${error.message}); sigo sin ella.`);
+    log.warn('La búsqueda web falló; sigo sin ella', error);
     return { texto: '', resultados: [] };
   }
 }
@@ -1520,6 +1585,10 @@ module.exports = {
     marcarModeloCaido,
     pausarProveedor,
     estadoProveedor,
+    castigoPorEstado,
+    esErrorDeProveedor,
+    detalleDeError,
+    verificarProveedor,
     modeloUsable,
     candidatosGroq,
     candidatosDe,

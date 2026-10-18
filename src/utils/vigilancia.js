@@ -33,6 +33,24 @@ function problema(id, nivel, titulo, detalle, accion, guildId = null) {
 
 // ---------- Comprobaciones ----------
 
+// Entorno del host: una versión de Node vieja no rompe el bot hoy, pero deja el arranque
+// lleno de avisos `EBADENGINE` y el runtime sin parches de seguridad. No es un error del
+// bot: es una configuración del panel, y el aviso dice exactamente qué cambiar.
+// `version` es inyectable para los tests.
+function revisarEntorno(version = process.versions.node) {
+  const mayor = Number(String(version).split('.')[0]);
+  if (!Number.isFinite(mayor) || mayor >= 22) return [];
+  return [
+    problema(
+      'entorno-node',
+      'aviso',
+      `Node ${version} está fuera de soporte`,
+      `El bot pide Node 22 o superior. Con Node ${mayor} cada \`npm install\` del arranque avisa \`EBADENGINE\` y el runtime no recibe parches de seguridad.`,
+      'En Wispbyte → Startup elegí la imagen `nodejs_22` y reiniciá. No hace falta tocar el código.'
+    ),
+  ];
+}
+
 // IA: claves, pausas, modelos y latencia real medida (utils/ia.js).
 function revisarIA() {
   const problemas = [];
@@ -446,6 +464,7 @@ async function revisar(client, { ping = false, web = false } = {}) {
     }
   };
 
+  await correr('Entorno', () => revisarEntorno());
   await correr('IA', () => revisarIA());
   await correr('Conocimiento', () => revisarConocimiento());
   await correr('Carga de archivos', () => revisarCarga(client));
@@ -588,6 +607,7 @@ module.exports = {
   slug,
   // Chequeos sueltos: los usan los tests para forzar cada caso sin depender del estado
   // real del proceso (que en producción es el que manda, pero no se puede simular).
+  revisarEntorno,
   revisarIA,
   revisarConocimiento,
   revisarCarga,
